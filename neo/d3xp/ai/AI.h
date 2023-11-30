@@ -276,6 +276,8 @@ public:
 	idAI();
 	~idAI();
 
+	void ReadFromSnapshot( const idBitMsg& msg ) override;
+	void WriteToSnapshot( idBitMsg& msg ) const override;
 	void					Save( idSaveGame* savefile ) const;
 	void					Restore( idRestoreGame* savefile );
 
@@ -452,6 +454,10 @@ protected:
 	idScriptBool			AI_HIT_ENEMY;
 	idScriptBool			AI_PUSHED;
 
+	// For interpolating angles between snapshots
+	idQuat					previousViewQuat;
+	idQuat					nextViewQuat;
+
 	//
 	// ai/ai.cpp
 	//
@@ -459,6 +465,7 @@ protected:
 	virtual	void			DormantBegin();	// called when entity becomes dormant
 	virtual	void			DormantEnd();		// called when entity wakes from being dormant
 	void					Think();
+	void					ClientThink( const int curTime, const float fraction, const bool predict );
 	void					Activate( idEntity* activator );
 public:
 	int						ReactionTo( const idEntity* ent );
