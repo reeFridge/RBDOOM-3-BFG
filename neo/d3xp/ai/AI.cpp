@@ -298,7 +298,9 @@ bool idAASFindAttackPosition::TestArea( const idAAS* aas, int areaNum )
 idAI::idAI
 =====================
 */
-idAI::idAI()
+idAI::idAI():
+	previousViewQuat( 0.0f, 0.0f, 0.0f, 1.0f ),
+	nextViewQuat( 0.0f, 0.0f, 0.0f, 1.0f )
 {
 	aas					= NULL;
 	travelFlags			= TFL_WALK | TFL_AIR;
@@ -399,6 +401,78 @@ idAI::idAI()
 	eyeFocusRate		= 0.0f;
 	headFocusRate		= 0.0f;
 	focusAlignTime		= 0;
+
+	// network
+	fl.networkSync = true;
+	SetUseClientInterpolation( true );
+}
+
+void idAI::WriteToSnapshot( idBitMsg& msg ) const {
+	physicsObj.WriteToSnapshot( msg );
+	WriteBindToSnapshot( msg );
+
+	auto viewAngles = idAngles( 0, current_yaw, 0 );
+	idCQuat snapViewCQuat( viewAngles.ToQuat().ToCQuat() );
+	msg.WriteFloat( snapViewCQuat.x );
+	msg.WriteFloat( snapViewCQuat.y );
+	msg.WriteFloat( snapViewCQuat.z );
+	msg.WriteShort( health );
+}
+
+void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
+	int oldHealth = health;
+
+	physicsObj.ReadFromSnapshot( msg );
+	ReadBindFromSnapshot( msg );
+
+	idCQuat snapViewCQuat;
+	snapViewCQuat.x = msg.ReadFloat();
+	snapViewCQuat.y = msg.ReadFloat();
+	snapViewCQuat.z = msg.ReadFloat();
+	health = msg.ReadShort();
+
+	previousViewQuat = nextViewQuat;
+	nextViewQuat = snapViewCQuat.ToQuat();
+
+	if( oldHealth > 0 && health <= 0 )
+	{
+		AI_DEAD = true;
+		// make monster nonsolid
+		physicsObj.SetContents( 0 );
+		physicsObj.GetClipModel()->Unlink();
+
+		Unbind();
+
+		if( StartRagdoll() )
+		{
+			StartSound( "snd_death", SND_CHANNEL_VOICE, 0, false, NULL );
+		}
+
+		state = GetScriptFunction( "state_Killed" );
+		SetState( state );
+		SetWaitState( "" );
+		animator.ClearAllJoints();
+	}
+
+	if( msg.HasChanged() )
+	{
+		UpdateVisuals();
+	}
+}
+
+void idAI::ClientThink( const int curTime, const float fraction, const bool predict ) {
+	walkIK.ClearJointMods();
+
+	idQuat interpolatedAngles = Slerp( previousViewQuat, nextViewQuat, fraction );
+	current_yaw = interpolatedAngles.ToAngles().yaw;
+	viewAxis = idAngles( 0, current_yaw, 0 ).ToMat3();
+
+	InterpolatePhysics( fraction );
+
+	Present();
+
+	idVec3 aboveHead( 0, 0, 20 );
+	gameRenderWorld->DrawText( va( "%d", ( int )health ), this->GetEyePosition() + aboveHead, 0.5f, colorWhite, gameLocal.GetLocalPlayer()->viewAngles.ToMat3() );
 }
 
 /*

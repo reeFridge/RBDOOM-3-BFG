@@ -95,6 +95,7 @@ public:
 
 public:	// common physics interface
 	bool					Evaluate( int timeStepMSec, int endTimeMSec );
+	bool					Interpolate( const float fraction ) override;
 	void					UpdateTime( int endTimeMSec );
 	int						GetTime() const;
 

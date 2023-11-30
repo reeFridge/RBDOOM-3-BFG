@@ -881,18 +881,40 @@ idPhysics_Monster::ReadFromSnapshot
 */
 void idPhysics_Monster::ReadFromSnapshot( const idBitMsg& msg )
 {
-	current.origin[0] = msg.ReadFloat();
-	current.origin[1] = msg.ReadFloat();
-	current.origin[2] = msg.ReadFloat();
-	current.velocity[0] = msg.ReadFloat( MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
-	current.velocity[1] = msg.ReadFloat( MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
-	current.velocity[2] = msg.ReadFloat( MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
-	current.localOrigin[0] = msg.ReadDeltaFloat( current.origin[0] );
-	current.localOrigin[1] = msg.ReadDeltaFloat( current.origin[1] );
-	current.localOrigin[2] = msg.ReadDeltaFloat( current.origin[2] );
-	current.pushVelocity[0] = msg.ReadDeltaFloat( 0.0f, MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
-	current.pushVelocity[1] = msg.ReadDeltaFloat( 0.0f, MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
-	current.pushVelocity[2] = msg.ReadDeltaFloat( 0.0f, MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
-	current.atRest = msg.ReadLong();
-	current.onGround = msg.ReadBits( 1 ) != 0;
+	previous = next;
+
+	next.origin = ReadFloatArray< idVec3 >( msg );
+
+	next.velocity[0] = msg.ReadFloat( MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
+	next.velocity[1] = msg.ReadFloat( MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
+	next.velocity[2] = msg.ReadFloat( MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
+
+	next.localOrigin = ReadDeltaFloatArray( msg, next.origin );
+
+	next.pushVelocity[0] = msg.ReadDeltaFloat( 0.0f, MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
+	next.pushVelocity[1] = msg.ReadDeltaFloat( 0.0f, MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
+	next.pushVelocity[2] = msg.ReadDeltaFloat( 0.0f, MONSTER_VELOCITY_EXPONENT_BITS, MONSTER_VELOCITY_MANTISSA_BITS );
+
+	next.atRest = msg.ReadLong();
+	next.onGround = msg.ReadBits( 1 ) != 0;
+}
+
+bool idPhysics_Monster::Interpolate( const float fraction )
+{
+	current.origin = Lerp( previous.origin, next.origin, fraction );
+	current.localOrigin = Lerp( previous.localOrigin, next.localOrigin, fraction );
+
+	if( self != NULL )
+	{
+		current.velocity = Lerp( previous.velocity, next.velocity, fraction );
+	}
+
+	current.atRest = next.atRest;
+
+	if( clipModel )
+	{
+		clipModel->Link( gameLocal.clip, self, 0, current.origin, clipModel->GetAxis() );
+	}
+
+	return true;
 }
