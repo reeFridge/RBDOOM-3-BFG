@@ -910,6 +910,7 @@ bool idPhysics_Monster::Interpolate( const float fraction )
 	}
 
 	current.atRest = next.atRest;
+	current.onGround = next.onGround;
 
 	if( clipModel )
 	{
