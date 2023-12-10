@@ -1240,6 +1240,10 @@ void idGameLocal::ClientRunFrame( idUserCmdMgr& cmdMgr, bool lastPredictFrame, g
 
 		if( ent->entityNumber != GetLocalClientNum() )
 		{
+			if (ent->fl.skipClientThink) {
+				continue;
+			}
+
 			ent->ClientThink( netInterpolationInfo.serverGameMs, netInterpolationInfo.pct, true );
 		}
 		else

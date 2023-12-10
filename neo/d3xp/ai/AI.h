@@ -306,6 +306,7 @@ public:
 	static bool				PredictTrajectory( const idVec3& firePos, const idVec3& target, float projectileSpeed, const idVec3& projGravity, const idClipModel* clip, int clipmask, float max_height, const idEntity* ignore, const idEntity* targetEntity, int drawtime, idVec3& aimDir );
 
 	virtual void			Gib( const idVec3& dir, const char* damageDefName );
+	virtual	void			Damage( idEntity* inflictor, idEntity* attacker, const idVec3& dir, const char* damageDefName, const float damageScale, const int location );
 
 protected:
 	// navigation
@@ -421,6 +422,7 @@ protected:
 
 	// enemy variables
 	idEntityPtr<idActor>	enemy;
+	int clientAttackFlags;
 	idVec3					lastVisibleEnemyPos;
 	idVec3					lastVisibleEnemyEyeOffset;
 	idVec3					lastVisibleReachableEnemyPos;
@@ -470,6 +472,8 @@ protected:
 public:
 	int						ReactionTo( const idEntity* ent );
 protected:
+	void					ClientKilled();
+	void					ClientSetupHead();
 	bool					CheckForEnemy();
 	void					EnemyDead();
 	virtual bool			CanPlayChatterSounds() const;
@@ -582,6 +586,9 @@ protected:
 	//
 	// ai/ai_events.cpp
 	//
+	void					Event_IsServer();
+	void					Event_SetAttackFlags(float attackFlags);
+	void					Event_GetAttackFlags();
 	void					Event_Activate( idEntity* activator );
 	void					Event_Touch( idEntity* other, trace_t* trace );
 	void					Event_FindEnemy( int useFOV );

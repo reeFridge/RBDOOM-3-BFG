@@ -752,6 +752,7 @@ void idActor::SetupHead()
 	int					i;
 	const idKeyValue*	sndKV;
 
+	// on client head is replicated via snapshot
 	if( common->IsClient() )
 	{
 		return;

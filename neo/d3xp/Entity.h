@@ -223,6 +223,7 @@ public:
 		bool				networkSync			: 1; // if true the entity is synchronized over the network
 		bool				grabbed				: 1;	// if true object is currently being grabbed
 		bool				skipReplication		: 1; // don't replicate this entity over the network.
+		bool				skipClientThink		: 1; // skip ent->ClientThink call
 	} fl;
 
 	int						timeGroup;

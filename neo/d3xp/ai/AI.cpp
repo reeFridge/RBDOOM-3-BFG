@@ -403,6 +403,7 @@ idAI::idAI():
 	focusAlignTime		= 0;
 
 	// network
+	clientAttackFlags = 0;
 	fl.networkSync = true;
 	SetUseClientInterpolation( true );
 }
@@ -417,6 +418,160 @@ void idAI::WriteToSnapshot( idBitMsg& msg ) const {
 	msg.WriteFloat( snapViewCQuat.y );
 	msg.WriteFloat( snapViewCQuat.z );
 	msg.WriteShort( health );
+	msg.WriteBits( AI_FORWARD, 1 );
+	msg.WriteBits( AI_ACTIVATED, 1 );
+	msg.WriteBits( AI_PAIN, 1 );
+
+	msg.WriteBits(enemy.GetSpawnId(), 32 );
+	msg.WriteShort(clientAttackFlags);
+	msg.WriteBits(head.GetSpawnId(), 32);
+}
+
+void idAI::ClientSetupHead()
+{
+	assert(common->IsClient());
+
+	idAFAttachment* headEnt = head.GetEntity();
+	headEnt->fl.skipClientThink = true;
+
+	headEnt->SetCombatModel();
+	headEnt->LinkCombat();
+
+	const char* headModel = spawnArgs.GetString( "def_head", "" );
+
+	if( headModel[ 0 ] )
+	{
+		idStr jointName = spawnArgs.GetString( "head_joint" );
+		jointHandle_t joint = animator.GetJointHandle( jointName );
+
+		if( joint == INVALID_JOINT )
+		{
+			gameLocal.Error( "Joint '%s' not found for 'head_joint' on '%s'", jointName.c_str(), name.c_str() );
+			return;
+		}
+
+		// set the damage joint to be part of the head damage group
+		jointHandle_t damageJoint = joint;
+		for( int i = 0; i < damageGroups.Num(); i++ )
+		{
+			if( damageGroups[ i ] == "head" )
+			{
+				damageJoint = static_cast<jointHandle_t>( i );
+				break;
+			}
+		}
+
+		// copy any sounds in case we have frame commands on the head
+		// TODO: setup sndKV in already existed headEnt
+		idDict	args;
+		const idKeyValue* sndKV = spawnArgs.MatchPrefix( "snd_", NULL );
+		while( sndKV )
+		{
+			args.Set( sndKV->GetKey(), sndKV->GetValue() );
+			sndKV = spawnArgs.MatchPrefix( "snd_", sndKV );
+		}
+
+		// copy slowmo param to the head
+		// TODO: set slowmo in already spawned ent
+		bool slowmo = spawnArgs.GetBool( "slowmo", "1" );
+
+		headEnt->SetName( va( "%s_head", name.c_str() ) );
+		headEnt->SetBody( this, headModel, damageJoint );
+
+		idStr xSkin;
+		if( spawnArgs.GetString( "skin_head_xray", "", xSkin ) )
+		{
+			headEnt->xraySkin = declManager->FindSkin( xSkin.c_str() );
+			headEnt->UpdateModel();
+		}
+
+		idAttachInfo& attach = attachments.Alloc();
+		attach.channel = animator.GetChannelForJoint( joint );
+		attach.ent = headEnt;
+
+		idVec3 origin;
+		idMat3 axis;
+		animator.GetJointTransform( joint, gameLocal.time, origin, axis );
+		origin = renderEntity.origin + ( origin + modelOffset ) * renderEntity.axis;
+		headEnt->SetOrigin( origin );
+		headEnt->SetAxis( renderEntity.axis );
+
+		headEnt->BindToJoint( this, joint, true );
+
+		idAnimator* headAnimator = headEnt->GetAnimator();
+		copyJoints_t copyJoint;
+
+		// set up the list of joints to copy to the head
+		for(const idKeyValue* kv = spawnArgs.MatchPrefix( "copy_joint", NULL ); kv != NULL; kv = spawnArgs.MatchPrefix( "copy_joint", kv ) )
+		{
+			jointName = kv->GetKey();
+
+			// RB: TrenchBroom interop use copy_joint_world.<name> instead so we can build this up using the FGD files
+			if( jointName.StripLeadingOnce( "copy_joint_world " ) || jointName.StripLeadingOnce( "copy_joint_world." ) )
+			{
+				copyJoint.mod = JOINTMOD_WORLD_OVERRIDE;
+			}
+			else
+			{
+				if( !jointName.StripLeadingOnce( "copy_joint " ) )
+				{
+					jointName.StripLeadingOnce( "copy_joint." );
+				}
+				copyJoint.mod = JOINTMOD_LOCAL_OVERRIDE;
+			}
+			// RB end
+
+			copyJoint.from = animator.GetJointHandle( jointName );
+			if( copyJoint.from == INVALID_JOINT )
+			{
+				gameLocal.Warning( "Unknown copy_joint '%s'", jointName.c_str() );
+				continue;
+			}
+
+			copyJoint.to = headAnimator->GetJointHandle( jointName );
+			if( copyJoint.to == INVALID_JOINT )
+			{
+				gameLocal.Warning( "Unknown copy_joint '%s' on head", jointName.c_str() );
+				continue;
+			}
+
+			copyJoints.Append( copyJoint );
+		}
+	}
+}
+
+void idAI::ClientKilled()
+{
+	// stop all voice sounds
+	StopSound( SND_CHANNEL_VOICE, false );
+	if( head.GetEntity() )
+	{
+		head.GetEntity()->StopSound( SND_CHANNEL_VOICE, false );
+		head.GetEntity()->GetAnimator()->ClearAllAnims( gameLocal.time, 100 );
+	}
+
+	RemoveAttachments();
+	RemoveProjectile();
+	StopMove( MOVE_STATUS_DONE );
+
+	ClearEnemy();
+
+	AI_DEAD = true;
+	// make monster nonsolid
+	physicsObj.SetContents( 0 );
+	physicsObj.GetClipModel()->Unlink();
+
+	Unbind();
+
+	if( StartRagdoll() )
+	{
+		StartSound( "snd_death", SND_CHANNEL_VOICE, 0, false, NULL );
+	}
+
+	state = GetScriptFunction( "state_Killed" );
+	SetState( state );
+	SetWaitState( "" );
+	animator.ClearAllJoints();
 }
 
 void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
@@ -430,28 +585,43 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 	snapViewCQuat.y = msg.ReadFloat();
 	snapViewCQuat.z = msg.ReadFloat();
 	health = msg.ReadShort();
+	AI_FORWARD = msg.ReadBits(1) != 0;
+	AI_ACTIVATED = msg.ReadBits(1) != 0;
+	AI_PAIN = msg.ReadBits(1) != 0;
+
+	int enemySpawnId = msg.ReadBits( 32 );
+
+	idEntityPtr<idActor> newEnemy;
+	if (newEnemy.SetSpawnId(enemySpawnId)) {
+		SetEnemy(newEnemy.GetEntity());
+	}
+
+	clientAttackFlags = msg.ReadShort();
+
+	int headSpawnId = msg.ReadBits(32);
+	bool isHeadSpawned = !!head.GetEntity();
+
+	if (!isHeadSpawned) {
+		idEntityPtr<idEntity> tempHead;
+		tempHead.SetSpawnId(headSpawnId);
+
+		// wait until spawnId synced (after entity replication)
+		if (tempHead.GetEntity() && tempHead.GetEntity()->IsType(idAFAttachment::Type)) {
+			head.SetSpawnId(headSpawnId);
+
+			if (head.GetEntity()) {
+				idLib::Printf("head name: %s, class<%s>, spawnId: %d, enid: %d \n", head.GetEntity()->GetName(), head.GetEntity()->GetClassname(), head.GetSpawnId(), head.GetEntityNum());
+				ClientSetupHead();
+			}
+		}
+	}
 
 	previousViewQuat = nextViewQuat;
 	nextViewQuat = snapViewCQuat.ToQuat();
 
 	if( oldHealth > 0 && health <= 0 )
 	{
-		AI_DEAD = true;
-		// make monster nonsolid
-		physicsObj.SetContents( 0 );
-		physicsObj.GetClipModel()->Unlink();
-
-		Unbind();
-
-		if( StartRagdoll() )
-		{
-			StartSound( "snd_death", SND_CHANNEL_VOICE, 0, false, NULL );
-		}
-
-		state = GetScriptFunction( "state_Killed" );
-		SetState( state );
-		SetWaitState( "" );
-		animator.ClearAllJoints();
+		ClientKilled();
 	}
 
 	if( msg.HasChanged() )
@@ -461,7 +631,14 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 }
 
 void idAI::ClientThink( const int curTime, const float fraction, const bool predict ) {
+	// no prediction
+	if (!gameLocal.isNewFrame) {
+		return;
+	}
+
 	walkIK.ClearJointMods();
+
+	UpdateAIScript();
 
 	idQuat interpolatedAngles = Slerp( previousViewQuat, nextViewQuat, fraction );
 	current_yaw = interpolatedAngles.ToAngles().yaw;
@@ -469,10 +646,22 @@ void idAI::ClientThink( const int curTime, const float fraction, const bool pred
 
 	InterpolatePhysics( fraction );
 
-	Present();
+	AI_PAIN = false;
+	AI_SPECIAL_DAMAGE = 0;
+	AI_PUSHED = false;
 
-	idVec3 aboveHead( 0, 0, 20 );
-	gameRenderWorld->DrawText( va( "%d", ( int )health ), this->GetEyePosition() + aboveHead, 0.5f, colorWhite, gameLocal.GetLocalPlayer()->viewAngles.ToMat3() );
+	UpdateMuzzleFlash();
+	UpdateAnimation();
+	UpdateParticles();
+	Present();
+	UpdateDamageEffects();
+	// hit detection
+	LinkCombat();
+
+	if (idAFAttachment* headEnt = head.GetEntity(); headEnt) {
+		// update head position
+		headEnt->ClientPredictionThink();
+	}
 }
 
 /*
@@ -3822,6 +4011,87 @@ int idAI::ReactionTo( const idEntity* ent )
 	return ATTACK_IGNORE;
 }
 
+extern idCVar actor_noDamage;
+void idAI::Damage( idEntity* inflictor, idEntity* attacker, const idVec3& dir,
+					  const char* damageDefName, const float damageScale, const int location )
+{
+	if (!common->IsMultiplayer() || common->IsServer()) {
+		idActor::Damage(inflictor, attacker, dir, damageDefName, damageScale, location);
+		return;
+	}
+
+	idLib::Printf("=== Client Damage ===\n");
+
+	if( !fl.takedamage || actor_noDamage.GetBool() )
+	{
+		return;
+	}
+
+	if( !inflictor )
+	{
+		inflictor = gameLocal.world;
+	}
+	if( !attacker )
+	{
+		attacker = gameLocal.world;
+	}
+
+	if( finalBoss && idStr::FindText( GetEntityDefName(), "monster_boss_cyberdemon" ) == 0 && !inflictor->IsType( idSoulCubeMissile::Type ) )
+	{
+		return;
+	}
+
+	SetTimeState ts( timeGroup );
+
+	// Helltime boss is immune to all projectiles except the helltime killer
+	if( finalBoss && idStr::Icmp( GetEntityDefName(), "monster_hunter_helltime" ) == 0 &&  idStr::Icmp( inflictor->GetEntityDefName(), "projectile_helltime_killer" ) )
+	{
+		return;
+	}
+
+	// Maledict is immume to the falling asteroids
+	if( !idStr::Icmp( GetEntityDefName(), "monster_boss_d3xp_maledict" ) &&
+			( !idStr::Icmp( damageDefName, "damage_maledict_asteroid" ) || !idStr::Icmp( damageDefName, "damage_maledict_asteroid_splash" ) ) )
+	{
+		return;
+	}
+
+	const idDict* damageDef = gameLocal.FindEntityDefDict( damageDefName );
+	if( damageDef == NULL )
+	{
+		gameLocal.Error( "Unknown damageDef '%s'", damageDefName );
+		return;
+	}
+
+	int	damage = damageDef->GetInt( "damage" ) * damageScale;
+	damage = GetDamageForLocation( damage, location );
+
+	if( damage > 0 )
+	{
+		int tempHealth = health - damage;
+
+		if( tempHealth <= 0 )
+		{
+			// TODO: Predict Killed?
+		}
+		else
+		{
+			Pain( inflictor, attacker, damage, dir, location );
+		}
+	}
+	else
+	{
+		// don't accumulate knockback
+		if( af.IsLoaded() )
+		{
+			// clear impacts
+			af.Rest();
+
+			// physics is turned off by calling af.Rest()
+			BecomeActive( TH_PHYSICS );
+		}
+	}
+}
 
 /*
 =====================
@@ -3830,6 +4100,7 @@ idAI::Pain
 */
 bool idAI::Pain( idEntity* inflictor, idEntity* attacker, int damage, const idVec3& dir, int location )
 {
+	idLib::Printf("=== Pain ===\n");
 	idActor*	actor;
 
 	AI_PAIN = idActor::Pain( inflictor, attacker, damage, dir, location );
@@ -3850,7 +4121,7 @@ bool idAI::Pain( idEntity* inflictor, idEntity* attacker, int damage, const idVe
 			AI_SPECIAL_DAMAGE = 0;
 		}
 
-		if( enemy.GetEntity() != attacker && attacker->IsType( idActor::Type ) )
+		if((!common->IsMultiplayer() || common->IsServer()) && enemy.GetEntity() != attacker && attacker->IsType( idActor::Type ) )
 		{
 			actor = ( idActor* )attacker;
 			if( ReactionTo( actor ) & ATTACK_ON_DAMAGE )
@@ -4630,6 +4901,11 @@ void idAI::SetEnemy( idActor* newEnemy )
 			EnemyDead();
 			return;
 		}
+
+		if (common->IsClient()) {
+			return;
+		}
+
 		// let the monster know where the enemy is
 		newEnemy->GetAASLocation( aas, lastReachableEnemyPos, enemyAreaNum );
 		SetEnemyPosition();
