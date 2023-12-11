@@ -47,6 +47,7 @@ public :
 	idProjectile();
 	virtual					~idProjectile();
 
+	bool					ShouldRemoveInCinematic() const;
 	void					Spawn();
 
 	void					Save( idSaveGame* savefile ) const;

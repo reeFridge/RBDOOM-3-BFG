@@ -620,4 +620,6 @@ private:
 	idHashIndex					jointnamesHash;
 };
 
+extern idAnimManager animationLib;
+
 #endif /* !__ANIM_H__ */

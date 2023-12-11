@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "AAS_local.h"
 #include "../Game_local.h"		// for cvars and debug drawing
+#include "./AI.h"
 
 
 /*

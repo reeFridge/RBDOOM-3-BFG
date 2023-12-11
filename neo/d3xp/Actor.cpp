@@ -1487,6 +1487,11 @@ const function_t* idActor::GetScriptFunction( const char* funcname )
 	return func;
 }
 
+const function_t* idActor::GetCurrentState() const
+{
+    return state;
+}
+
 /*
 =====================
 idActor::SetState

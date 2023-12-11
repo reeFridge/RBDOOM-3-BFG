@@ -103,7 +103,7 @@ private:
 */
 typedef struct selectedTypeInfo_s
 {
-	idTypeInfo* typeInfo;
+	const idTypeInfo* typeInfo;
 	idStr		textKey;
 } selectedTypeInfo_t;
 

@@ -152,6 +152,7 @@ public:
 	const function_t*		GetScriptFunction( const char* funcname );
 	void					SetState( const function_t* newState );
 	void					SetState( const char* statename );
+    const function_t*       GetCurrentState() const;
 
 	// vision testing
 	void					SetEyeHeight( float height );

@@ -30,6 +30,11 @@ If you have questions concerning this license or the applicable additional terms
 #pragma hdrstop
 
 #include "../Game_local.h"
+#include "./AI.h"
+
+#include "./AI_def.h"
+
+const idTypeInfo* idAIDef::TypePtr = &idAI::Type;
 
 static const char* moveCommandString[ NUM_MOVE_COMMANDS ] =
 {
@@ -406,6 +411,11 @@ idAI::idAI():
 	clientAttackFlags = 0;
 	fl.networkSync = true;
 	SetUseClientInterpolation( true );
+}
+
+bool idAI::ShouldRemoveInCinematic() const {
+	// no enemy, or inactive, so probably safe to ignore
+	return GetEnemy() && IsActive();
 }
 
 void idAI::WriteToSnapshot( idBitMsg& msg ) const {
@@ -1365,12 +1375,17 @@ void idAI::InitMuzzleFlash()
 	worldMuzzleFlashHandle = -1;
 }
 
+bool idAI::GetAllowMove() const
+{
+    return allowMove;
+}
+
 /*
 ===================
 idAI::List_f
 ===================
 */
-void idAI::List_f( const idCmdArgs& args )
+void idAIUtil::List_f( const idCmdArgs& args )
 {
 	int		e;
 	idAI*	check;
@@ -1389,16 +1404,17 @@ void idAI::List_f( const idCmdArgs& args )
 			continue;
 		}
 
-		if( check->state )
+		const function_t* currentState = check->GetCurrentState();
+		if( currentState )
 		{
-			statename = check->state->Name();
+			statename = currentState->Name();
 		}
 		else
 		{
 			statename = "NULL state";
 		}
 
-		gameLocal.Printf( "%4i: %-20s %-20s %s  move: %d\n", e, check->GetEntityDefName(), check->name.c_str(), statename, check->allowMove );
+		gameLocal.Printf( "%4i: %-20s %-20s %s  move: %d\n", e, check->GetEntityDefName(), check->name.c_str(), statename, check->GetAllowMove() );
 		count++;
 	}
 
@@ -2614,7 +2630,7 @@ bool idAI::StepDirection( float dir )
 
 	org = physicsObj.GetOrigin();
 
-	idAI::PredictPath( this, aas, org, move.moveDir * 48.0f, 1000, 1000, ( move.moveType == MOVETYPE_FLY ) ? SE_BLOCKED : ( SE_ENTER_OBSTACLE | SE_BLOCKED | SE_ENTER_LEDGE_AREA ), path );
+	idAIPathing::PredictPath( this, aas, org, move.moveDir * 48.0f, 1000, 1000, ( move.moveType == MOVETYPE_FLY ) ? SE_BLOCKED : ( SE_ENTER_OBSTACLE | SE_BLOCKED | SE_ENTER_LEDGE_AREA ), path );
 
 	if( path.blockingEntity && ( ( move.moveCommand == MOVE_TO_ENEMY ) || ( move.moveCommand == MOVE_TO_ENTITY ) ) && ( path.blockingEntity == move.goalEntity.GetEntity() ) )
 	{
@@ -2629,10 +2645,10 @@ bool idAI::StepDirection( float dir )
 		move.moveDir = path.endVelocity * 1.0f / 48.0f;
 
 		// trace down to the floor and see if we can go forward
-		idAI::PredictPath( this, aas, org, idVec3( 0.0f, 0.0f, -1024.0f ), 1000, 1000, SE_BLOCKED, path );
+		idAIPathing::PredictPath( this, aas, org, idVec3( 0.0f, 0.0f, -1024.0f ), 1000, 1000, SE_BLOCKED, path );
 
 		idVec3 floorPos = path.endPos;
-		idAI::PredictPath( this, aas, floorPos, move.moveDir * 48.0f, 1000, 1000, SE_BLOCKED, path );
+		idAIPathing::PredictPath( this, aas, floorPos, move.moveDir * 48.0f, 1000, 1000, SE_BLOCKED, path );
 		if( !path.endEvent )
 		{
 			move.moveDir.z = -1.0f;
@@ -2640,7 +2656,7 @@ bool idAI::StepDirection( float dir )
 		}
 
 		// trace up to see if we can go over something and go forward
-		idAI::PredictPath( this, aas, org, idVec3( 0.0f, 0.0f, 256.0f ), 1000, 1000, SE_BLOCKED, path );
+		idAIPathing::PredictPath( this, aas, org, idVec3( 0.0f, 0.0f, 256.0f ), 1000, 1000, SE_BLOCKED, path );
 
 		idVec3 ceilingPos = path.endPos;
 
@@ -2657,7 +2673,7 @@ bool idAI::StepDirection( float dir )
 			{
 				start = ceilingPos;
 			}
-			idAI::PredictPath( this, aas, start, move.moveDir * 48.0f, 1000, 1000, SE_BLOCKED, path );
+			idAIPathing::PredictPath( this, aas, start, move.moveDir * 48.0f, 1000, 1000, SE_BLOCKED, path );
 			if( !path.endEvent )
 			{
 				move.moveDir.z = 1.0f;
@@ -3211,7 +3227,7 @@ void idAI::CheckObstacleAvoidance( const idVec3& goalPos, idVec3& newPos )
 
 	obstacle = NULL;
 	AI_OBSTACLE_IN_PATH = false;
-	foundPath = FindPathAroundObstacles( &physicsObj, aas, enemy.GetEntity(), origin, goalPos, path );
+	foundPath = idAIPathing::FindPathAroundObstacles( &physicsObj, aas, enemy.GetEntity(), origin, goalPos, path );
 	if( ai_showObstacleAvoidance.GetBool() )
 	{
 		gameRenderWorld->DebugLine( colorBlue, goalPos + idVec3( 1.0f, 1.0f, 0.0f ), goalPos + idVec3( 1.0f, 1.0f, 64.0f ), 1 );
@@ -3710,7 +3726,7 @@ void idAI::AdjustFlyHeight( idVec3& vel, const idVec3& goalPos )
 	{
 		dest = goalPos;
 		dest.z = origin.z + 128.0f;
-		idAI::PredictPath( this, aas, goalPos, dest - origin, 1000, 1000, SE_BLOCKED, path );
+		idAIPathing::PredictPath( this, aas, goalPos, dest - origin, 1000, 1000, SE_BLOCKED, path );
 		if( path.endPos.z < origin.z )
 		{
 			idVec3 addVel = Seek( vel, origin, path.endPos, AI_SEEK_PREDICTION );
@@ -4761,7 +4777,7 @@ void idAI::SetEnemyPosition()
 			predictedPath_t path;
 			idVec3 end = move.moveDest;
 			end.z += enemyEnt->EyeOffset().z + fly_offset;
-			idAI::PredictPath( this, aas, move.moveDest, end - move.moveDest, 1000, 1000, SE_BLOCKED, path );
+			idAIPathing::PredictPath( this, aas, move.moveDest, end - move.moveDest, 1000, 1000, SE_BLOCKED, path );
 			move.moveDest = path.endPos;
 			move.toAreaNum = PointReachableAreaNum( move.moveDest, 1.0f );
 		}
@@ -5098,7 +5114,7 @@ bool idAI::GetAimDir( const idVec3& firePos, idEntity* aimAtEnt, const idEntity*
 	// try aiming for chest
 	delta = firePos - targetPos1;
 	max_height = delta.LengthFast() * projectile_height_to_distance_ratio;
-	result = PredictTrajectory( firePos, targetPos1, projectileSpeed, projectileGravity, projectileClipModel, MASK_SHOT_RENDERMODEL, max_height, ignore, aimAtEnt, ai_debugTrajectory.GetBool() ? 1000 : 0, aimDir );
+	result = idAIPathing::PredictTrajectory( firePos, targetPos1, projectileSpeed, projectileGravity, projectileClipModel, MASK_SHOT_RENDERMODEL, max_height, ignore, aimAtEnt, ai_debugTrajectory.GetBool() ? 1000 : 0, aimDir );
 	if( result || !aimAtEnt->IsType( idActor::Type ) )
 	{
 		return result;
@@ -5107,7 +5123,7 @@ bool idAI::GetAimDir( const idVec3& firePos, idEntity* aimAtEnt, const idEntity*
 	// try aiming for head
 	delta = firePos - targetPos2;
 	max_height = delta.LengthFast() * projectile_height_to_distance_ratio;
-	result = PredictTrajectory( firePos, targetPos2, projectileSpeed, projectileGravity, projectileClipModel, MASK_SHOT_RENDERMODEL, max_height, ignore, aimAtEnt, ai_debugTrajectory.GetBool() ? 1000 : 0, aimDir );
+	result = idAIPathing::PredictTrajectory( firePos, targetPos2, projectileSpeed, projectileGravity, projectileClipModel, MASK_SHOT_RENDERMODEL, max_height, ignore, aimAtEnt, ai_debugTrajectory.GetBool() ? 1000 : 0, aimDir );
 
 	return result;
 }

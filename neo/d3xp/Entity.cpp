@@ -561,6 +561,11 @@ idEntity::idEntity():
 	noGrab = false;
 }
 
+bool idEntity::ShouldRemoveInCinematic() const {
+	// remove anything marked to be removed during cinematics
+	return spawnArgs.GetBool( "cinematic_remove" );
+}
+
 /*
 ================
 idEntity::FixupLocalizedStrings

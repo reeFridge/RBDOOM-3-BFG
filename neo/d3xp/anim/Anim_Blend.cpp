@@ -31,10 +31,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #if defined( DMAP )
 	#include "Anim.h"
-
 	idAnimManager				animationLib;
 #else
 	#include "../Game_local.h"
+    #include "d3xp/ai/AI_events.h"
 #endif
 
 static const char* channelNames[ ANIM_NumAnimChannels ] =
