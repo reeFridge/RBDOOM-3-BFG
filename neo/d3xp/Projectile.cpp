@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 #pragma hdrstop
 
 #include "Game_local.h"
+#include "ai/AI.h"
 
 /*
 ===============================================================================
@@ -101,6 +102,11 @@ idProjectile::idProjectile() :
 
 	// note: for net_instanthit projectiles, we will force this back to false at spawn time
 	fl.networkSync		= true;
+}
+
+bool idProjectile::ShouldRemoveInCinematic() const {
+	// remove all projectiles
+	return true;
 }
 
 /*

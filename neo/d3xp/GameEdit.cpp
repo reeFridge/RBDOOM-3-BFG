@@ -30,6 +30,7 @@ If you have questions concerning this license or the applicable additional terms
 #pragma hdrstop
 
 #include "Game_local.h"
+#include "ai/AI_def.h"
 
 
 /*
@@ -639,7 +640,7 @@ void idEditEntities::DisplayEntities()
 			selectableEntityClasses.Append( sit );
 			break;
 		case 5:
-			sit.typeInfo = &idAI::Type;
+			sit.typeInfo = idAIDef::TypePtr;
 			sit.textKey = "name";
 			selectableEntityClasses.Append( sit );
 			break;

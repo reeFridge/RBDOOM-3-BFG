@@ -29,9 +29,8 @@ If you have questions concerning this license or the applicable additional terms
 #include "precompiled.h"
 #pragma hdrstop
 
-
-#include "../Game_local.h"
 #include "renderer/Model_gltf.h"
+#include "d3xp/anim/Anim.h"
 
 idCVar binaryLoadAnim( "binaryLoadAnim", "1", 0, "enable binary load/write of idMD5Anim" );
 
@@ -39,6 +38,9 @@ static const byte B_ANIM_MD5_VERSION = 101;
 static const unsigned int B_ANIM_MD5_MAGIC = ( 'B' << 24 ) | ( 'M' << 16 ) | ( 'D' << 8 ) | B_ANIM_MD5_VERSION;
 
 static const int JOINT_FRAME_PAD	= 1;	// one extra to be able to read one more float than is necessary
+
+// global animation lib
+idAnimManager				animationLib;
 
 bool idAnimManager::forceExport = false;
 
@@ -223,7 +225,7 @@ bool idMD5Anim::LoadAnim( const char* filename, const idImportOptions* options )
 		}
 		else
 		{
-			idLib::Printf( "Regenerating %s\n", generatedFileName.c_str() );
+			common->Printf( "Regenerating %s\n", generatedFileName.c_str() );
 		}
 
 		if( fileptr == nullptr )
@@ -250,7 +252,7 @@ bool idMD5Anim::LoadAnim( const char* filename, const idImportOptions* options )
 
 		if( doWrite && binaryLoadAnim.GetBool() )
 		{
-			idLib::Printf( "Writing %s\n", generatedFileName.c_str() );
+			common->Printf( "Writing %s\n", generatedFileName.c_str() );
 			fileptr->Seek( 0, FS_SEEK_SET );
 			idFile_Memory* memFile = static_cast<idFile_Memory*>( fileptr );
 			fileSystem->WriteFile( generatedFileName, memFile->GetDataPtr(), memFile->GetAllocated(), "fs_basepath" );
@@ -455,7 +457,7 @@ bool idMD5Anim::LoadAnim( const char* filename, const idImportOptions* options )
 
 	if( binaryLoadAnim.GetBool() )
 	{
-		idLib::Printf( "Writing %s\n", generatedFileName.c_str() );
+		common->Printf( "Writing %s\n", generatedFileName.c_str() );
 		idFileLocal outputFile( fileSystem->OpenFileWrite( generatedFileName, "fs_basepath" ) );
 		WriteBinary( outputFile, sourceTimeStamp );
 	}
@@ -1142,11 +1144,11 @@ void idMD5Anim::CheckModelHierarchy( const idRenderModel* model ) const
 	{
 		if( !fileSystem->InProductionMode() )
 		{
-			gameLocal.Warning( "Model '%s' has different # of joints than anim '%s'", model->Name(), name.c_str() );
+			idLib::Warning( "Model '%s' has different # of joints than anim '%s'", model->Name(), name.c_str() );
 		}
 		else
 		{
-			//gameLocal.Warning( "Model '%s' has different # of joints than anim '%s'", model->Name(), name.c_str() );
+			//idLib::Warning( "Model '%s' has different # of joints than anim '%s'", model->Name(), name.c_str() );
 			return;
 		}
 	}
@@ -1157,7 +1159,7 @@ void idMD5Anim::CheckModelHierarchy( const idRenderModel* model ) const
 		int jointNum = jointInfo[ i ].nameIndex;
 		if( modelJoints[ i ].name != animationLib.JointName( jointNum ) )
 		{
-			gameLocal.Error( "Model '%s''s joint names don't match anim '%s''s", model->Name(), name.c_str() );
+			idLib::Error( "Model '%s''s joint names don't match anim '%s''s", model->Name(), name.c_str() );
 		}
 
 		int parent = -1;
@@ -1168,7 +1170,7 @@ void idMD5Anim::CheckModelHierarchy( const idRenderModel* model ) const
 
 		if( i > 0 && parent != jointInfo[ i ].parentNum )
 		{
-			gameLocal.Error( "Model '%s' has different joint hierarchy than anim '%s'", model->Name(), name.c_str() );
+			idLib::Error( "Model '%s' has different joint hierarchy than anim '%s'", model->Name(), name.c_str() );
 		}
 	}
 }
@@ -1240,7 +1242,7 @@ idMD5Anim* idAnimManager::GetAnim( const char* name, const idImportOptions* opti
 		anim = new( TAG_ANIM ) idMD5Anim();
 		if( !anim->LoadAnim( filename, options ) )
 		{
-			gameLocal.Warning( "Couldn't load anim: '%s'", filename.c_str() );
+			idLib::Warning( "Couldn't load anim: '%s'", filename.c_str() );
 			delete anim;
 			anim = NULL;
 		}
@@ -1354,7 +1356,7 @@ void idAnimManager::ListAnims() const
 		{
 			anim = *animptr;
 			s = anim->Size();
-			gameLocal.Printf( "%8d bytes : %2d refs : %s\n", s, anim->NumRefs(), anim->Name() );
+			common->Printf( "%8d bytes : %2d refs : %s\n", s, anim->NumRefs(), anim->Name() );
 			size += s;
 			num++;
 		}
@@ -1366,8 +1368,8 @@ void idAnimManager::ListAnims() const
 		namesize += jointnames[ i ].Size();
 	}
 
-	gameLocal.Printf( "\n%d memory used in %d anims\n", size, num );
-	gameLocal.Printf( "%d memory used in %d joint names\n", namesize, jointnames.Num() );
+	common->Printf( "\n%d memory used in %d anims\n", size, num );
+	common->Printf( "%d memory used in %d joint names\n", namesize, jointnames.Num() );
 }
 
 /*

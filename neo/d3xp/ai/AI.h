@@ -119,62 +119,6 @@ typedef enum
 
 #define	DI_NODIR	-1
 
-// obstacle avoidance
-typedef struct obstaclePath_s
-{
-	idVec3				seekPos;					// seek position avoiding obstacles
-	idEntity* 			firstObstacle;				// if != NULL the first obstacle along the path
-	idVec3				startPosOutsideObstacles;	// start position outside obstacles
-	idEntity* 			startPosObstacle;			// if != NULL the obstacle containing the start position
-	idVec3				seekPosOutsideObstacles;	// seek position outside obstacles
-	idEntity* 			seekPosObstacle;			// if != NULL the obstacle containing the seek position
-} obstaclePath_t;
-
-// path prediction
-typedef enum
-{
-	SE_BLOCKED			= BIT( 0 ),
-	SE_ENTER_LEDGE_AREA	= BIT( 1 ),
-	SE_ENTER_OBSTACLE	= BIT( 2 ),
-	SE_FALL				= BIT( 3 ),
-	SE_LAND				= BIT( 4 )
-} stopEvent_t;
-
-typedef struct predictedPath_s
-{
-	idVec3				endPos;						// final position
-	idVec3				endVelocity;				// velocity at end position
-	idVec3				endNormal;					// normal of blocking surface
-	int					endTime;					// time predicted
-	int					endEvent;					// event that stopped the prediction
-	const idEntity* 	blockingEntity;				// entity that blocks the movement
-} predictedPath_t;
-
-//
-// events
-//
-extern const idEventDef AI_BeginAttack;
-extern const idEventDef AI_EndAttack;
-extern const idEventDef AI_MuzzleFlash;
-extern const idEventDef AI_CreateMissile;
-extern const idEventDef AI_AttackMissile;
-extern const idEventDef AI_FireMissileAtTarget;
-extern const idEventDef AI_LaunchProjectile;
-extern const idEventDef AI_TriggerFX;
-extern const idEventDef AI_StartEmitter;
-extern const idEventDef AI_StopEmitter;
-extern const idEventDef AI_AttackMelee;
-extern const idEventDef AI_DirectDamage;
-extern const idEventDef AI_JumpFrame;
-extern const idEventDef AI_EnableClip;
-extern const idEventDef AI_DisableClip;
-extern const idEventDef AI_EnableGravity;
-extern const idEventDef AI_DisableGravity;
-extern const idEventDef AI_TriggerParticles;
-extern const idEventDef AI_RandomPath;
-
-class idPathCorner;
-
 typedef struct particleEmitter_s
 {
 	particleEmitter_s()
@@ -276,8 +220,8 @@ public:
 	idAI();
 	~idAI();
 
-	void ReadFromSnapshot( const idBitMsg& msg ) override;
-	void WriteToSnapshot( idBitMsg& msg ) const override;
+	void					ReadFromSnapshot( const idBitMsg& msg ) override;
+	void 					WriteToSnapshot( idBitMsg& msg ) const override;
 	void					Save( idSaveGame* savefile ) const;
 	void					Restore( idRestoreGame* savefile );
 
@@ -287,23 +231,11 @@ public:
 	void					TalkTo( idActor* actor );
 	talkState_t				GetTalkState() const;
 
+	bool 					ShouldRemoveInCinematic() const override;
 	bool					GetAimDir( const idVec3& firePos, idEntity* aimAtEnt, const idEntity* ignore, idVec3& aimDir ) const;
 
 	void					TouchedByFlashlight( idActor* flashlight_owner );
-
-	// Outputs a list of all monsters to the console.
-	static void				List_f( const idCmdArgs& args );
-
-	// Finds a path around dynamic obstacles.
-	static bool				FindPathAroundObstacles( const idPhysics* physics, const idAAS* aas, const idEntity* ignore, const idVec3& startPos, const idVec3& seekPos, obstaclePath_t& path );
-	// Frees any nodes used for the dynamic obstacle avoidance.
-	static void				FreeObstacleAvoidanceNodes();
-	// Predicts movement, returns true if a stop event was triggered.
-	static bool				PredictPath( const idEntity* ent, const idAAS* aas, const idVec3& start, const idVec3& velocity, int totalTime, int frameTime, int stopEvent, predictedPath_t& path );
-	// Return true if the trajectory of the clip model is collision free.
-	static bool				TestTrajectory( const idVec3& start, const idVec3& end, float zVel, float gravity, float time, float max_height, const idClipModel* clip, int clipmask, const idEntity* ignore, const idEntity* targetEntity, int drawtime );
-	// Finds the best collision free trajectory for a clip model.
-	static bool				PredictTrajectory( const idVec3& firePos, const idVec3& target, float projectileSpeed, const idVec3& projGravity, const idClipModel* clip, int clipmask, float max_height, const idEntity* ignore, const idEntity* targetEntity, int drawtime, idVec3& aimDir );
+    bool                    GetAllowMove() const;
 
 	virtual void			Gib( const idVec3& dir, const char* damageDefName );
 	virtual	void			Damage( idEntity* inflictor, idEntity* attacker, const idVec3& dir, const char* damageDefName, const float damageScale, const int location );
@@ -467,7 +399,7 @@ protected:
 	virtual	void			DormantBegin();	// called when entity becomes dormant
 	virtual	void			DormantEnd();		// called when entity wakes from being dormant
 	void					Think();
-	void					ClientThink( const int curTime, const float fraction, const bool predict );
+	void					ClientThink( const int curTime, const float fraction, const bool predict ) override;
 	void					Activate( idEntity* activator );
 public:
 	int						ReactionTo( const idEntity* ent );
@@ -587,7 +519,7 @@ protected:
 	// ai/ai_events.cpp
 	//
 	void					Event_IsServer();
-	void					Event_SetAttackFlags(float attackFlags);
+	void					Event_SetAttackFlags( float attackFlags );
 	void					Event_GetAttackFlags();
 	void					Event_Activate( idEntity* activator );
 	void					Event_Touch( idEntity* other, trace_t* trace );
@@ -727,36 +659,6 @@ protected:
 	void					Event_StartEmitter( const char* name, const char* joint, const char* particle );
 	void					Event_GetEmitter( const char* name );
 	void					Event_StopEmitter( const char* name );
-};
-
-class idCombatNode : public idEntity
-{
-public:
-	CLASS_PROTOTYPE( idCombatNode );
-
-	idCombatNode();
-
-	void				Save( idSaveGame* savefile ) const;
-	void				Restore( idRestoreGame* savefile );
-
-	void				Spawn();
-	bool				IsDisabled() const;
-	bool				EntityInView( idActor* actor, const idVec3& pos );
-	static void			DrawDebugInfo();
-
-private:
-	float				min_dist;
-	float				max_dist;
-	float				cone_dist;
-	float				min_height;
-	float				max_height;
-	idVec3				cone_left;
-	idVec3				cone_right;
-	idVec3				offset;
-	bool				disabled;
-
-	void				Event_Activate( idEntity* activator );
-	void				Event_MarkUsed();
 };
 
 #endif /* !__AI_H__ */

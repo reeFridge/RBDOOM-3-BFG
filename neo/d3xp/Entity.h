@@ -254,6 +254,7 @@ public:
 	void					SetName( const char* name );
 	const char* 			GetName() const;
 	virtual void			UpdateChangeableSpawnArgs( const idDict* source );
+	virtual bool			ShouldRemoveInCinematic() const;
 	int						GetEntityNumber() const
 	{
 		return entityNumber;

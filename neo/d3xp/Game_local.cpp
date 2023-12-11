@@ -58,9 +58,6 @@ idSoundWorld* 				gameSoundWorld = NULL;		// all audio goes to this world
 
 static gameExport_t			gameExport;
 
-// global animation lib
-idAnimManager				animationLib;
-
 // the rest of the engine will only reference the "game" variable, while all local aspects stay hidden
 idGameLocal					gameLocal;
 idGame* 					game = &gameLocal;	// statically pointed at an idGameLocal
@@ -409,7 +406,7 @@ void idGameLocal::Shutdown()
 	aasList.DeleteContents( true );
 	aasNames.Clear();
 
-	idAI::FreeObstacleAvoidanceNodes();
+	idAIPathing::FreeObstacleAvoidanceNodes();
 
 	idEvent::Shutdown();
 
@@ -3530,7 +3527,7 @@ void idGameLocal::RunDebugInfo()
 				velocity.x = cos( DEG2RAD( player->viewAngles.yaw ) ) * 100.0f;
 				velocity.y = sin( DEG2RAD( player->viewAngles.yaw ) ) * 100.0f;
 				velocity.z = 0.0f;
-				idAI::PredictPath( player, aas, origin, velocity, 1000, 100, SE_ENTER_OBSTACLE | SE_BLOCKED | SE_ENTER_LEDGE_AREA, path );
+				idAIPathing::PredictPath( player, aas, origin, velocity, 1000, 100, SE_ENTER_OBSTACLE | SE_BLOCKED | SE_ENTER_LEDGE_AREA, path );
 			}
 		}
 	}
@@ -3544,7 +3541,7 @@ void idGameLocal::RunDebugInfo()
 			obstaclePath_t path;
 
 			seekPos = player->GetPhysics()->GetOrigin() + player->viewAxis[0] * 200.0f;
-			idAI::FindPathAroundObstacles( player->GetPhysics(), aas, NULL, player->GetPhysics()->GetOrigin(), seekPos, path );
+			idAIPathing::FindPathAroundObstacles( player->GetPhysics(), aas, NULL, player->GetPhysics()->GetOrigin(), seekPos, path );
 		}
 	}
 
@@ -4914,7 +4911,6 @@ void idGameLocal::SetCamera( idCamera* cam )
 {
 	int i;
 	idEntity* ent;
-	idAI* ai;
 
 	// this should fix going into a cinematic when dead.. rare but happens
 	idPlayer* client = GetLocalPlayer();
@@ -4960,30 +4956,11 @@ void idGameLocal::SetCamera( idCamera* cam )
 			// kill any active monsters that are enemies of the player
 			for( ent = spawnedEntities.Next(); ent != NULL; ent = ent->spawnNode.Next() )
 			{
-				if( ent->cinematic || ent->fl.isDormant )
-				{
-					// only kill entities that aren't needed for cinematics and aren't dormant
-					continue;
-				}
-
-				if( ent->IsType( idAI::Type ) )
-				{
-					ai = static_cast<idAI*>( ent );
-					if( !ai->GetEnemy() || !ai->IsActive() )
-					{
-						// no enemy, or inactive, so probably safe to ignore
-						continue;
-					}
-				}
-				else if( ent->IsType( idProjectile::Type ) )
-				{
-					// remove all projectiles
-				}
-				else if( ent->spawnArgs.GetBool( "cinematic_remove" ) )
-				{
-					// remove anything marked to be removed during cinematics
-				}
-				else
+				// only kill entities that aren't needed for cinematics and aren't dormant
+				// idAI: no enemy, or inactive, so probably safe to ignore
+				// idProjectile: remove all projectiles
+				// idEntity: remove anything marked to be removed during cinematics
+				if( ent->cinematic || ent->fl.isDormant || !ent->ShouldRemoveInCinematic() )
 				{
 					// ignore everything else
 					continue;

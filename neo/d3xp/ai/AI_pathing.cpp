@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "../Game_local.h"
+#include "./AI.h"
 
 /*
 ===============================================================================
@@ -1089,7 +1090,7 @@ idAI::FindPathAroundObstacles
   Finds a path around dynamic obstacles using a path tree with clockwise and counter clockwise edge walks.
 ============
 */
-bool idAI::FindPathAroundObstacles( const idPhysics* physics, const idAAS* aas, const idEntity* ignore, const idVec3& startPos, const idVec3& seekPos, obstaclePath_t& path )
+bool idAIPathing::FindPathAroundObstacles( const idPhysics* physics, const idAAS* aas, const idEntity* ignore, const idVec3& startPos, const idVec3& seekPos, obstaclePath_t& path )
 {
 	int numObstacles, areaNum, insideObstacle;
 	obstacle_t obstacles[MAX_OBSTACLES];
@@ -1170,7 +1171,7 @@ bool idAI::FindPathAroundObstacles( const idPhysics* physics, const idAAS* aas, 
 idAI::FreeObstacleAvoidanceNodes
 ============
 */
-void idAI::FreeObstacleAvoidanceNodes()
+void idAIPathing::FreeObstacleAvoidanceNodes()
 {
 	pathNodeAllocator.Shutdown();
 }
@@ -1310,7 +1311,7 @@ idAI::PredictPath
   Can also be used when there is no AAS file available however ledges are not detected.
 ============
 */
-bool idAI::PredictPath( const idEntity* ent, const idAAS* aas, const idVec3& start, const idVec3& velocity, int totalTime, int frameTime, int stopEvent, predictedPath_t& path )
+bool idAIPathing::PredictPath( const idEntity* ent, const idAAS* aas, const idVec3& start, const idVec3& velocity, int totalTime, int frameTime, int stopEvent, predictedPath_t& path )
 {
 	int i, j, step, numFrames, curFrameTime;
 	idVec3 delta, curStart, curEnd, curVelocity, lastEnd, stepUp, tmpStart;
@@ -1575,7 +1576,7 @@ static float HeightForTrajectory( const idVec3& start, float zVel, float gravity
 idAI::TestTrajectory
 =====================
 */
-bool idAI::TestTrajectory( const idVec3& start, const idVec3& end, float zVel, float gravity, float time, float max_height, const idClipModel* clip, int clipmask, const idEntity* ignore, const idEntity* targetEntity, int drawtime )
+bool idAIPathing::TestTrajectory( const idVec3& start, const idVec3& end, float zVel, float gravity, float time, float max_height, const idClipModel* clip, int clipmask, const idEntity* ignore, const idEntity* targetEntity, int drawtime )
 {
 	int i, numSegments;
 	float maxHeight, t, t2;
@@ -1681,7 +1682,7 @@ idAI::PredictTrajectory
   aimDir is set to the ideal aim direction in order to hit the target
 =====================
 */
-bool idAI::PredictTrajectory( const idVec3& firePos, const idVec3& target, float projectileSpeed, const idVec3& projGravity, const idClipModel* clip, int clipmask, float max_height, const idEntity* ignore, const idEntity* targetEntity, int drawtime, idVec3& aimDir )
+bool idAIPathing::PredictTrajectory( const idVec3& firePos, const idVec3& target, float projectileSpeed, const idVec3& projGravity, const idClipModel* clip, int clipmask, float max_height, const idEntity* ignore, const idEntity* targetEntity, int drawtime, idVec3& aimDir )
 {
 	int n, i, j;
 	float zVel, a, t, pitch, s, c;

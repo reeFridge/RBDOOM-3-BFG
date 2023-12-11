@@ -295,7 +295,7 @@ void idGrabber::StartDrag( idEntity* grabEnt, int id )
 
 		if( grabbableAI( grabEnt->spawnArgs.GetString( "classname" ) ) )
 		{
-			idAI* aiEnt = static_cast<idAI*>( grabEnt );
+			idActor* aiEnt = static_cast<idActor*>( grabEnt );
 
 			aiEnt->StartRagdoll();
 		}
@@ -372,7 +372,7 @@ void idGrabber::StopDrag( bool dropOnly )
 
 			if( grabbableAI( ent->spawnArgs.GetString( "classname" ) ) )
 			{
-				idAI* aiEnt = static_cast<idAI*>( ent );
+				idActor* aiEnt = static_cast<idActor*>( ent );
 
 				aiEnt->Damage( thePlayer, thePlayer, vec3_origin, "damage_suicide", 1.0f, INVALID_JOINT );
 			}

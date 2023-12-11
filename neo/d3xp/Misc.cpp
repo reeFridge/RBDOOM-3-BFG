@@ -35,6 +35,7 @@ Various utility objects and functions.
 #pragma hdrstop
 
 #include "Game_local.h"
+#include "ai/AI_events.h"
 
 /*
 ===============================================================================
@@ -3798,7 +3799,7 @@ void idPhantomObjects::Think()
 
 		if( time < 0.0f )
 		{
-			idAI::PredictTrajectory( entPhys->GetOrigin(), lastTargetPos[ i ], speed, entPhys->GetGravity(),
+			idAIPathing::PredictTrajectory( entPhys->GetOrigin(), lastTargetPos[ i ], speed, entPhys->GetGravity(),
 									 entPhys->GetClipModel(), entPhys->GetClipMask(), 256.0f, ent, targetEnt, ai_debugTrajectory.GetBool() ? 1 : 0, vel );
 			vel *= speed;
 			entPhys->SetLinearVelocity( vel );

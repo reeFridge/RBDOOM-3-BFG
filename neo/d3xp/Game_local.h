@@ -927,7 +927,7 @@ const int	CINEMATIC_SKIP_DELAY	= SEC2MS( 2.0f );
 #include "SecurityCamera.h"
 #include "BrittleFracture.h"
 
-#include "ai/AI.h"
+#include "ai/AI_local.h"
 #include "anim/Anim_Testmodel.h"
 
 // menus

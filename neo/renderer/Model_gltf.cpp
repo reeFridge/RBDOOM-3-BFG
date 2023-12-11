@@ -37,7 +37,6 @@ If you have questions concerning this license or the applicable additional terms
 
 // HVG_TODO: this has to be moved out before release
 #include "d3xp/anim/Anim.h"
-#include "d3xp/Game_local.h"
 
 idCVar gltf_ForceBspMeshTexture( "gltf_ForceBspMeshTexture", "0", CVAR_SYSTEM | CVAR_BOOL, "all world geometry has the same forced texture" );
 idCVar gltf_ModelSceneName( "gltf_ModelSceneName", "Scene", CVAR_SYSTEM , "Scene to use when loading specific models" );
@@ -325,7 +324,7 @@ static gltfNode* FindModelRoot( gltfData* data, const idImportOptions* options, 
 
 	if( options != nullptr && !options->armature.IsEmpty() )
 	{
-		idLib::Printf( "Looking for armature %s\n", options->armature.c_str() );
+		common->Printf( "Looking for armature %s\n", options->armature.c_str() );
 
 		auto skin = data->GetSkin( options->armature );
 		if( skin && ( skin->skeleton > -1 && skin->skeleton < nodes.Num() ) )
@@ -339,7 +338,7 @@ static gltfNode* FindModelRoot( gltfData* data, const idImportOptions* options, 
 				*rootSkin = skin;
 			}
 
-			idLib::Printf( "Found glTF2 Armature: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
+			common->Printf( "Found glTF2 Armature: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
 
 			return root;
 		}
@@ -379,7 +378,7 @@ static gltfNode* FindModelRoot( gltfData* data, const idImportOptions* options, 
 					*rootSkin = skin;
 				}
 
-				idLib::Printf( "Found glTF2 Rig: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
+				common->Printf( "Found glTF2 Rig: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
 
 				return root;
 			}
@@ -391,7 +390,7 @@ static gltfNode* FindModelRoot( gltfData* data, const idImportOptions* options, 
 		{
 			root = data->GetMeshNode( rootName, rootID );
 
-			idLib::Printf( "Found glTF2 Mesh: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
+			common->Printf( "Found glTF2 Mesh: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
 		}
 	}
 
@@ -426,7 +425,7 @@ static gltfNode* FindModelRoot( gltfData* data, const idImportOptions* options, 
 				*rootSkin = skin;
 			}
 
-			idLib::Printf( "Found glTF2 Rig: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
+			common->Printf( "Found glTF2 Rig: name = '%s' ID=%i\n", rootName.c_str(), *rootID );
 
 			return root;
 		}
@@ -1131,7 +1130,7 @@ idFile_Memory* idRenderModelGLTF::GetAnimBin( const idStr& animName, const ID_TI
 	int										numJoints = bones.Num();
 	int										numAnimatedComponents = 0;
 
-	gameLocal.Printf( "Generating MD5Anim for GLTF anim %s from scene %s\n", name.c_str(), gltf_ModelSceneName.GetString() );
+	common->Printf( "Generating MD5Anim for GLTF anim %s from scene %s\n", name.c_str(), gltf_ModelSceneName.GetString() );
 
 	idMat4 globalTransform = blenderToDoomTransform;
 
@@ -1282,7 +1281,7 @@ idFile_Memory* idRenderModelGLTF::GetAnimBin( const idStr& animName, const ID_TI
 		assert( totalCopied );
 	}
 
-	gameLocal.Printf( "Total bones %i \n", bones.Num() );
+	common->Printf( "Total bones %i \n", bones.Num() );
 
 	// we can calculate frame rate by:
 	// max_timestamp_value / totalFrames
@@ -1297,7 +1296,7 @@ idFile_Memory* idRenderModelGLTF::GetAnimBin( const idStr& animName, const ID_TI
 		idStr jointName = animationLib.JointName( j.nameIndex );
 		if( i == 0 && ( jointName != "origin" ) )
 		{
-			gameLocal.Warning( "Renaming bone 0 from %s to %s \n", jointName.c_str(), "origin" );
+			common->Warning( "Renaming bone 0 from %s to %s \n", jointName.c_str(), "origin" );
 			jointName = "origin";
 		}
 	}

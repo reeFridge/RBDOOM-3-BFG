@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 
 
 #include "../Game_local.h"
+#include "d3xp/ai/AI_events.h"
 
 static const char* channelNames[ ANIM_NumAnimChannels ] =
 {

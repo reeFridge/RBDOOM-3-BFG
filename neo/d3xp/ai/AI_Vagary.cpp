@@ -38,6 +38,7 @@ Vagary specific AI code
 
 
 #include "../Game_local.h"
+#include "./AI.h"
 
 class idAI_Vagary : public idAI
 {
@@ -119,7 +120,7 @@ void idAI_Vagary::Event_ChooseObjectToThrow( const idVec3& mins, const idVec3& m
 			continue;
 		}
 
-		if( PredictTrajectory( entPhys->GetOrigin() + offsetVec, enemyEyePos, speed, entPhys->GetGravity(),
+		if( idAIPathing::PredictTrajectory( entPhys->GetOrigin() + offsetVec, enemyEyePos, speed, entPhys->GetGravity(),
 							   entPhys->GetClipModel(), entPhys->GetClipMask(), MAX_WORLD_SIZE, NULL, enemyEnt, ai_debugTrajectory.GetBool() ? 4000 : 0, vel ) )
 		{
 			idThread::ReturnEntity( ent );
@@ -149,7 +150,7 @@ void idAI_Vagary::Event_ThrowObjectAtEnemy( idEntity* ent, float speed )
 	}
 	else
 	{
-		PredictTrajectory( entPhys->GetOrigin(), lastVisibleEnemyPos + lastVisibleEnemyEyeOffset, speed, entPhys->GetGravity(),
+		idAIPathing::PredictTrajectory( entPhys->GetOrigin(), lastVisibleEnemyPos + lastVisibleEnemyEyeOffset, speed, entPhys->GetGravity(),
 						   entPhys->GetClipModel(), entPhys->GetClipMask(), MAX_WORLD_SIZE, NULL, enemyEnt, ai_debugTrajectory.GetBool() ? 4000 : 0, vel );
 		vel *= speed;
 	}
