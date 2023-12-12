@@ -518,7 +518,6 @@ protected:
 	//
 	// ai/ai_events.cpp
 	//
-	void					Event_IsServer();
 	void					Event_SetAttackFlags( float attackFlags );
 	void					Event_GetAttackFlags();
 	void					Event_Activate( idEntity* activator );
