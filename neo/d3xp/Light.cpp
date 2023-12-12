@@ -288,6 +288,8 @@ idLight::idLight():
 
 	modelTarget			= NULL;
 // RB end
+
+	fl.networkSync = true;
 }
 
 /*

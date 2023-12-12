@@ -29,6 +29,7 @@ If you have questions concerning this license or the applicable additional terms
 #ifndef __SCRIPT_THREAD_H__
 #define __SCRIPT_THREAD_H__
 
+extern const idEventDef EV_Thread_HasAuthority;
 extern const idEventDef EV_Thread_Execute;
 extern const idEventDef EV_Thread_SetCallback;
 extern const idEventDef EV_Thread_TerminateThread;
@@ -108,6 +109,7 @@ private:
 	//
 	// script callable Events
 	//
+	void						Event_HasAuthority() const;
 	void						Event_TerminateThread( int num );
 	void						Event_Pause();
 	void						Event_Wait( float time );
