@@ -380,6 +380,7 @@ protected:
 	idScriptBool			AI_ONGROUND;
 	idScriptBool			AI_ACTIVATED;
 	idScriptBool			AI_FORWARD;
+	idScriptBool			AI_RUN;
 	idScriptBool			AI_JUMP;
 	idScriptBool			AI_ENEMY_REACHABLE;
 	idScriptBool			AI_BLOCKED;

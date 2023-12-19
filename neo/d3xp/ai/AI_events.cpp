@@ -614,6 +614,11 @@ idAI::Event_CreateMissile
 */
 void idAI::Event_CreateMissile( const char* jointname )
 {
+	if (common->IsClient()) {
+		gameLocal.Printf( "Event_CreateMissle on client\n" );
+		return idThread::ReturnEntity( NULL );
+	}
+
 	idVec3 muzzle;
 	idMat3 axis;
 
@@ -646,6 +651,11 @@ idAI::Event_AttackMissile
 */
 void idAI::Event_AttackMissile( const char* jointname )
 {
+	if (common->IsClient()) {
+		gameLocal.Printf( "Event_AttackMissle on client\n" );
+		return idThread::ReturnEntity( NULL );
+	}
+
 	idProjectile* proj;
 
 	proj = LaunchProjectile( jointname, enemy.GetEntity(), true );
@@ -659,6 +669,11 @@ idAI::Event_FireMissileAtTarget
 */
 void idAI::Event_FireMissileAtTarget( const char* jointname, const char* targetname )
 {
+	if (common->IsClient()) {
+		gameLocal.Printf( "Event_FireMissleAtTarget on client\n" );
+		return idThread::ReturnEntity( NULL );
+	}
+
 	idEntity*		aent;
 	idProjectile*	proj;
 
@@ -679,6 +694,11 @@ idAI::Event_LaunchMissile
 */
 void idAI::Event_LaunchMissile( const idVec3& org, const idAngles& ang )
 {
+	if (common->IsClient()) {
+		gameLocal.Printf( "Event_LaunchMissle on client\n" );
+		return idThread::ReturnEntity( NULL );
+	}
+
 	idVec3		start;
 	trace_t		tr;
 	idBounds	projBounds;
