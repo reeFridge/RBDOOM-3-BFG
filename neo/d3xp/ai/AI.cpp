@@ -429,8 +429,11 @@ void idAI::WriteToSnapshot( idBitMsg& msg ) const {
 	msg.WriteFloat( snapViewCQuat.z );
 	msg.WriteShort( health );
 	msg.WriteBits( AI_FORWARD, 1 );
+	msg.WriteBits( AI_RUN, 1 );
 	msg.WriteBits( AI_ACTIVATED, 1 );
 	msg.WriteBits( AI_PAIN, 1 );
+	msg.WriteBits( AI_ONGROUND, 1 );
+	msg.WriteBits( AI_ENEMY_IN_FOV, 1 );
 
 	msg.WriteBits(enemy.GetSpawnId(), 32 );
 	msg.WriteShort(clientAttackFlags);
@@ -596,8 +599,11 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 	snapViewCQuat.z = msg.ReadFloat();
 	health = msg.ReadShort();
 	AI_FORWARD = msg.ReadBits(1) != 0;
+	AI_RUN = msg.ReadBits(1) != 0;
 	AI_ACTIVATED = msg.ReadBits(1) != 0;
 	AI_PAIN = msg.ReadBits(1) != 0;
+	AI_ONGROUND = msg.ReadBits(1) != 0;
+	AI_ENEMY_IN_FOV = msg.ReadBits(1) != 0;
 
 	int enemySpawnId = msg.ReadBits( 32 );
 
@@ -609,6 +615,7 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 	clientAttackFlags = msg.ReadShort();
 
 	int headSpawnId = msg.ReadBits(32);
+
 	bool isHeadSpawned = !!head.GetEntity();
 
 	if (!isHeadSpawned) {
@@ -1639,6 +1646,7 @@ void idAI::LinkScriptVariables()
 	AI_ONGROUND.LinkTo(	scriptObject, "AI_ONGROUND" );
 	AI_ACTIVATED.LinkTo(	scriptObject, "AI_ACTIVATED" );
 	AI_FORWARD.LinkTo(	scriptObject, "AI_FORWARD" );
+	AI_RUN.LinkTo(	scriptObject, "AI_RUN" );
 	AI_JUMP.LinkTo(	scriptObject, "AI_JUMP" );
 	AI_BLOCKED.LinkTo(	scriptObject, "AI_BLOCKED" );
 	AI_DEST_UNREACHABLE.LinkTo( scriptObject, "AI_DEST_UNREACHABLE" );
