@@ -1825,7 +1825,7 @@ void idAnimBlend::CycleAnim( const idDeclModelDef* modelDef, int _animNum, int c
 	animWeights[ 0 ]	= 1.0f;
 	endtime				= -1;
 	cycle				= -1;
-	if( _anim->GetAnimFlags().random_cycle_start )
+	if( !common->IsMultiplayer() && _anim->GetAnimFlags().random_cycle_start )
 	{
 		// start the animation at a random time so that characters don't walk in sync
 		starttime = currentTime - gameLocal.random.RandomFloat() * _anim->Length();
@@ -4469,6 +4469,18 @@ idAnimator::ModelDef
 const idDeclModelDef* idAnimator::ModelDef() const
 {
 	return modelDef;
+}
+
+
+const idAnimBlend* idAnimator::CurrentAnim( int channelNum ) const
+{
+	if( ( channelNum < 0 ) || ( channelNum >= ANIM_NumAnimChannels ) )
+	{
+		gameLocal.Error( "idAnimator::CurrentAnim : channel out of range" );
+		return NULL;
+	}
+
+	return &channels[ channelNum ][ 0 ];
 }
 
 /*

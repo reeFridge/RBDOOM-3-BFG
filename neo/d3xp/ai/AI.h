@@ -240,6 +240,22 @@ public:
 	virtual void			Gib( const idVec3& dir, const char* damageDefName );
 	virtual	void			Damage( idEntity* inflictor, idEntity* attacker, const idVec3& dir, const char* damageDefName, const float damageScale, const int location );
 
+	struct AnimSnapshot
+	{
+		int animNum = -1;
+		int animTime = -1;
+	};
+
+	AnimSnapshot currentLegsAnim;
+	AnimSnapshot prevLegsAnim;
+	AnimSnapshot nextLegsAnim;
+
+	AnimSnapshot currentTorsoAnim;
+	AnimSnapshot prevTorsoAnim;
+	AnimSnapshot nextTorsoAnim;
+
+	void ClientAnimationInterpolation(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction);
+
 protected:
 	// navigation
 	idAAS* 					aas;
