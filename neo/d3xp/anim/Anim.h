@@ -522,6 +522,7 @@ public:
 	bool						GetBounds( int currentTime, idBounds& bounds );
 
 	idAnimBlend*					CurrentAnim( int channelNum );
+	const idAnimBlend*					CurrentAnim( int channelNum ) const;
 	void						Clear( int channelNum, int currentTime, int cleartime );
 	void						SetFrame( int channelNum, int animnum, int frame, int currenttime, int blendtime );
 	void						CycleAnim( int channelNum, int animnum, int currenttime, int blendtime );

@@ -428,16 +428,33 @@ void idAI::WriteToSnapshot( idBitMsg& msg ) const {
 	msg.WriteFloat( snapViewCQuat.y );
 	msg.WriteFloat( snapViewCQuat.z );
 	msg.WriteShort( health );
-	msg.WriteBits( AI_FORWARD, 1 );
-	msg.WriteBits( AI_RUN, 1 );
-	msg.WriteBits( AI_ACTIVATED, 1 );
-	msg.WriteBits( AI_PAIN, 1 );
-	msg.WriteBits( AI_ONGROUND, 1 );
-	msg.WriteBits( AI_ENEMY_IN_FOV, 1 );
 
+	// TODO: Do we need enemy on client? for what purpose?
 	msg.WriteBits(enemy.GetSpawnId(), 32 );
-	msg.WriteShort(clientAttackFlags);
 	msg.WriteBits(head.GetSpawnId(), 32);
+
+	// TODO: WriteAnimatorToSnapshot()
+	// essentials: animNum + startTime
+	// blendTime? cycle/play parameters?
+	const idAnimBlend* legsAnim = animator.CurrentAnim(ANIMCHANNEL_LEGS);
+	msg.WriteBits((int)(legsAnim != NULL), 1);
+	if (legsAnim) {
+		int animNum = legsAnim->AnimNum();
+		int animTime = legsAnim->AnimTime(gameLocal.time);
+
+		msg.WriteBits(animNum, 32);
+		msg.WriteBits(animTime, 32);
+	}
+
+	const idAnimBlend* torsoAnim = animator.CurrentAnim(ANIMCHANNEL_TORSO);
+	msg.WriteBits((int)(torsoAnim != NULL), 1);
+	if (torsoAnim) {
+		int animNum = torsoAnim->AnimNum();
+		int animTime = torsoAnim->AnimTime(gameLocal.time);
+
+		msg.WriteBits(animNum, 32);
+		msg.WriteBits(animTime, 32);
+	}
 }
 
 void idAI::ClientSetupHead()
@@ -598,12 +615,6 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 	snapViewCQuat.y = msg.ReadFloat();
 	snapViewCQuat.z = msg.ReadFloat();
 	health = msg.ReadShort();
-	AI_FORWARD = msg.ReadBits(1) != 0;
-	AI_RUN = msg.ReadBits(1) != 0;
-	AI_ACTIVATED = msg.ReadBits(1) != 0;
-	AI_PAIN = msg.ReadBits(1) != 0;
-	AI_ONGROUND = msg.ReadBits(1) != 0;
-	AI_ENEMY_IN_FOV = msg.ReadBits(1) != 0;
 
 	int enemySpawnId = msg.ReadBits( 32 );
 
@@ -612,9 +623,29 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 		SetEnemy(newEnemy.GetEntity());
 	}
 
-	clientAttackFlags = msg.ReadShort();
-
 	int headSpawnId = msg.ReadBits(32);
+
+	bool hasLegsAnim = msg.ReadBits(1) != 0;
+	prevLegsAnim = nextLegsAnim;
+
+	if (hasLegsAnim) {
+		nextLegsAnim.animNum = msg.ReadBits(32);
+		nextLegsAnim.animTime = msg.ReadBits(32);
+	} else {
+		nextLegsAnim.animNum = -1;
+		nextLegsAnim.animTime = -1;
+	}
+
+	bool hasTorsoAnim = msg.ReadBits(1) != 0;
+	prevTorsoAnim = nextTorsoAnim;
+
+	if (hasTorsoAnim) {
+		nextTorsoAnim.animNum = msg.ReadBits(32);
+		nextTorsoAnim.animTime = msg.ReadBits(32);
+	} else {
+		nextTorsoAnim.animNum = -1;
+		nextTorsoAnim.animTime = -1;
+	}
 
 	bool isHeadSpawned = !!head.GetEntity();
 
@@ -655,20 +686,26 @@ void idAI::ClientThink( const int curTime, const float fraction, const bool pred
 
 	walkIK.ClearJointMods();
 
-	UpdateAIScript();
-
 	idQuat interpolatedAngles = Slerp( previousViewQuat, nextViewQuat, fraction );
 	current_yaw = interpolatedAngles.ToAngles().yaw;
 	viewAxis = idAngles( 0, current_yaw, 0 ).ToMat3();
 
-	InterpolatePhysics( fraction );
+	idVec3 oldorigin = physicsObj.GetOrigin();
 
-	AI_PAIN = false;
-	AI_SPECIAL_DAMAGE = 0;
-	AI_PUSHED = false;
+	// TODO: second param updates attachment (like head) position (but in clientTime)
+	InterpolatePhysicsOnly( fraction , true );
+
+	gameRenderWorld->DebugLine( colorCyan, oldorigin, physicsObj.GetOrigin(), 5000 );
 
 	UpdateMuzzleFlash();
-	UpdateAnimation();
+	// TODO: do we need update animation and bounds on client?
+	//UpdateAnimation();
+	
+	animator.RemoveOriginOffset( true );
+
+	ClientAnimationInterpolation(ANIMCHANNEL_TORSO, currentTorsoAnim, prevTorsoAnim, nextTorsoAnim, fraction);
+	ClientAnimationInterpolation(ANIMCHANNEL_LEGS, currentLegsAnim, prevLegsAnim, nextLegsAnim, fraction);
+
 	UpdateParticles();
 	Present();
 	UpdateDamageEffects();
@@ -676,9 +713,86 @@ void idAI::ClientThink( const int curTime, const float fraction, const bool pred
 	LinkCombat();
 
 	if (idAFAttachment* headEnt = head.GetEntity(); headEnt) {
-		// update head position
 		headEnt->ClientPredictionThink();
 	}
+}
+
+void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction)
+{
+	if (prev.animNum != -1 && next.animNum != -1) {
+		if (prev.animNum == next.animNum) {
+			current.animNum = prev.animNum;
+
+			int animNum = current.animNum;
+			const idAnim* anim = animator.GetAnim(animNum);
+
+			if (!anim) {
+				return;
+			}
+
+			int length = anim->Length();
+
+			bool useServerTime = true;
+
+			int time;
+			if (useServerTime) {
+				if (prev.animTime > next.animTime) {
+					time = Lerp(prev.animTime, next.animTime + length, fraction);
+				} else {
+					time = Lerp(prev.animTime, next.animTime, fraction);
+				}
+			} else {
+				int delta = gameLocal.time - gameLocal.previousTime;
+				time = current.animTime + delta;
+			}
+
+			if (length > 0)
+			{
+				time %= length;
+
+				// time will wrap after 24 days (oh no!), resulting in negative results for the %.
+				// adding the length gives us the proper result.
+				if( time < 0 )
+				{
+					time += length;
+				}
+			}
+
+			if (useServerTime && time > next.animTime) {
+				time = next.animTime;
+			}
+
+			current.animTime = time;
+		} else {
+			current = next;
+		}
+	} else if (prev.animNum == -1 && next.animNum != -1) {
+		current = next;
+	} else if (prev.animNum != -1 && next.animNum == -1) {
+		current = next;
+	}
+
+	if (current.animNum == -1) {
+		animator.Clear(channel, gameLocal.time, 0);
+		return;
+	}
+
+	const idAnim* anim = animator.GetAnim(current.animNum);
+	if (!anim) {
+		return;
+	}
+
+	const idMD5Anim* md5anim = anim->MD5Anim( 0 );
+	frameBlend_t	frameinfo;
+	md5anim->ConvertTimeToFrame( current.animTime, -1, frameinfo );
+	int frame = frameinfo.frame1 + 1;
+
+	if (channel == ANIMCHANNEL_TORSO && entityNumber == 13) {
+
+		//gameLocal.Printf("time: %d, time-interval: %d-%d, animNum: %d, currentFrame: %d\n", gameLocal.GetServerGameTimeMs(), gameLocal.GetSSStartTime(), gameLocal.GetSSEndTime(), current.animNum, frame);
+	}
+
+	animator.SetFrame(channel, current.animNum, frame, gameLocal.time, 0);
 }
 
 /*
