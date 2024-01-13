@@ -433,27 +433,38 @@ void idAI::WriteToSnapshot( idBitMsg& msg ) const {
 	msg.WriteBits(enemy.GetSpawnId(), 32 );
 	msg.WriteBits(head.GetSpawnId(), 32);
 
-	// TODO: WriteAnimatorToSnapshot()
-	// essentials: animNum + startTime
-	// blendTime? cycle/play parameters?
-	const idAnimBlend* legsAnim = animator.CurrentAnim(ANIMCHANNEL_LEGS);
-	msg.WriteBits((int)(legsAnim != NULL), 1);
-	if (legsAnim) {
-		int animNum = legsAnim->AnimNum();
-		int animTime = legsAnim->AnimTime(gameLocal.time);
+	WriteAnimToSnapshot(msg, ANIMCHANNEL_LEGS);
+	WriteAnimToSnapshot(msg, ANIMCHANNEL_TORSO);
+}
+
+void idAI::WriteAnimToSnapshot(idBitMsg& msg, int channel) const
+{
+	const idAnimBlend* anim = animator.CurrentAnim(channel);
+	msg.WriteBits((int)(anim != NULL), 1);
+	if (anim) {
+		int animNum = anim->AnimNum();
+		int animTime = anim->AnimTime(gameLocal.time);
+		int blendDuration = anim->GetBlendDuration();
 
 		msg.WriteBits(animNum, 32);
 		msg.WriteBits(animTime, 32);
+		msg.WriteBits(blendDuration, 32);
 	}
+}
 
-	const idAnimBlend* torsoAnim = animator.CurrentAnim(ANIMCHANNEL_TORSO);
-	msg.WriteBits((int)(torsoAnim != NULL), 1);
-	if (torsoAnim) {
-		int animNum = torsoAnim->AnimNum();
-		int animTime = torsoAnim->AnimTime(gameLocal.time);
+void idAI::ReadAnimFromSnapshot(const idBitMsg& msg, AnimSnapshot& prev, AnimSnapshot& next)
+{
+	bool hasData = msg.ReadBits(1) != 0;
+	prev = next;
 
-		msg.WriteBits(animNum, 32);
-		msg.WriteBits(animTime, 32);
+	if (hasData) {
+		next.animNum = msg.ReadBits(32);
+		next.animTime = msg.ReadBits(32);
+		next.blendDuration = msg.ReadBits(32);
+	} else {
+		next.animNum = -1;
+		next.animTime = -1;
+		next.blendDuration = -1;
 	}
 }
 
@@ -601,6 +612,8 @@ void idAI::ClientKilled()
 	state = GetScriptFunction( "state_Killed" );
 	SetState( state );
 	SetWaitState( "" );
+
+	animator.ClearAllAnims(gameLocal.time, 0);
 	animator.ClearAllJoints();
 }
 
@@ -625,27 +638,8 @@ void idAI::ReadFromSnapshot(const idBitMsg& msg ) {
 
 	int headSpawnId = msg.ReadBits(32);
 
-	bool hasLegsAnim = msg.ReadBits(1) != 0;
-	prevLegsAnim = nextLegsAnim;
-
-	if (hasLegsAnim) {
-		nextLegsAnim.animNum = msg.ReadBits(32);
-		nextLegsAnim.animTime = msg.ReadBits(32);
-	} else {
-		nextLegsAnim.animNum = -1;
-		nextLegsAnim.animTime = -1;
-	}
-
-	bool hasTorsoAnim = msg.ReadBits(1) != 0;
-	prevTorsoAnim = nextTorsoAnim;
-
-	if (hasTorsoAnim) {
-		nextTorsoAnim.animNum = msg.ReadBits(32);
-		nextTorsoAnim.animTime = msg.ReadBits(32);
-	} else {
-		nextTorsoAnim.animNum = -1;
-		nextTorsoAnim.animTime = -1;
-	}
+	ReadAnimFromSnapshot(msg, prevLegsAnim, nextLegsAnim);
+	ReadAnimFromSnapshot(msg, prevTorsoAnim, nextTorsoAnim);
 
 	bool isHeadSpawned = !!head.GetEntity();
 
@@ -684,28 +678,29 @@ void idAI::ClientThink( const int curTime, const float fraction, const bool pred
 		return;
 	}
 
-	walkIK.ClearJointMods();
+	if (AI_DEAD) {
+		UpdateAIScript();
+		RunPhysics();
+	} else {
+		walkIK.ClearJointMods();
 
-	idQuat interpolatedAngles = Slerp( previousViewQuat, nextViewQuat, fraction );
-	current_yaw = interpolatedAngles.ToAngles().yaw;
-	viewAxis = idAngles( 0, current_yaw, 0 ).ToMat3();
+		idQuat interpolatedAngles = Slerp( previousViewQuat, nextViewQuat, fraction );
+		current_yaw = interpolatedAngles.ToAngles().yaw;
+		viewAxis = idAngles( 0, current_yaw, 0 ).ToMat3();
 
-	idVec3 oldorigin = physicsObj.GetOrigin();
+		idVec3 oldorigin = physicsObj.GetOrigin();
 
-	// TODO: second param updates attachment (like head) position (but in clientTime)
-	InterpolatePhysicsOnly( fraction , true );
+		InterpolatePhysicsOnly( fraction , true );
 
-	gameRenderWorld->DebugLine( colorCyan, oldorigin, physicsObj.GetOrigin(), 5000 );
+		gameRenderWorld->DebugLine( colorCyan, oldorigin, physicsObj.GetOrigin(), 5000 );
+
+		ClientAdvanceAnimTime(ANIMCHANNEL_TORSO, currentTorsoAnim, prevTorsoAnim, nextTorsoAnim);
+		ClientAdvanceAnimTime(ANIMCHANNEL_LEGS, currentLegsAnim, prevLegsAnim, nextLegsAnim);
+	}
 
 	UpdateMuzzleFlash();
 	// TODO: do we need update animation and bounds on client?
 	//UpdateAnimation();
-	
-	animator.RemoveOriginOffset( true );
-
-	ClientAnimationInterpolation(ANIMCHANNEL_TORSO, currentTorsoAnim, prevTorsoAnim, nextTorsoAnim, fraction);
-	ClientAnimationInterpolation(ANIMCHANNEL_LEGS, currentLegsAnim, prevLegsAnim, nextLegsAnim, fraction);
-
 	UpdateParticles();
 	Present();
 	UpdateDamageEffects();
@@ -717,34 +712,30 @@ void idAI::ClientThink( const int curTime, const float fraction, const bool pred
 	}
 }
 
-void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction)
+void idAI::ClientAdvanceAnimTime(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction, bool useInterpolation)
 {
 	if (current.animNum != next.animNum) {
-		int animNum = next.animNum;
-		const idAnim* anim = animator.GetAnim(animNum);
-
-		if (!anim) {
-			return;
+		if (animator.GetAnim(next.animNum)) {
+			current.animNum = next.animNum;
+			current.blendDuration = next.blendDuration;
+			animator.CycleAnim(channel, current.animNum, gameLocal.time, current.blendDuration);
+			animator.CurrentAnim(channel)->UseAnimTime(true);
 		}
-
-		current.animNum = next.animNum;
-		animator.CycleAnim(channel, current.animNum, gameLocal.time, 0);
 	}
 
 	if (prev.animNum != -1 && next.animNum != -1) {
 		if (prev.animNum == next.animNum) {
 			int animNum = next.animNum;
-			const idAnim* anim = animator.GetAnim(animNum);
 
+			const idAnim* anim = animator.GetAnim(animNum);
 			if (!anim) {
 				return;
 			}
+
 			int length = anim->Length();
 
-			bool useServerTime = false;
-
 			int time;
-			if (useServerTime) {
+			if (useInterpolation) {
 				if (prev.animTime > next.animTime) {
 					time = Lerp(prev.animTime, next.animTime + length, fraction);
 				} else {
@@ -767,10 +758,6 @@ void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, cons
 				}
 			}
 
-			if (useServerTime && time > next.animTime) {
-				time = next.animTime;
-			}
-
 			current.animTime = time;
 		} else {
 			current = next;
@@ -782,7 +769,7 @@ void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, cons
 	}
 
 	if (current.animNum == -1) {
-		//animator.Clear(channel, gameLocal.time, 0);
+		animator.Clear(channel, gameLocal.time, 0);
 		return;
 	}
 
@@ -791,12 +778,7 @@ void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, cons
 		return;
 	}
 
-	anim->useAnimTime = true;
-	anim->_animTime = current.animTime;
-
-	if (channel == ANIMCHANNEL_TORSO && entityNumber == 19) {
-		//gameLocal.Printf("time: %d, time-interval: %d-%d, animNum: %d, currentFrame: %d\n", gameLocal.GetServerGameTimeMs(), gameLocal.GetSSStartTime(), gameLocal.GetSSEndTime(), current.animNum, frame);
-	}
+	anim->SetAnimTime(current.animTime);
 }
 
 /*
@@ -1764,7 +1746,6 @@ void idAI::LinkScriptVariables()
 	AI_ONGROUND.LinkTo(	scriptObject, "AI_ONGROUND" );
 	AI_ACTIVATED.LinkTo(	scriptObject, "AI_ACTIVATED" );
 	AI_FORWARD.LinkTo(	scriptObject, "AI_FORWARD" );
-	AI_RUN.LinkTo(	scriptObject, "AI_RUN" );
 	AI_JUMP.LinkTo(	scriptObject, "AI_JUMP" );
 	AI_BLOCKED.LinkTo(	scriptObject, "AI_BLOCKED" );
 	AI_DEST_UNREACHABLE.LinkTo( scriptObject, "AI_DEST_UNREACHABLE" );
@@ -4242,7 +4223,6 @@ idAI::Pain
 */
 bool idAI::Pain( idEntity* inflictor, idEntity* attacker, int damage, const idVec3& dir, int location )
 {
-	idLib::Printf("=== Pain ===\n");
 	idActor*	actor;
 
 	AI_PAIN = idActor::Pain( inflictor, attacker, damage, dir, location );

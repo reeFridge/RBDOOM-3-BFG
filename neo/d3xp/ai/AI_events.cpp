@@ -174,12 +174,7 @@ const idEventDef AI_StartEmitter( "startEmitter", "sss", 'e' );
 const idEventDef AI_GetEmitter( "getEmitter", "s", 'e' );
 const idEventDef AI_StopEmitter( "stopEmitter", "s" );
 
-const idEventDef AI_SetAttackFlags( "setAttackFlags", "d" );
-const idEventDef AI_GetAttackFlags( "getAttackFlags", NULL, 'd' );
-
 CLASS_DECLARATION( idActor, idAI )
-EVENT( AI_SetAttackFlags,					idAI::Event_SetAttackFlags )
-EVENT( AI_GetAttackFlags,					idAI::Event_GetAttackFlags )
 EVENT( EV_Activate,							idAI::Event_Activate )
 EVENT( EV_Touch,							idAI::Event_Touch )
 EVENT( AI_FindEnemy,						idAI::Event_FindEnemy )
@@ -3227,16 +3222,6 @@ void idAI::Event_CanReachEntity( idEntity* ent )
 	{
 		idThread::ReturnInt( true );
 	}
-}
-
-void idAI::Event_SetAttackFlags(float attackFlags)
-{
-	clientAttackFlags = attackFlags;
-}
-
-void idAI::Event_GetAttackFlags()
-{
-	idThread::ReturnInt(clientAttackFlags);
 }
 
 /*

@@ -244,6 +244,7 @@ public:
 	{
 		int animNum = -1;
 		int animTime = -1;
+		int blendDuration = -1;
 	};
 
 	AnimSnapshot currentLegsAnim;
@@ -254,7 +255,10 @@ public:
 	AnimSnapshot prevTorsoAnim;
 	AnimSnapshot nextTorsoAnim;
 
-	void ClientAnimationInterpolation(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction);
+	void ReadAnimFromSnapshot(const idBitMsg& msg, AnimSnapshot& prev, AnimSnapshot& next);
+	void WriteAnimToSnapshot(idBitMsg& msg, int channel) const;
+
+	void ClientAdvanceAnimTime(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction = 0.f, bool useInterpolation = false);
 
 protected:
 	// navigation
@@ -396,7 +400,6 @@ protected:
 	idScriptBool			AI_ONGROUND;
 	idScriptBool			AI_ACTIVATED;
 	idScriptBool			AI_FORWARD;
-	idScriptBool			AI_RUN;
 	idScriptBool			AI_JUMP;
 	idScriptBool			AI_ENEMY_REACHABLE;
 	idScriptBool			AI_BLOCKED;

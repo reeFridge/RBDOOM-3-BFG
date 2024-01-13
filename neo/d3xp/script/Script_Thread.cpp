@@ -36,7 +36,6 @@ const idEventDef EV_Thread_Execute( "<execute>", NULL );
 const idEventDef EV_Thread_SetCallback( "<script_setcallback>", NULL );
 
 // script callable events
-const idEventDef EV_Thread_HasAuthority( "hasAuthority", NULL, 'd' );
 const idEventDef EV_Thread_TerminateThread( "terminate", "d" );
 const idEventDef EV_Thread_Pause( "pause", NULL );
 const idEventDef EV_Thread_Wait( "wait", "f" );
@@ -119,7 +118,6 @@ const idEventDef EV_Thread_DrawText( "drawText", "svfvdf" );
 const idEventDef EV_Thread_InfluenceActive( "influenceActive", NULL, 'd' );
 
 CLASS_DECLARATION( idClass, idThread )
-EVENT( EV_Thread_HasAuthority,			idThread::Event_HasAuthority )
 EVENT( EV_Thread_Execute,				idThread::Event_Execute )
 EVENT( EV_Thread_TerminateThread,		idThread::Event_TerminateThread )
 EVENT( EV_Thread_Pause,					idThread::Event_Pause )
@@ -2154,9 +2152,4 @@ void idThread::Event_InfluenceActive()
 	{
 		idThread::ReturnInt( false );
 	}
-}
-
-void idThread::Event_HasAuthority() const
-{
-	idThread::ReturnInt(!common->IsMultiplayer() || common->IsServer());
 }

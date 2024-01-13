@@ -1577,6 +1577,7 @@ void idAnimBlend::Reset( const idDeclModelDef* _modelDef )
 	allowMove	= true;
 	allowFrameCommands = true;
 	animNum		= 0;
+	_animTime = 0;
 
 	memset( animWeights, 0, sizeof( animWeights ) );
 
@@ -1648,6 +1649,21 @@ int	idAnimBlend::Length() const
 	}
 
 	return anim->Length();
+}
+
+int idAnimBlend::GetBlendDuration() const
+{
+	return blendDuration;
+}
+
+void idAnimBlend::UseAnimTime(bool state)
+{
+	_useAnimTime = state;
+}
+
+void idAnimBlend::SetAnimTime(int animTime)
+{
+	_animTime = animTime;
 }
 
 /*
@@ -2199,7 +2215,7 @@ int idAnimBlend::AnimTime( int currentTime ) const
 			time = static_cast<int>( ( currentTime - starttime ) * rate ) + timeOffset;
 		}
 
-		if (useAnimTime) {
+		if (_useAnimTime) {
 			time = _animTime;
 		}
 
