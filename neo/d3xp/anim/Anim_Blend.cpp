@@ -2199,6 +2199,10 @@ int idAnimBlend::AnimTime( int currentTime ) const
 			time = static_cast<int>( ( currentTime - starttime ) * rate ) + timeOffset;
 		}
 
+		if (useAnimTime) {
+			time = _animTime;
+		}
+
 		// given enough time, we can easily wrap time around in our frame calculations, so
 		// keep cycling animations' time within the length of the anim.
 		length = anim->Length();

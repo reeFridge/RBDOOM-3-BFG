@@ -434,6 +434,9 @@ public:
 	void						AllowFrameCommands( bool allow );
 	const idAnim*				Anim() const;
 	int							AnimNum() const;
+
+	bool useAnimTime = false;
+	int _animTime = 0;
 };
 
 /*
