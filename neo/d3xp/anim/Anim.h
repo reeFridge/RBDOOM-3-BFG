@@ -391,6 +391,9 @@ private:
 	bool						allowMove;
 	bool						allowFrameCommands;
 
+	bool _useAnimTime = false;
+	int _animTime = 0;
+
 	friend class				idAnimator;
 
 	void						Reset( const idDeclModelDef* _modelDef );
@@ -410,6 +413,7 @@ public:
 	void						Restore( idRestoreGame* savefile, const idDeclModelDef* modelDef );
 	const char*					AnimName() const;
 	const char*					AnimFullName() const;
+	int							GetBlendDuration() const;
 	float						GetWeight( int currenttime ) const;
 	float						GetFinalWeight() const;
 	void						SetWeight( float newweight, int currenttime, int blendtime );
@@ -434,9 +438,8 @@ public:
 	void						AllowFrameCommands( bool allow );
 	const idAnim*				Anim() const;
 	int							AnimNum() const;
-
-	bool useAnimTime = false;
-	int _animTime = 0;
+	void UseAnimTime(bool state);
+	void SetAnimTime(int animTime);
 };
 
 /*
