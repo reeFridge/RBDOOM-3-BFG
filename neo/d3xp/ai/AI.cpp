@@ -719,20 +719,29 @@ void idAI::ClientThink( const int curTime, const float fraction, const bool pred
 
 void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, const AnimSnapshot& prev, const AnimSnapshot& next, const float fraction)
 {
+	if (current.animNum != next.animNum) {
+		int animNum = next.animNum;
+		const idAnim* anim = animator.GetAnim(animNum);
+
+		if (!anim) {
+			return;
+		}
+
+		current.animNum = next.animNum;
+		animator.CycleAnim(channel, current.animNum, gameLocal.time, 0);
+	}
+
 	if (prev.animNum != -1 && next.animNum != -1) {
 		if (prev.animNum == next.animNum) {
-			current.animNum = prev.animNum;
-
-			int animNum = current.animNum;
+			int animNum = next.animNum;
 			const idAnim* anim = animator.GetAnim(animNum);
 
 			if (!anim) {
 				return;
 			}
-
 			int length = anim->Length();
 
-			bool useServerTime = true;
+			bool useServerTime = false;
 
 			int time;
 			if (useServerTime) {
@@ -773,26 +782,21 @@ void idAI::ClientAnimationInterpolation(int channel, AnimSnapshot& current, cons
 	}
 
 	if (current.animNum == -1) {
-		animator.Clear(channel, gameLocal.time, 0);
+		//animator.Clear(channel, gameLocal.time, 0);
 		return;
 	}
 
-	const idAnim* anim = animator.GetAnim(current.animNum);
+	idAnimBlend* anim = animator.CurrentAnim(channel);
 	if (!anim) {
 		return;
 	}
 
-	const idMD5Anim* md5anim = anim->MD5Anim( 0 );
-	frameBlend_t	frameinfo;
-	md5anim->ConvertTimeToFrame( current.animTime, -1, frameinfo );
-	int frame = frameinfo.frame1 + 1;
+	anim->useAnimTime = true;
+	anim->_animTime = current.animTime;
 
-	if (channel == ANIMCHANNEL_TORSO && entityNumber == 13) {
-
+	if (channel == ANIMCHANNEL_TORSO && entityNumber == 19) {
 		//gameLocal.Printf("time: %d, time-interval: %d-%d, animNum: %d, currentFrame: %d\n", gameLocal.GetServerGameTimeMs(), gameLocal.GetSSStartTime(), gameLocal.GetSSEndTime(), current.animNum, frame);
 	}
-
-	animator.SetFrame(channel, current.animNum, frame, gameLocal.time, 0);
 }
 
 /*
