@@ -3839,12 +3839,7 @@ int idDeclModelDef::GetAnim( const char* name ) const
 
 	// get a random anim
 	//FIXME: don't access gameLocal here?
-	//TODO: How to sync random animations?
-	if (common->IsMultiplayer()) {
-		which = 0;
-	} else {
-		which = gameLocal.random.RandomInt( numAnims );
-	}
+	which = gameLocal.random.RandomInt( numAnims );
 
 	return animList[ which ] + 1;
 }
