@@ -736,12 +736,12 @@ void R_ObliqueProjection( viewDef_t* parms )
 	q[3] = ( 1.0f + parms->projectionMatrix[10] ) / parms->projectionMatrix[14];
 
 	// scaled plane vector
-	float d = 2.0f / ( clipPlane * q );
+	float d = 1.0f / ( clipPlane * q );
 
 	// Replace the third row of the projection matrix
 	parms->projectionMatrix[2] = clipPlane[0] * d;
 	parms->projectionMatrix[6] = clipPlane[1] * d;
-	parms->projectionMatrix[10] = clipPlane[2] * d + 1.0f;
+	parms->projectionMatrix[10] = clipPlane[2] * d;
 	parms->projectionMatrix[14] = clipPlane[3] * d;
 }
 // SP end
