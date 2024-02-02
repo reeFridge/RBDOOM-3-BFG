@@ -2245,6 +2245,7 @@ void idDeclManagerLocal::ExportEntityDefsToTrenchBroom_f( const idCmdArgs& args 
 	solidClassNames.AddUnique( "moveable_guardian_brick" );
 
 	solidClassNames.AddUnique( "trigger_" );
+	solidClassNames.AddUnique( "func_static_portal" );
 
 	// mixed classes that need extra _model pendants
 	solidClassNames.AddUnique( "func_door" );

@@ -958,4 +958,26 @@ public:
 };
 
 
+/*
+===============================================================================
+
+idPortalStatic
+
+===============================================================================
+*/
+class idPortalStatic : public idEntity
+{
+public:
+	CLASS_PROTOTYPE( idPortalStatic );
+
+	idPortalStatic();
+	~idPortalStatic();
+
+	void			DormantBegin() override;	// called when entity becomes dormant
+	void			DormantEnd() override;		// called when entity wakes from being dormant
+	void 			Think() override;
+	void			Spawn();
+};
+
+
 #endif /* !__GAME_MISC_H__ */

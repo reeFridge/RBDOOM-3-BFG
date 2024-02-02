@@ -267,6 +267,19 @@ entityDef func_static {
 	"noclipmodel"				"0"
 }
 
+entityDef func_static_portal {
+	"editor_color"				"0 .5 .8"
+	"editor_mins"				"?"
+	"editor_maxs"				"?"
+
+	"editor_usage"				"A brush portal."
+
+	"spawnclass"				"idPortalStatic"
+	
+	"solid"						"1"
+	"noclipmodel"				"0"
+}
+
 entityDef func_shaking {
 	"editor_color"				"0 .5 .8"
 	"editor_mins"				"-12 -12 -12"

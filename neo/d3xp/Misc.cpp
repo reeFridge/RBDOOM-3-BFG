@@ -4440,3 +4440,64 @@ void idPortalSky::Event_Activate( idEntity* activator )
 {
 	gameLocal.SetPortalSkyEnt( this );
 }
+
+/*
+===============================================================================
+
+idPortalStatic
+
+===============================================================================
+*/
+
+CLASS_DECLARATION( idEntity, idPortalStatic )
+END_CLASS
+
+/*
+===============
+idPortalStatic::idPortalStatic
+===============
+*/
+idPortalStatic::idPortalStatic()
+{
+}
+
+/*
+===============
+idPortalStatic::~idPortalStatic
+===============
+*/
+idPortalStatic::~idPortalStatic()
+{
+}
+
+void idPortalStatic::DormantBegin()
+{
+	// camera target for remote render views
+	if( cameraTarget )
+	{
+		renderEntity.remoteRenderView = gameLocal.InPlayerPVS( this ) ?
+			cameraTarget->GetRenderView() :
+			NULL;
+	}
+}
+
+void idPortalStatic::DormantEnd()
+{
+	BecomeActive( TH_UPDATEVISUALS );
+}
+
+void idPortalStatic::Spawn()
+{
+	BecomeActive( TH_THINK );
+}
+
+void idPortalStatic::Think()
+{
+	// if we are completely closed off from the player, don't do anything at all
+	if( CheckDormant() )
+	{
+		return;
+	}
+
+	idEntity::Think();
+}
