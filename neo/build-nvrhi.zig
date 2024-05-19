@@ -10,7 +10,7 @@ pub const Package = struct {
 
 pub fn package(
     b: *std.Build,
-    target: std.zig.CrossTarget,
+    target: std.Build.ResolvedTarget,
     optimize: std.builtin.Mode,
 ) !Package {
     const nvrhi = b.addStaticLibrary(.{
@@ -60,9 +60,9 @@ pub fn package(
         thisDir() ++ "/src/vulkan/vulkan-upload.cpp",
     };
 
-    nvrhi.addCSourceFiles(&src_common, &cxxflags);
-    nvrhi.addCSourceFiles(&src_validation, &cxxflags);
-    nvrhi.addCSourceFiles(&src_vk, &cxxflags);
+    nvrhi.addCSourceFiles(.{ .files = &src_common, .flags = &cxxflags });
+    nvrhi.addCSourceFiles(.{ .files = &src_validation, .flags = &cxxflags });
+    nvrhi.addCSourceFiles(.{ .files = &src_vk, .flags = &cxxflags });
 
     nvrhi.linkLibC();
     nvrhi.linkLibCpp();
@@ -71,5 +71,5 @@ pub fn package(
 }
 
 inline fn thisDir() []const u8 {
-    return comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/extern/nvrhi";
+    return "extern/nvrhi";
 }

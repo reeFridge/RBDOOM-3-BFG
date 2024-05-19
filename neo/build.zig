@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) !void {
     const idlib_pkg = try idlib_mod.package(b, target, optimize);
     const shader_make_pkg = try shader_make_mod.package(b, target, optimize);
 
-    const exe = b.addExecutable(.{ .name = "rbdoom3bfg" });
+    const exe = b.addExecutable(.{ .name = "rbdoom3bfg", .target = target, .optimize = optimize });
 
     exe.defineCMacro("USE_NVRHI", null);
     exe.defineCMacro("USE_AMD_ALLOCATOR", null);
@@ -289,8 +289,8 @@ pub fn build(b: *std.Build) !void {
         "-std=c++17",
     };
 
-    exe.addCSourceFiles(exe_src_cpp.items, &cxxflags);
-    exe.addCSourceFiles(exe_src_c.items, &cflags);
+    exe.addCSourceFiles(.{ .files = exe_src_cpp.items, .flags = &cxxflags });
+    exe.addCSourceFiles(.{ .files = exe_src_c.items, .flags = &cflags });
 
     const ztech_lib = b.addStaticLibrary(.{
         .name = "libztech",
@@ -312,4 +312,34 @@ pub fn build(b: *std.Build) !void {
     exe.linkLibCpp();
 
     b.installArtifact(exe);
+
+    const shaders_cmd = b.addRunArtifact(shader_make_pkg.shader_make);
+    shaders_cmd.addArg("--config=shaders/shaders.cfg");
+    shaders_cmd.addArg("--out=../base/renderprogs2/spirv");
+    shaders_cmd.addArg("--platform=SPIRV");
+    shaders_cmd.addArg("--binaryBlob");
+    shaders_cmd.addArg("--outputExt=.bin");
+    // ! means config_parent_dir + ./
+    shaders_cmd.addArg("-I./");
+    shaders_cmd.addArg("-DSPIRV");
+
+    // CFLAGS
+    shaders_cmd.addArgs(&.{
+        "--vulkanVersion=1.2",
+        "--shaderModel=6_0",
+        "-O3",
+        "--WX",
+        "--matrixRowMajor",
+        "--tRegShift=0",
+        "--sRegShift=128",
+        "--bRegShift=256",
+        "--uRegShift=384",
+    });
+
+    // TODO: locate dxc executable
+    // or provide a 'compiler' option for shaders step
+    shaders_cmd.addArg("--compiler=/home/fridge/thirdparty/bin/dxc");
+
+    const compile_shaders_step = b.step("shaders", "Compile SPIRV shaders");
+    compile_shaders_step.dependOn(&shaders_cmd.step);
 }

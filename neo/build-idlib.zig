@@ -11,7 +11,7 @@ pub const Package = struct {
 
 pub fn package(
     b: *std.Build,
-    target: std.zig.CrossTarget,
+    target: std.Build.ResolvedTarget,
     optimize: std.builtin.Mode,
 ) !Package {
     const idlib = b.addStaticLibrary(.{
@@ -41,9 +41,10 @@ pub fn package(
     try butils.addFilesWithExts(b, &all_sources, thisDir() ++ "/sys", &exts);
     try butils.addFilesWithExts(b, &all_sources, thisDir() ++ "/sys/posix", &exts);
 
-    idlib.addCSourceFiles(all_sources.items, &cxxflags);
+    idlib.addCSourceFiles(.{ .files = all_sources.items, .flags = &cxxflags });
     idlib.addIncludePath(.{ .path = thisDir() });
     idlib.addIncludePath(.{ .path = thisDir() ++ "/../extern/nvrhi/include" });
+    idlib.addIncludePath(.{ .path = thisDir() ++ "/../libs/rapidjson/include" });
 
     idlib.linkLibC();
     idlib.linkLibCpp();
@@ -54,5 +55,5 @@ pub fn package(
 }
 
 inline fn thisDir() []const u8 {
-    return comptime (std.fs.path.dirname(@src().file) orelse ".") ++ "/idlib";
+    return "idlib";
 }
