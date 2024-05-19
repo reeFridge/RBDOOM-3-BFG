@@ -220,6 +220,11 @@ void AddRenderGui( const char* name, idUserInterface** gui, const idDict* args )
 	UpdateGuiParms( *gui, args );
 }
 
+extern "C" void c_parse_spawn_args_to_render_entity(const idDict* args, renderEntity_t* renderEntity)
+{
+	gameEdit->ParseSpawnArgsToRenderEntity( args, renderEntity );
+}
+
 /*
 ================
 idGameEdit::ParseSpawnArgsToRenderEntity
@@ -1768,6 +1773,14 @@ void idEntity::Present()
 	}
 }
 
+extern "C" int c_add_entity_def(const renderEntity_t* renderEntity) {
+	return gameRenderWorld->AddEntityDef(renderEntity);
+}
+
+extern "C" void c_update_entity_def(int modelDefHandle, const renderEntity_t* renderEntity) {
+	gameRenderWorld->UpdateEntityDef(modelDefHandle, renderEntity);
+}
+
 /*
 ================
 idEntity::GetRenderEntity
@@ -3015,6 +3028,9 @@ void idEntity::InitDefaultPhysics( const idVec3& origin, const idMat3& axis, con
 	defaultPhysicsObj.SetAxis( axis );
 
 	physics = &defaultPhysicsObj;
+}
+
+extern "C" void c_create_clip_model() {
 }
 
 /*

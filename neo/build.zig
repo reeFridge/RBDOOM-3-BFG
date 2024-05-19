@@ -292,9 +292,18 @@ pub fn build(b: *std.Build) !void {
     exe.addCSourceFiles(exe_src_cpp.items, &cxxflags);
     exe.addCSourceFiles(exe_src_c.items, &cflags);
 
+    const ztech_lib = b.addStaticLibrary(.{
+        .name = "libztech",
+        .root_source_file = .{ .path = "ztech/lib.zig" },
+        .optimize = optimize,
+        .target = target,
+    });
+    ztech_lib.linkLibC();
+
     shader_make_pkg.link(exe);
     nvrhi_pkg.link(exe);
     idlib_pkg.link(exe);
+    exe.linkLibrary(ztech_lib);
 
     exe.linkSystemLibrary("sdl2");
     exe.linkSystemLibrary("vulkan");

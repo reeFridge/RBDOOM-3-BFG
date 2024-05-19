@@ -286,6 +286,19 @@ void idGameLocal::Clear()
 	lastCmdRunTimeOnServer.Zero();
 }
 
+typedef struct {
+	int time;
+	int previous_time;
+} CTimeState;
+
+extern "C" CTimeState c_get_time_state() {
+	return {gameLocal.time, gameLocal.previousTime};
+}
+
+extern "C" bool c_is_new_frame() {
+	return gameLocal.isNewFrame;
+}
+
 /*
 ===========
 idGameLocal::Init
@@ -293,6 +306,7 @@ idGameLocal::Init
   initialize the game object, only happens once at startup, not each level load
 ============
 */
+extern "C" void ztech_init();
 void idGameLocal::Init()
 {
 	const idDict* dict;
@@ -337,6 +351,7 @@ void idGameLocal::Init()
 
 	idEvent::Init();
 	idClass::Init();
+	ztech_init();
 
 	InitConsoleCommands();
 
@@ -390,6 +405,7 @@ idGameLocal::Shutdown
   shut down the entire game
 ============
 */
+extern "C" void ztech_deinit();
 void idGameLocal::Shutdown()
 {
 
@@ -420,6 +436,8 @@ void idGameLocal::Shutdown()
 	smokeParticles = NULL;
 
 	idClass::Shutdown();
+
+	ztech_deinit();
 
 	// clear list with forces
 	idForce::ClearForceList();
@@ -2611,6 +2629,8 @@ void idGameLocal::RunSharedThink()
 }
 // jmarshall end
 
+extern "C" void ztech_processEntities();
+
 /*
 ================
 idGameLocal::RunFrame
@@ -2785,6 +2805,8 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 					}
 				}
 			}
+
+			ztech_processEntities();
 
 			RunTimeGroup2( cmdMgr );
 // jmarshall
@@ -3944,6 +3966,47 @@ bool idGameLocal::SpawnEntityDef( const idDict& args, idEntity** ent, bool setDe
 	return false;
 }
 
+extern "C" bool ztech_spawnExternal(uint8_t const *const, void* const);
+
+extern "C" void c_copy_dict_to_zig(
+		const idDict* const dict,
+		void fn_put_key_value(uint8_t const* const, uint8_t const* const)
+) {
+	int num = dict->GetNumKeyVals();
+	for( int i = 0; i < num; ++i )
+	{
+		const idKeyValue* kv = dict->GetKeyVal( i );
+		fn_put_key_value((uint8_t*)kv->GetKey().c_str(), (uint8_t*)kv->GetValue().c_str());
+	}
+}
+
+bool idGameLocal::SpawnEntityDefExternal( const idDict& args )
+{
+	spawnArgs = args;
+
+	const char*	classname;
+	spawnArgs.GetString( "classname", NULL, &classname );
+
+	const idDeclEntityDef* def = FindEntityDef( classname, false );
+
+	if( !def )
+	{
+		Warning( "Unknown external classname '%s'.", classname );
+		return false;
+	}
+
+	spawnArgs.SetDefaults( &def->dict );
+	// check if we should call a external function to spawn
+	const char*	spawn;
+	spawnArgs.GetString( "spawnexternal", NULL, &spawn );
+	if( spawn )
+	{
+		return ztech_spawnExternal((uint8_t*)spawn, (void*)&spawnArgs);
+	}
+
+	return false;
+}
+
 /*
 ================
 idGameLocal::FindEntityDef
@@ -4109,7 +4172,9 @@ void idGameLocal::SpawnMapEntities()
 			// Admer: brush origin offsets:
 			args.SetVector( BRUSH_ORIGIN_KEY, mapEnt->originOffset );
 
-			SpawnEntityDef( args );
+			if (!SpawnEntityDef( args )) {
+				SpawnEntityDefExternal(args);
+			}
 			num++;
 		}
 		else
