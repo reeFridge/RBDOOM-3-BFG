@@ -58,7 +58,7 @@ pub fn Entities(comptime archetypes: anytype) type {
 
     const ComptimeEntities = @Type(.{
         .Struct = .{
-            .layout = .Auto,
+            .layout = .auto,
             .is_tuple = false,
             .decls = &.{},
             .fields = fields,

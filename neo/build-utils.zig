@@ -6,7 +6,7 @@ pub fn addFilesWithExts(
     path: []const u8,
     allowed_exts: []const []const u8,
 ) !void {
-    var dir = try std.fs.cwd().openIterableDir(path, .{});
+    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
     var dir_iterator = dir.iterate();
 
     while (try dir_iterator.next()) |entry| {
