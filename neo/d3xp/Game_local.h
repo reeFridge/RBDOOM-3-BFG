@@ -463,6 +463,7 @@ public:
 	gameState_t				GameState() const;
 	idEntity* 				SpawnEntityType( const idTypeInfo& classdef, const idDict* args = NULL, bool bIsClientReadSnapshot = false );
 	bool					SpawnEntityDef( const idDict& args, idEntity** ent = NULL, bool setDefaults = true );
+	bool					SpawnEntityDefExternal( const idDict& args );
 	int						GetSpawnId( const idEntity* ent ) const;
 
 	const idDeclEntityDef* 	FindEntityDef( const char* name, bool makeDefault = true ) const;
