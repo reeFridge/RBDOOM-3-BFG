@@ -3,9 +3,11 @@ const assertFields = @import("entity.zig").assertFields;
 const std = @import("std");
 const render_entity = @import("render_entity.zig");
 const CMat3 = render_entity.CMat3;
+const CVec3 = render_entity.CVec3;
 const Vec3 = @import("math/vector.zig").Vec3;
 const Mat3 = @import("math/matrix.zig").Mat3;
 const Rotation = @import("math/rotation.zig");
+const PhysicsStatic = @import("physics/static.zig");
 
 pub const Name = []const u8;
 
@@ -81,7 +83,7 @@ pub const StaticObject = struct {
     // used to present a model to the renderer
     render_entity: render_entity.CRenderEntity,
     model_def_handle: c_int = -1,
-    rotation_angle: f32,
+    physics: PhysicsStatic,
 
     pub fn spawn(spawn_args: *const SpawnArgs, c_dict_ptr: ?*anyopaque) !StaticObject {
         var c_render_entity = render_entity.CRenderEntity{};
@@ -92,7 +94,7 @@ pub const StaticObject = struct {
         return .{
             .render_entity = c_render_entity,
             .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
-            .rotation_angle = 0.0,
+            .physics = .{ .current = .{ .origin = c_render_entity.origin.toVec3f() } },
         };
     }
 };
@@ -113,32 +115,42 @@ extern fn c_get_time_state() callconv(.C) CTimeState;
 
 pub fn updateRotation(comptime T: type, list: anytype) void {
     if (comptime !assertFields(struct {
-        rotation_angle: f32,
-        render_entity: render_entity.CRenderEntity,
+        physics: PhysicsStatic,
     }, T)) return;
 
     const time_state = c_get_time_state();
     const delta_time_ms = time_state.delta();
     const dt = (@as(f32, @floatFromInt(delta_time_ms)) / 1000.0);
+    var rotation = Rotation.create(
+        Vec3(f32){},
+        Vec3(f32){ .z = 1.0 },
+        45.0 * dt,
+    );
 
     var list_slice = list.slice();
     for (
+        list_slice.items(.physics),
+    ) |*physics| {
+        physics.rotate(&rotation);
+    }
+}
+
+pub fn updateRenderEntityFromPhysics(comptime T: type, list: anytype) void {
+    if (comptime !assertFields(struct {
+        physics: PhysicsStatic,
+        render_entity: render_entity.CRenderEntity,
+    }, T)) return;
+
+    var list_slice = list.slice();
+    for (
+        list_slice.items(.physics),
         list_slice.items(.render_entity),
-        list_slice.items(.rotation_angle),
-    ) |*render_entity_ptr, *rotation_angle| {
-        rotation_angle.* = 45.0 * dt;
-
-        var rotation = Rotation.create(
-            Vec3(f32){},
-            Vec3(f32){ .z = 1.0 },
-            rotation_angle.*,
-        );
-
-        var axis = &render_entity_ptr.axis;
-        axis.* = CMat3.fromMat3f(&Mat3(f32).multiply(
-            &axis.toMat3f(),
-            rotation.toMat3(),
-        ));
+    ) |
+        *physics,
+        *render_entity_ptr,
+    | {
+        render_entity_ptr.axis = CMat3.fromMat3f(&physics.current.axis);
+        render_entity_ptr.origin = CVec3.fromVec3f(&physics.current.origin);
     }
 }
 
