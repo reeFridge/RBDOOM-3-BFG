@@ -72,6 +72,7 @@ pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopa
 
 const presentRenderEntity = @import("types.zig").presentRenderEntity;
 const updateRotation = @import("types.zig").updateRotation;
+const updateRenderEntityFromPhysics = @import("types.zig").updateRenderEntityFromPhysics;
 
 extern fn c_is_new_frame() callconv(.C) bool;
 
@@ -79,5 +80,6 @@ pub export fn ztech_processEntities() callconv(.C) void {
     if (!c_is_new_frame()) return;
 
     g_entities.process(updateRotation);
+    g_entities.process(updateRenderEntityFromPhysics);
     g_entities.process(presentRenderEntity);
 }
