@@ -63,8 +63,8 @@ const deferredEntityCallback_t = fn (?*anyopaque, ?*anyopaque) callconv(.C) bool
 pub const CRenderEntity = extern struct {
     // this can only be null if callback is set
     hModel: ?*anyopaque = null,
-    entityNum: i32 = -1,
-    bodyId: i32 = -1,
+    entityNum: c_int = -1,
+    bodyId: c_int = -1,
 
     // Entities that are expensive to generate, like skeletal models, can be
     // deferred until their bounds are found to be in view, in the frustum
@@ -87,16 +87,16 @@ pub const CRenderEntity = extern struct {
     // security cameras could suppress their model in their subviews if we add a way
     // of specifying a view number for a remoteRenderMap view
 
-    suppressSurfaceInViewID: i32 = 0,
-    suppressShadowInViewID: i32 = 0,
+    suppressSurfaceInViewID: c_int = 0,
+    suppressShadowInViewID: c_int = 0,
 
     // world models for the player and weapons will not cast shadows from view weapon
     // muzzle flashes
-    suppressShadowInLightID: i32 = 0,
+    suppressShadowInLightID: c_int = 0,
 
     // if non-zero, the surface and shadow (if it casts one)
     // will only show up in the specific view, ie: player weapons
-    allowSurfaceInViewID: i32 = 0,
+    allowSurfaceInViewID: c_int = 0,
 
     // positioning
     // axis rotation vectors must be unit length for many
@@ -122,7 +122,7 @@ pub const CRenderEntity = extern struct {
     // any remote camera surfaces will use this
     remoteRenderView: ?*anyopaque = null,
 
-    numJoints: i32 = 0,
+    numJoints: c_int = 0,
     // array of joints that will modify vertices.
     // NULL if non-deformable model.  NOT freed by renderer
     joints: ?*anyopaque = null,
@@ -151,7 +151,7 @@ pub const CRenderEntity = extern struct {
     // Mask out this object during motion blur
     skipMotionBlur: bool = false,
     // force an update (NOTE: not a bool to keep this struct a multiple of 4 bytes)
-    forceUpdate: i32 = 0,
-    timeGroup: i32 = 0,
-    xrayIndex: i32 = 0,
+    forceUpdate: c_int = 0,
+    timeGroup: c_int = 0,
+    xrayIndex: c_int = 0,
 };

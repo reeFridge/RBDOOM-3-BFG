@@ -91,10 +91,18 @@ pub const StaticObject = struct {
             c_parse_spawn_args_to_render_entity(ptr, &c_render_entity);
         }
 
+        var clip_model_local: ?PhysicsStatic.ClipModel = null;
+        if (spawn_args.get("model")) |model_path| {
+            clip_model_local = PhysicsStatic.ClipModel.fromModel(model_path);
+        }
+
         return .{
             .render_entity = c_render_entity,
             .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
-            .physics = .{ .current = .{ .origin = c_render_entity.origin.toVec3f() } },
+            .physics = .{
+                .current = .{ .origin = c_render_entity.origin.toVec3f() },
+                .clip_model = clip_model_local,
+            },
         };
     }
 };
@@ -121,16 +129,17 @@ pub fn updateRotation(comptime T: type, list: anytype) void {
     const time_state = c_get_time_state();
     const delta_time_ms = time_state.delta();
     const dt = (@as(f32, @floatFromInt(delta_time_ms)) / 1000.0);
-    var rotation = Rotation.create(
-        Vec3(f32){},
-        Vec3(f32){ .z = 1.0 },
-        45.0 * dt,
-    );
 
     var list_slice = list.slice();
     for (
         list_slice.items(.physics),
     ) |*physics| {
+        var rotation = Rotation.create(
+            physics.current.origin,
+            Vec3(f32){ .z = 1.0 },
+            45.0 * dt,
+        );
+
         physics.rotate(&rotation);
     }
 }

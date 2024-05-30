@@ -124,6 +124,9 @@ bool idPhysics_RigidBody::CollisionImpulse( const trace_t& collision, idVec3& im
 
 	// get info from other entity involved
 	ent = gameLocal.entities[collision.c.entityNum];
+	if (!ent) {
+		return false;
+	}
 	ent->GetImpactInfo( self, collision.c.id, collision.c.point, &info );
 
 	// collision point relative to the body center of mass

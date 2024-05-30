@@ -2454,11 +2454,11 @@ void idWeapon::AlertMonsters()
 	if( tr.fraction < 1.0f )
 	{
 		ent = gameLocal.GetTraceEntity( tr );
-		if( ent->IsType( idAI::Type ) )
+		if( ent && ent->IsType( idAI::Type ) )
 		{
 			static_cast<idAI*>( ent )->TouchedByFlashlight( owner );
 		}
-		else if( ent->IsType( idTrigger::Type ) )
+		else if( ent && ent->IsType( idTrigger::Type ) )
 		{
 			ent->Signal( SIG_TOUCH );
 			ent->ProcessEvent( &EV_Touch, owner, &tr );
@@ -2478,11 +2478,11 @@ void idWeapon::AlertMonsters()
 	if( tr.fraction < 1.0f )
 	{
 		ent = gameLocal.GetTraceEntity( tr );
-		if( ent->IsType( idAI::Type ) )
+		if( ent && ent->IsType( idAI::Type ) )
 		{
 			static_cast<idAI*>( ent )->TouchedByFlashlight( owner );
 		}
-		else if( ent->IsType( idTrigger::Type ) )
+		else if( ent && ent->IsType( idTrigger::Type ) )
 		{
 			ent->Signal( SIG_TOUCH );
 			ent->ProcessEvent( &EV_Touch, owner, &tr );

@@ -1137,6 +1137,10 @@ int idPush::DiscardEntities( idEntity* entityList[], int numEntities, int flags,
 	{
 		check = entityList[ i ];
 
+		if (!check) {
+			continue;
+		}
+
 		// if the physics object is not pushable
 		if( !check->GetPhysics()->IsPushable() )
 		{
