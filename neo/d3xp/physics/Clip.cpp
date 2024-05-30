@@ -396,6 +396,7 @@ idClipModel::Init
 */
 void idClipModel::Init()
 {
+	external = false;
 	enabled = true;
 	entity = NULL;
 	id = 0;
@@ -432,6 +433,11 @@ idClipModel::idClipModel( const char* name )
 {
 	Init();
 	LoadModel( name );
+}
+
+extern "C" void c_initClipModel(void* mem_ptr, uint8_t const* const name) {
+	idClipModel* ptr = new(mem_ptr) idClipModel((const char*)name);
+	ptr->external = true;
 }
 
 /*
@@ -494,6 +500,10 @@ idClipModel::idClipModel( const idClipModel* model )
 	renderModelHandle = model->renderModelHandle;
 	clipLinks = NULL;
 	touchCount = -1;
+}
+
+extern "C" void c_deinitClipModel(idClipModel* self) {
+	self->~idClipModel();
 }
 
 /*
@@ -717,6 +727,43 @@ void idClipModel::Link_r( struct clipSector_s* node )
 	clipLinks = link;
 }
 
+extern "C" void c_linkClipModel(idClipModel* self, idVec3 origin, idMat3 axis) {
+	self->LinkExternal(gameLocal.clip, 0, origin, axis);
+}
+
+void idClipModel::LinkExternal( idClip& clp )
+{
+	if( clipLinks )
+	{
+		Unlink();	// unlink from old position
+	}
+
+	if( bounds.IsCleared() )
+	{
+		return;
+	}
+
+	// set the abs box
+	if( axis.IsRotated() )
+	{
+		// expand for rotation
+		absBounds.FromTransformedBounds( bounds, origin, axis );
+	}
+	else
+	{
+		// normal
+		absBounds[0] = bounds[0] + origin;
+		absBounds[1] = bounds[1] + origin;
+	}
+
+	// because movement is clipped an epsilon away from an actual edge,
+	// we must fully check even when bounding boxes don't quite touch
+	absBounds[0] -= vec3_boxEpsilon;
+	absBounds[1] += vec3_boxEpsilon;
+
+	Link_r( clp.clipSectors );
+}
+
 /*
 ===============
 idClipModel::Link
@@ -762,6 +809,24 @@ void idClipModel::Link( idClip& clp )
 	Link_r( clp.clipSectors );
 }
 
+void idClipModel::LinkExternal( idClip& clp, int newId, const idVec3& newOrigin, const idMat3& newAxis, int renderModelHandle )
+{
+
+	this->id = newId;
+	this->origin = newOrigin;
+	this->axis = newAxis;
+	if( renderModelHandle != -1 )
+	{
+		this->renderModelHandle = renderModelHandle;
+		const renderEntity_t* renderEntity = gameRenderWorld->GetRenderEntity( renderModelHandle );
+		if( renderEntity )
+		{
+			this->bounds = renderEntity->bounds;
+		}
+	}
+	this->LinkExternal( clp );
+}
+
 /*
 ===============
 idClipModel::Link
@@ -794,6 +859,10 @@ idClipModel::CheckModel
 cmHandle_t idClipModel::CheckModel( const char* name )
 {
 	return collisionModelManager->LoadModel( name, false );
+}
+
+extern "C" bool c_checkClipModelPath(uint8_t const* const name) {
+	return (idClipModel::CheckModel((const char*)name) > 0);
 }
 
 
@@ -1128,7 +1197,7 @@ int idClip::GetTraceClipModels( const idBounds& bounds, int contentMask, const i
 		{
 			clipModelList[i] = NULL;			// don't clip against the pass entity
 		}
-		else if( cm->entity == passOwner )
+		else if( passOwner != NULL && cm->entity == passOwner )
 		{
 			clipModelList[i] = NULL;			// missiles don't clip with their owner
 		}
@@ -1138,7 +1207,7 @@ int idClip::GetTraceClipModels( const idBounds& bounds, int contentMask, const i
 			{
 				clipModelList[i] = NULL;		// don't clip against own missiles
 			}
-			else if( cm->owner == passOwner )
+			else if( passOwner != NULL && cm->owner == passOwner )
 			{
 				clipModelList[i] = NULL;		// don't clip against other missiles from same owner
 			}
@@ -1397,7 +1466,11 @@ bool idClip::Translation( trace_t& results, const idVec3& start, const idVec3& e
 		if( trace.fraction < results.fraction )
 		{
 			results = trace;
-			results.c.entityNum = touch->entity->entityNumber;
+			if (touch->external) {
+				results.c.entityNum = -1;
+			} else {
+				results.c.entityNum = touch->entity->entityNumber;
+			}
 			results.c.id = touch->id;
 			if( results.fraction == 0.0f )
 			{
@@ -1477,7 +1550,13 @@ bool idClip::Rotation( trace_t& results, const idVec3& start, const idRotation& 
 		if( trace.fraction < results.fraction )
 		{
 			results = trace;
-			results.c.entityNum = touch->entity->entityNumber;
+
+			if (touch->external) {
+				results.c.entityNum = -1;
+			} else {
+				results.c.entityNum = touch->entity->entityNumber;
+			}
+
 			results.c.id = touch->id;
 			if( results.fraction == 0.0f )
 			{
@@ -1598,7 +1677,12 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 			if( trace.fraction < translationalTrace.fraction )
 			{
 				translationalTrace = trace;
-				translationalTrace.c.entityNum = touch->entity->entityNumber;
+
+				if (touch->external) {
+					translationalTrace.c.entityNum = -1;
+				} else {
+					translationalTrace.c.entityNum = touch->entity->entityNumber;
+				}
 				translationalTrace.c.id = touch->id;
 				if( translationalTrace.fraction == 0.0f )
 				{
@@ -1662,7 +1746,11 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 			if( trace.fraction < rotationalTrace.fraction )
 			{
 				rotationalTrace = trace;
-				rotationalTrace.c.entityNum = touch->entity->entityNumber;
+				if (touch->external) {
+					rotationalTrace.c.entityNum = -1;
+				} else {
+					rotationalTrace.c.entityNum = touch->entity->entityNumber;
+				}
 				rotationalTrace.c.id = touch->id;
 				if( rotationalTrace.fraction == 0.0f )
 				{
@@ -1758,7 +1846,11 @@ int idClip::Contacts( contactInfo_t* contacts, const int maxContacts, const idVe
 
 		for( j = 0; j < n; j++ )
 		{
-			contacts[numContacts].entityNum = touch->entity->entityNumber;
+			if (touch->external) {
+				contacts[numContacts].entityNum = -1;
+			} else {
+				contacts[numContacts].entityNum = touch->entity->entityNumber;
+			}
 			contacts[numContacts].id = touch->id;
 			numContacts++;
 		}

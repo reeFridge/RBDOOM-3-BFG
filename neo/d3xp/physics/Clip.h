@@ -73,6 +73,8 @@ public:
 
 	void					Link( idClip& clp );				// must have been linked with an entity and id before
 	void					Link( idClip& clp, idEntity* ent, int newId, const idVec3& newOrigin, const idMat3& newAxis, int renderModelHandle = -1 );
+	void					LinkExternal( idClip& clp );				// must have been linked with an entity and id before
+	void					LinkExternal( idClip& clp, int newId, const idVec3& newOrigin, const idMat3& newAxis, int renderModelHandle = -1 );
 	void					Unlink();						// unlink from sectors
 	void					SetPosition( const idVec3& newOrigin, const idMat3& newAxis );	// unlinks the clip model
 	void					Translate( const idVec3& translation );							// unlinks the clip model
@@ -108,6 +110,8 @@ public:
 
 	static void				SaveTraceModels( idSaveGame* savefile );
 	static void				RestoreTraceModels( idRestoreGame* savefile );
+public:
+	bool external;
 
 private:
 	bool					enabled;				// true if this clip model is used for clipping

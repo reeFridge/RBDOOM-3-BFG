@@ -31,11 +31,43 @@ pub fn TypedEntities(comptime Archetype: type) type {
         pub fn add(self: *@This(), instance: Archetype) error{OutOfMemory}!EntityId {
             try self.storage.append(self.allocator, instance);
 
-            return @intCast(self.storage.len - 1);
+            const index = self.storage.len - 1;
+            self.initFieldsAtIndex(index);
+
+            return @intCast(index);
         }
 
         pub fn deinit(self: *@This()) void {
+            self.deinitFields();
             self.storage.deinit(self.allocator);
+        }
+
+        fn initFieldsAtIndex(self: *@This(), index: usize) void {
+            const slices = self.storage.slice();
+            const fields = std.meta.fields(Type);
+
+            inline for (fields, 0..) |field_info, field_index| {
+                if (std.meta.hasMethod(field_info.type, "component_init")) {
+                    const StorageType = @TypeOf(self.storage);
+                    const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
+                    field_slice[index].component_init();
+                }
+            }
+        }
+
+        fn deinitFields(self: *@This()) void {
+            const slices = self.storage.slice();
+            const fields = std.meta.fields(Type);
+
+            inline for (fields, 0..) |field_info, field_index| {
+                if (std.meta.hasMethod(field_info.type, "component_deinit")) {
+                    const StorageType = @TypeOf(self.storage);
+                    const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
+                    for (field_slice) |*item| {
+                        item.component_deinit();
+                    }
+                }
+            }
         }
     };
 }

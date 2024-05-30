@@ -6621,6 +6621,11 @@ void idPlayer::UpdateFocus()
 	for( i = 0; i < listedClipModels; i++ )
 	{
 		clip = clipModelList[ i ];
+
+		if (clip->external) {
+			continue;
+		}
+
 		ent = clip->GetEntity();
 
 		if( ent->IsHidden() )
