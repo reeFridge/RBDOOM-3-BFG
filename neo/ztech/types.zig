@@ -7,7 +7,8 @@ const CVec3 = render_entity.CVec3;
 const Vec3 = @import("math/vector.zig").Vec3;
 const Mat3 = @import("math/matrix.zig").Mat3;
 const Rotation = @import("math/rotation.zig");
-const PhysicsStatic = @import("physics/static.zig");
+const ClipModel = @import("physics/clip_model.zig").ClipModel;
+const Physics = @import("physics/physics.zig").Physics;
 
 pub const Name = []const u8;
 
@@ -83,7 +84,7 @@ pub const StaticObject = struct {
     // used to present a model to the renderer
     render_entity: render_entity.CRenderEntity,
     model_def_handle: c_int = -1,
-    physics: PhysicsStatic,
+    physics: Physics,
 
     pub fn spawn(spawn_args: *const SpawnArgs, c_dict_ptr: ?*anyopaque) !StaticObject {
         var c_render_entity = render_entity.CRenderEntity{};
@@ -91,17 +92,19 @@ pub const StaticObject = struct {
             c_parse_spawn_args_to_render_entity(ptr, &c_render_entity);
         }
 
-        var clip_model_local: ?PhysicsStatic.ClipModel = null;
+        var clip_model_local: ?ClipModel = null;
         if (spawn_args.get("model")) |model_path| {
-            clip_model_local = PhysicsStatic.ClipModel.fromModel(model_path);
+            clip_model_local = ClipModel.fromModel(model_path);
         }
 
         return .{
             .render_entity = c_render_entity,
             .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
             .physics = .{
-                .current = .{ .origin = c_render_entity.origin.toVec3f() },
-                .clip_model = clip_model_local,
+                .rigid_body = .{
+                    .current = .{ .integration = .{ .position = c_render_entity.origin.toVec3f() } },
+                    .clip_model = clip_model_local,
+                },
             },
         };
     }
@@ -121,9 +124,9 @@ const CTimeState = extern struct {
 
 extern fn c_get_time_state() callconv(.C) CTimeState;
 
-pub fn updateRotation(comptime T: type, list: anytype) void {
+pub fn updatePhysics(comptime T: type, list: anytype) void {
     if (comptime !assertFields(struct {
-        physics: PhysicsStatic,
+        physics: Physics,
     }, T)) return;
 
     const time_state = c_get_time_state();
@@ -134,19 +137,24 @@ pub fn updateRotation(comptime T: type, list: anytype) void {
     for (
         list_slice.items(.physics),
     ) |*physics| {
-        var rotation = Rotation.create(
-            physics.current.origin,
-            Vec3(f32){ .z = 1.0 },
-            45.0 * dt,
-        );
+        switch (physics.*) {
+            Physics.rigid_body => |*rigid_body| _ = rigid_body.evaluate(delta_time_ms),
+            Physics.static => |*static| {
+                var rotation = Rotation.create(
+                    static.current.origin,
+                    Vec3(f32){ .z = 1.0 },
+                    45.0 * dt,
+                );
 
-        physics.rotate(&rotation);
+                static.rotate(&rotation);
+            },
+        }
     }
 }
 
 pub fn updateRenderEntityFromPhysics(comptime T: type, list: anytype) void {
     if (comptime !assertFields(struct {
-        physics: PhysicsStatic,
+        physics: Physics,
         render_entity: render_entity.CRenderEntity,
     }, T)) return;
 
@@ -158,8 +166,9 @@ pub fn updateRenderEntityFromPhysics(comptime T: type, list: anytype) void {
         *physics,
         *render_entity_ptr,
     | {
-        render_entity_ptr.axis = CMat3.fromMat3f(&physics.current.axis);
-        render_entity_ptr.origin = CVec3.fromVec3f(&physics.current.origin);
+        const transform = physics.getTransform();
+        render_entity_ptr.axis = CMat3.fromMat3f(&transform.axis);
+        render_entity_ptr.origin = CVec3.fromVec3f(&transform.origin);
     }
 }
 

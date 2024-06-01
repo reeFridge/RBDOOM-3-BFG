@@ -3030,9 +3030,6 @@ void idEntity::InitDefaultPhysics( const idVec3& origin, const idMat3& axis, con
 	physics = &defaultPhysicsObj;
 }
 
-extern "C" void c_create_clip_model() {
-}
-
 /*
 ================
 idEntity::SetPhysics

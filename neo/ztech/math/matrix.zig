@@ -7,6 +7,27 @@ pub fn Mat3(comptime T: type) type {
 
         rows: [3]Vec3(T),
 
+        pub fn skewSymmetric(src: *const Vec3(T)) Self {
+            return .{
+                .rows = .{
+                    .{ .x = 0, .y = -src.z, .z = src.y },
+                    .{ .x = src.z, .y = 0, .z = -src.x },
+                    .{ .x = -src.y, .y = src.x, .z = 0 },
+                },
+            };
+        }
+
+        pub fn orthoNormalize(self: *const Self) Self {
+            var ortho = self.*;
+            ortho.rows[0] = ortho.rows[0].normalize();
+            ortho.rows[2] = Vec3(T).cross(&ortho.rows[0], &ortho.rows[1]);
+            ortho.rows[2] = ortho.rows[2].normalize();
+            ortho.rows[1] = Vec3(T).cross(&ortho.rows[2], &ortho.rows[0]);
+            ortho.rows[1] = ortho.rows[1].normalize();
+
+            return ortho;
+        }
+
         pub fn identity() Self {
             return .{
                 .rows = .{
@@ -22,6 +43,16 @@ pub fn Mat3(comptime T: type) type {
                 .x = self.rows[0].x * vec.x + self.rows[1].x * vec.y + self.rows[2].x * vec.z,
                 .y = self.rows[0].y * vec.x + self.rows[1].y * vec.y + self.rows[2].y * vec.z,
                 .z = self.rows[0].z * vec.x + self.rows[1].z * vec.y + self.rows[2].z * vec.z,
+            };
+        }
+
+        pub fn transpose(a: *const Self) Self {
+            return .{
+                .rows = .{
+                    .{ .x = a.rows[0].x, .y = a.rows[1].x, .z = a.rows[2].x },
+                    .{ .x = a.rows[0].y, .y = a.rows[1].y, .z = a.rows[2].y },
+                    .{ .x = a.rows[0].z, .y = a.rows[1].z, .z = a.rows[2].z },
+                },
             };
         }
 
