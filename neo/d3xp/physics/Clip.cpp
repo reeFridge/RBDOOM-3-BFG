@@ -659,6 +659,10 @@ void idClipModel::GetMassProperties( const float density, float& mass, idVec3& c
 	inertiaTensor = density * entry->inertiaTensor;
 }
 
+extern "C" void c_unlinkClipModel(idClipModel* ptr) {
+	ptr->Unlink();
+}
+
 /*
 ===============
 idClipModel::Unlink
@@ -727,8 +731,8 @@ void idClipModel::Link_r( struct clipSector_s* node )
 	clipLinks = link;
 }
 
-extern "C" void c_linkClipModel(idClipModel* self, idVec3 origin, idMat3 axis) {
-	self->LinkExternal(gameLocal.clip, 0, origin, axis);
+extern "C" void c_linkClipModel(idClipModel* self, int id, idVec3 origin, idMat3 axis) {
+	self->LinkExternal(gameLocal.clip, id, origin, axis);
 }
 
 void idClipModel::LinkExternal( idClip& clp )
