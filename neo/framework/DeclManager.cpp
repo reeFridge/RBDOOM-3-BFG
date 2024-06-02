@@ -2593,6 +2593,7 @@ void idDeclManagerLocal::ExportEntityDefsToTrenchBroom_f( const idCmdArgs& args 
 					idStr::Icmp( decl->GetName(), "func_plat_model" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "func_rotating_model" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "test_cube" ) == 0 ||
+					idStr::Icmp( decl->GetName(), "zig_cube_moveable" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "zig_cube" ) == 0)
 			{
 				// entities with dynamic models

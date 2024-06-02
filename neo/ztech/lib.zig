@@ -1,6 +1,7 @@
 const std = @import("std");
 const entity = @import("entity.zig");
 const Types = @import("types.zig").ExportedTypes;
+const Game = @import("game.zig");
 
 const Entities = entity.Entities(Types);
 
@@ -74,10 +75,8 @@ const presentRenderEntity = @import("types.zig").presentRenderEntity;
 const updatePhysics = @import("types.zig").updatePhysics;
 const updateRenderEntityFromPhysics = @import("types.zig").updateRenderEntityFromPhysics;
 
-extern fn c_is_new_frame() callconv(.C) bool;
-
 pub export fn ztech_processEntities() callconv(.C) void {
-    if (!c_is_new_frame()) return;
+    if (!Game.c_isNewFrame()) return;
 
     g_entities.process(updatePhysics);
     g_entities.process(updateRenderEntityFromPhysics);

@@ -1,6 +1,5 @@
-const render_entity = @import("../render_entity.zig");
-const CMat3 = render_entity.CMat3;
-const CVec3 = render_entity.CVec3;
+const CVec3 = @import("../math/vector.zig").CVec3;
+const CMat3 = @import("../math/matrix.zig").CMat3;
 
 pub const ContactInfo = extern struct {
     type: c_int = 0,
