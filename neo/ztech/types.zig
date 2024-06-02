@@ -1,14 +1,14 @@
 const SpawnArgs = @import("entity.zig").SpawnArgs;
 const assertFields = @import("entity.zig").assertFields;
 const std = @import("std");
-const render_entity = @import("render_entity.zig");
-const CMat3 = render_entity.CMat3;
-const CVec3 = render_entity.CVec3;
+const render_entity = @import("renderer/render_entity.zig");
+const CMat3 = @import("math/matrix.zig").CMat3;
+const CVec3 = @import("math/vector.zig").CVec3;
 const Vec3 = @import("math/vector.zig").Vec3;
-const Mat3 = @import("math/matrix.zig").Mat3;
 const Rotation = @import("math/rotation.zig");
 const ClipModel = @import("physics/clip_model.zig").ClipModel;
 const Physics = @import("physics/physics.zig").Physics;
+const Game = @import("game.zig");
 
 pub const Name = []const u8;
 
@@ -101,6 +101,37 @@ pub const StaticObject = struct {
             .render_entity = c_render_entity,
             .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
             .physics = .{
+                .static = .{
+                    .current = .{ .origin = c_render_entity.origin.toVec3f() },
+                    .clip_model = clip_model_local,
+                },
+            },
+        };
+    }
+};
+
+pub const MoveableObject = struct {
+    name: Name,
+    // used to present a model to the renderer
+    render_entity: render_entity.CRenderEntity,
+    model_def_handle: c_int = -1,
+    physics: Physics,
+
+    pub fn spawn(spawn_args: *const SpawnArgs, c_dict_ptr: ?*anyopaque) !MoveableObject {
+        var c_render_entity = render_entity.CRenderEntity{};
+        if (c_dict_ptr) |ptr| {
+            c_parse_spawn_args_to_render_entity(ptr, &c_render_entity);
+        }
+
+        var clip_model_local: ?ClipModel = null;
+        if (spawn_args.get("model")) |model_path| {
+            clip_model_local = ClipModel.fromModel(model_path);
+        }
+
+        return .{
+            .render_entity = c_render_entity,
+            .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
+            .physics = .{
                 .rigid_body = .{
                     .current = .{ .integration = .{ .position = c_render_entity.origin.toVec3f() } },
                     .clip_model = clip_model_local,
@@ -113,23 +144,12 @@ pub const StaticObject = struct {
 extern fn c_add_entity_def(*const render_entity.CRenderEntity) callconv(.C) c_int;
 extern fn c_update_entity_def(c_int, *const render_entity.CRenderEntity) callconv(.C) void;
 
-const CTimeState = extern struct {
-    time: c_int,
-    previous_time: c_int,
-
-    pub fn delta(state: CTimeState) i32 {
-        return state.time - state.previous_time;
-    }
-};
-
-extern fn c_get_time_state() callconv(.C) CTimeState;
-
 pub fn updatePhysics(comptime T: type, list: anytype) void {
     if (comptime !assertFields(struct {
         physics: Physics,
     }, T)) return;
 
-    const time_state = c_get_time_state();
+    const time_state = Game.c_getTimeState();
     const delta_time_ms = time_state.delta();
     const dt = (@as(f32, @floatFromInt(delta_time_ms)) / 1000.0);
 
@@ -197,4 +217,4 @@ pub fn presentRenderEntity(comptime T: type, list: anytype) void {
     }
 }
 
-pub const ExportedTypes = .{ Player, Item, Enemy, StaticObject };
+pub const ExportedTypes = .{ Player, Item, Enemy, StaticObject, MoveableObject };

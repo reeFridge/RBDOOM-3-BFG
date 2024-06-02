@@ -1,60 +1,10 @@
 const std = @import("std");
-const Vec3f = @import("math/vector.zig").Vec3(f32);
-const Mat3f = @import("math/matrix.zig").Mat3(f32);
+const CMat3 = @import("../math/matrix.zig").CMat3;
+const CVec3 = @import("../math/vector.zig").CVec3;
 const MAX_ENTITY_SHADER_PARMS = @as(usize, 12);
 const MAX_RENDERENTITY_GUI = @as(usize, 3);
 
 const RenderEntity = @This();
-
-pub const CVec3 = extern struct {
-    x: f32 = 0.0,
-    y: f32 = 0.0,
-    z: f32 = 0.0,
-
-    pub fn fromVec3f(vec: *const Vec3f) CVec3 {
-        var result: CVec3 = .{};
-        inline for (std.meta.fields(CVec3)) |info| {
-            @field(result, info.name) = @field(vec.*, info.name);
-        }
-
-        return result;
-    }
-
-    pub fn toVec3f(self: *const CVec3) Vec3f {
-        var result: Vec3f = .{};
-        inline for (std.meta.fields(Vec3f)) |info| {
-            @field(result, info.name) = @field(self.*, info.name);
-        }
-
-        return result;
-    }
-};
-
-pub const CMat3 = extern struct {
-    mat: [3]CVec3 = [_]CVec3{
-        .{ .x = 1.0 },
-        .{ .y = 1.0 },
-        .{ .z = 1.0 },
-    },
-
-    pub fn fromMat3f(mat: *const Mat3f) CMat3 {
-        var result: CMat3 = std.mem.zeroes(CMat3);
-        inline for (0..result.mat.len) |i| {
-            result.mat[i] = CVec3.fromVec3f(&mat.rows[i]);
-        }
-
-        return result;
-    }
-
-    pub fn toMat3f(self: *const CMat3) Mat3f {
-        var result: Mat3f = std.mem.zeroes(Mat3f);
-        inline for (0..result.rows.len) |i| {
-            result.rows[i] = self.mat[i].toVec3f();
-        }
-
-        return result;
-    }
-};
 
 pub const CBounds = extern struct { b: [2]CVec3 = [_]CVec3{ .{}, .{} } };
 

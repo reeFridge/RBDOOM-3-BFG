@@ -291,11 +291,11 @@ typedef struct {
 	int previous_time;
 } CTimeState;
 
-extern "C" CTimeState c_get_time_state() {
+extern "C" CTimeState c_getTimeState() {
 	return {gameLocal.time, gameLocal.previousTime};
 }
 
-extern "C" bool c_is_new_frame() {
+extern "C" bool c_isNewFrame() {
 	return gameLocal.isNewFrame;
 }
 

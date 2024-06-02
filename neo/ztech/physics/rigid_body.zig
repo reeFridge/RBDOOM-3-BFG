@@ -1,9 +1,10 @@
-const render_entity = @import("../render_entity.zig");
-const CVec3 = render_entity.CVec3;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
+const Rotation = @import("../math/rotation.zig");
 const ClipModel = @import("clip_model.zig").ClipModel;
 const TraceResult = @import("collision_model.zig").TraceResult;
+const Clip = @import("clip.zig");
+const Game = @import("../game.zig");
 
 const PhysicsRigidBody = @This();
 
@@ -74,9 +75,9 @@ const Integrator = struct {
         next_state.position = state.position.add(&d.linear_velocity.scale(delta_time));
 
         var next_axis = &next_state.orientation;
-        next_axis.rows[0] = next_axis.rows[0].add(&d.angular_matrix.rows[0].scale(delta_time));
-        next_axis.rows[1] = next_axis.rows[1].add(&d.angular_matrix.rows[1].scale(delta_time));
-        next_axis.rows[2] = next_axis.rows[2].add(&d.angular_matrix.rows[2].scale(delta_time));
+        next_axis.v[0] = next_axis.v[0].add(&d.angular_matrix.v[0].scale(delta_time));
+        next_axis.v[1] = next_axis.v[1].add(&d.angular_matrix.v[1].scale(delta_time));
+        next_axis.v[2] = next_axis.v[2].add(&d.angular_matrix.v[2].scale(delta_time));
 
         next_state.linear_momentum = state.linear_momentum.add(&d.force.scale(delta_time));
         next_state.angular_momentum = state.angular_momentum.add(&d.torque.scale(delta_time));
@@ -120,8 +121,31 @@ pub fn integrate(self: *PhysicsRigidBody, delta_time: f32, next_state: *State) v
     next_state.rest_start_time = self.current.rest_start_time;
 }
 
-pub fn check_for_collisions(_: *PhysicsRigidBody, _: f32, _: *State, _: *TraceResult) bool {
-    return false;
+pub fn check_for_collisions(
+    self: *PhysicsRigidBody,
+    next_position: *const Vec3(f32),
+    next_orientation: *const Mat3(f32),
+) ?TraceResult {
+    if (self.clip_model) |*clip_model| {
+        const i = &self.current.integration;
+
+        var axis: Mat3(f32) = Mat3(f32).identity();
+        Mat3(f32).transposeMultiply(&i.orientation, next_orientation, &axis);
+        var rotation: Rotation = .{}; // TODO: axis.toRotation();
+        rotation.origin = i.position;
+
+        var result: TraceResult = .{};
+        // if there was a collision
+        return if (Clip.motion(
+            &result,
+            &i.position,
+            next_position,
+            &rotation,
+            clip_model,
+            &i.orientation,
+            0,
+        )) result else null;
+    } else return null;
 }
 
 pub fn collision_impulse(_: *PhysicsRigidBody, _: *const TraceResult, _: *const Vec3(f32)) bool {
@@ -144,16 +168,29 @@ pub fn evaluate(self: *PhysicsRigidBody, time_step_ms: i32) bool {
     self.integrate(time_step, &next_step);
 
     // check for collisions from the current to the next state
-    var collision_result: TraceResult = .{};
-    const collided = self.check_for_collisions(time_step, &next_step, &collision_result);
+    const opt_collision_result = self.check_for_collisions(
+        &next_step.integration.position,
+        &next_step.integration.orientation,
+    );
+
+    if (opt_collision_result) |collision_result| {
+        // set the next state to the state at the moment of impact
+        var next_i = &next_step.integration;
+        next_i.position = collision_result.endpos.toVec3f();
+        next_i.orientation = collision_result.endAxis.toMat3f();
+        next_i.linear_momentum = self.current.integration.linear_momentum;
+        next_i.angular_momentum = self.current.integration.angular_momentum;
+    }
 
     self.current = next_step;
 
     var impulse_vec: Vec3(f32) = .{};
     // apply collision impulse
-    if (collided and self.collision_impulse(&collision_result, &impulse_vec)) {
-        // TODO: set to = gameLocal.time
-        self.current.rest_start_time = 1;
+    if (opt_collision_result) |*collision_result| {
+        if (self.collision_impulse(collision_result, &impulse_vec)) {
+            // TODO: set to = gameLocal.time
+            self.current.rest_start_time = Game.c_getTimeState().time;
+        }
     }
 
     self.linkClipModel();
@@ -171,7 +208,7 @@ pub fn evaluate(self: *PhysicsRigidBody, time_step_ms: i32) bool {
         // self.activate_contact_entities();
     }
 
-    if (collided) {
+    if (opt_collision_result != null) {
         // if (c_getEntity(collision_result.c.entityNum)) |ent| {
         // c_entityApplyImpulse(null, collision_result.c.id, collision_result.c.point, impulse.negate());
         // }
@@ -190,8 +227,7 @@ pub inline fn atRest(self: *PhysicsRigidBody) bool {
 }
 
 pub fn rest(self: *PhysicsRigidBody) void {
-    // TODO: set to = gameLocal.time
-    self.current.rest_start_time = 1;
+    self.current.rest_start_time = Game.c_getTimeState().time;
     self.current.integration.linear_momentum = .{};
     self.current.integration.angular_momentum = .{};
 }

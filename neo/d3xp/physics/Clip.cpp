@@ -1572,6 +1572,13 @@ bool idClip::Rotation( trace_t& results, const idVec3& start, const idRotation& 
 	return ( results.fraction < 1.0f );
 }
 
+extern "C" bool c_clipMotion(
+	trace_t* results, const idVec3* start, const idVec3* end, const idRotation* rotation,
+	const idClipModel* mdl, const idMat3* trmAxis, int contentMask, const idEntity* passEntity
+) {
+	return gameLocal.clip.Motion(*results, *start, *end, *rotation, mdl, *trmAxis, contentMask, passEntity);
+}
+
 /*
 ============
 idClip::Motion

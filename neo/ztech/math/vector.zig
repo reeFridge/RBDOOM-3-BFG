@@ -1,5 +1,31 @@
 const std = @import("std");
 
+const Vec3f = Vec3(f32);
+
+pub const CVec3 = extern struct {
+    x: f32 = 0.0,
+    y: f32 = 0.0,
+    z: f32 = 0.0,
+
+    pub fn fromVec3f(vec: *const Vec3f) CVec3 {
+        var result: CVec3 = .{};
+        inline for (std.meta.fields(CVec3)) |info| {
+            @field(result, info.name) = @field(vec.*, info.name);
+        }
+
+        return result;
+    }
+
+    pub fn toVec3f(self: *const CVec3) Vec3f {
+        var result: Vec3f = .{};
+        inline for (std.meta.fields(Vec3f)) |info| {
+            @field(result, info.name) = @field(self.*, info.name);
+        }
+
+        return result;
+    }
+};
+
 pub fn Vec3(comptime T: type) type {
     return struct {
         const Self = @This();

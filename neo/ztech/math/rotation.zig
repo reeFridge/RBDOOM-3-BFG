@@ -1,6 +1,26 @@
+const CVec3 = @import("vector.zig").CVec3;
+const CMat3 = @import("matrix.zig").CMat3;
 const Vec3 = @import("vector.zig").Vec3;
 const Mat3 = @import("matrix.zig").Mat3;
 const std = @import("std");
+
+pub const CRotation = extern struct {
+    origin: CVec3,
+    vec: CVec3,
+    angle: f32,
+    axis: CMat3,
+    axis_valid: bool,
+
+    pub fn fromRotation(rotation: *const Rotation) CRotation {
+        return .{
+            .origin = CVec3.fromVec3f(&rotation.origin),
+            .vec = CVec3.fromVec3f(&rotation.vec),
+            .angle = rotation.angle,
+            .axis_valid = rotation.axis_valid,
+            .axis = CMat3.fromMat3f(&rotation.axis),
+        };
+    }
+};
 
 const Rotation = @This();
 
@@ -78,17 +98,17 @@ pub fn toMat3(self: *Rotation) *const Mat3(f32) {
     const wy = c * y2;
     const wz = c * z2;
 
-    self.axis.rows[0].x = 1.0 - (yy + zz);
-    self.axis.rows[0].y = xy - wz;
-    self.axis.rows[0].z = xz + wy;
+    self.axis.v[0].x = 1.0 - (yy + zz);
+    self.axis.v[0].y = xy - wz;
+    self.axis.v[0].z = xz + wy;
 
-    self.axis.rows[1].x = xy + wz;
-    self.axis.rows[1].y = 1.0 - (xx + zz);
-    self.axis.rows[1].z = yz - wx;
+    self.axis.v[1].x = xy + wz;
+    self.axis.v[1].y = 1.0 - (xx + zz);
+    self.axis.v[1].z = yz - wx;
 
-    self.axis.rows[2].x = xz - wy;
-    self.axis.rows[2].y = yz + wx;
-    self.axis.rows[2].z = 1.0 - (xx + yy);
+    self.axis.v[2].x = xz - wy;
+    self.axis.v[2].y = yz + wx;
+    self.axis.v[2].z = 1.0 - (xx + yy);
 
     self.axis_valid = true;
 

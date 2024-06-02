@@ -1,9 +1,8 @@
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
-const render_entity = @import("../render_entity.zig");
-const CMat3 = render_entity.CMat3;
-const CVec3 = render_entity.CVec3;
-const CBounds = render_entity.CBounds;
+const CVec3 = @import("../math/vector.zig").CVec3;
+const CMat3 = @import("../math/matrix.zig").CMat3;
+const CBounds = @import("../renderer/render_entity.zig").CBounds;
 
 extern fn c_checkClipModelPath([*c]const u8) callconv(.C) bool;
 extern fn c_initClipModel(*anyopaque, [*c]const u8) callconv(.C) void;
