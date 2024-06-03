@@ -77,10 +77,9 @@ const Integrator = struct {
 
         next_state.position = state.position.add(&d.linear_velocity.scale(delta_time));
 
-        var next_axis = &next_state.orientation;
-        next_axis.v[0] = next_axis.v[0].add(&d.angular_matrix.v[0].scale(delta_time));
-        next_axis.v[1] = next_axis.v[1].add(&d.angular_matrix.v[1].scale(delta_time));
-        next_axis.v[2] = next_axis.v[2].add(&d.angular_matrix.v[2].scale(delta_time));
+        for (&next_state.orientation.v, 0..) |*v, i| {
+            v.* = state.orientation.v[i].add(&d.angular_matrix.v[i].scale(delta_time));
+        }
 
         next_state.linear_momentum = state.linear_momentum.add(&d.force.scale(delta_time));
         next_state.angular_momentum = state.angular_momentum.add(&d.torque.scale(delta_time));
