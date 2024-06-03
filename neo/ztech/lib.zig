@@ -71,14 +71,12 @@ pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopa
     return true;
 }
 
-const presentRenderEntity = @import("types.zig").presentRenderEntity;
-const updatePhysics = @import("types.zig").updatePhysics;
-const updateRenderEntityFromPhysics = @import("types.zig").updateRenderEntityFromPhysics;
+const Update = @import("update.zig");
 
 pub export fn ztech_processEntities() callconv(.C) void {
     if (!Game.c_isNewFrame()) return;
 
-    g_entities.process(updatePhysics);
-    g_entities.process(updateRenderEntityFromPhysics);
-    g_entities.process(presentRenderEntity);
+    g_entities.process(Update.updatePhysics);
+    g_entities.process(Update.updateRenderEntityFromPhysics);
+    g_entities.process(Update.presentRenderEntity);
 }

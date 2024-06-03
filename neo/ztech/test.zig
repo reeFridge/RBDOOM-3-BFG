@@ -1,6 +1,75 @@
 const std = @import("std");
-const types = @import("types.zig");
 const entity = @import("entity.zig");
+const SpawnArgs = @import("entity.zig").SpawnArgs;
+
+const types = struct {
+    pub const Name = []const u8;
+
+    pub const Position = struct {
+        x: f32 = 0.0,
+        y: f32 = 0.0,
+    };
+
+    pub const Velocity = struct {
+        x: i32 = 0,
+        y: i32 = 0,
+    };
+
+    pub const Color = enum { Red, Green, Blue };
+
+    pub const Player = struct {
+        name: Name,
+        position: Position,
+        velocity: Velocity,
+        color: Color,
+
+        pub fn spawn(_: *const SpawnArgs, _: ?*anyopaque) !Player {
+            return .{
+                .name = "playerInstance",
+                .position = .{},
+                .velocity = .{},
+                .color = Color.Green,
+            };
+        }
+    };
+
+    pub const Item = struct {
+        name: Name,
+        color: Color,
+
+        pub fn spawn(spawn_args: *const SpawnArgs, _: ?*anyopaque) !Item {
+            const color_str = spawn_args.get("color") orelse "Red";
+            const color: Color = blk: {
+                inline for (std.meta.fields(Color)) |info| {
+                    if (std.mem.eql(u8, info.name, color_str)) {
+                        break :blk @enumFromInt(info.value);
+                    }
+                }
+
+                unreachable;
+            };
+
+            return .{
+                .name = spawn_args.get("name") orelse "unknown_item",
+                .color = color,
+            };
+        }
+    };
+
+    pub const Enemy = struct {
+        name: Name,
+        position: Position,
+        velocity: Velocity,
+
+        pub fn spawn(_: *const SpawnArgs, _: ?*anyopaque) !Enemy {
+            return .{
+                .name = "enemyInstance",
+                .position = .{ .x = 10.0, .y = 10.0 },
+                .velocity = .{ .x = -1, .y = -1 },
+            };
+        }
+    };
+};
 
 const PhysicalObj = struct {
     position: types.Position,
@@ -92,7 +161,7 @@ test "spawn by SpawnArgs" {
     try spawnArgs.put("name", "dynamic_item0");
     try spawnArgs.put("color", "Green");
 
-    var id = try entities.spawn(type_name, &spawnArgs, null);
+    const id = try entities.spawn(type_name, &spawnArgs, null);
 
     var items = entities.getByType(types.Item);
 

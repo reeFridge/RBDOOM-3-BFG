@@ -1,3 +1,4 @@
+const std = @import("std");
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
 const Rotation = @import("../math/rotation.zig");
@@ -37,6 +38,8 @@ inverse_inertia_tensor: Mat3(f32) = Mat3(f32).identity(),
 linear_friction: f32 = 0,
 angular_friction: f32 = 0,
 contact_friction: f32 = 0,
+// contents the physics object collides with
+content_mask: i32 = 0,
 
 const MS2SEC: f32 = 0.001;
 
@@ -143,7 +146,7 @@ pub fn check_for_collisions(
             &rotation,
             clip_model,
             &i.orientation,
-            0,
+            self.content_mask,
         )) result else null;
     } else return null;
 }
@@ -188,7 +191,6 @@ pub fn evaluate(self: *PhysicsRigidBody, time_step_ms: i32) bool {
     // apply collision impulse
     if (opt_collision_result) |*collision_result| {
         if (self.collision_impulse(collision_result, &impulse_vec)) {
-            // TODO: set to = gameLocal.time
             self.current.rest_start_time = Game.c_getTimeState().time;
         }
     }

@@ -440,6 +440,11 @@ extern "C" void c_initClipModel(void* mem_ptr, uint8_t const* const name) {
 	ptr->external = true;
 }
 
+extern "C" void c_initClipModelFromTraceModel(void* mem_ptr, const idTraceModel* trace_model) {
+	idClipModel* ptr = new(mem_ptr) idClipModel(*trace_model);
+	ptr->external = true;
+}
+
 /*
 ================
 idClipModel::idClipModel

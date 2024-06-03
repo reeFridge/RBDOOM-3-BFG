@@ -3,12 +3,14 @@ const Mat3 = @import("../math/matrix.zig").Mat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CBounds = @import("../renderer/render_entity.zig").CBounds;
+const TraceModel = @import("trace_model.zig").TraceModel;
 
 extern fn c_checkClipModelPath([*c]const u8) callconv(.C) bool;
 extern fn c_initClipModel(*anyopaque, [*c]const u8) callconv(.C) void;
-extern fn c_deinitClipModel(*anyopaque) callconv(.C) void;
-extern fn c_linkClipModel(*anyopaque, c_int, CVec3, CMat3) callconv(.C) void;
-extern fn c_unlinkClipModel(*anyopaque) callconv(.C) void;
+extern fn c_initClipModelFromTraceModel(*anyopaque, *const TraceModel) callconv(.C) void;
+extern fn c_deinitClipModel(*ClipModel) callconv(.C) void;
+extern fn c_linkClipModel(*ClipModel, c_int, CVec3, CMat3) callconv(.C) void;
+extern fn c_unlinkClipModel(*ClipModel) callconv(.C) void;
 
 pub const ClipModel = extern struct {
     external: bool = true,
@@ -33,6 +35,14 @@ pub const ClipModel = extern struct {
 
         var clip_model = ClipModel{};
         c_initClipModel(&clip_model, model_path.ptr);
+
+        return clip_model;
+    }
+
+    pub fn fromTraceModel(trace_model: *const TraceModel) ClipModel {
+        var clip_model = ClipModel{};
+
+        c_initClipModelFromTraceModel(&clip_model, trace_model);
 
         return clip_model;
     }
