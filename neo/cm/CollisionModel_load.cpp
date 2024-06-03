@@ -4798,6 +4798,10 @@ bool idCollisionModelManagerLocal::TrmFromModel( const cm_model_t* model, idTrac
 	return true;
 }
 
+extern "C" bool c_initTraceModelFromModel(const char* modelName, idTraceModel* trm) {
+	return collisionModelManager->TrmFromModel(modelName, *trm);
+}
+
 /*
 ==================
 idCollisionModelManagerLocal::TrmFromModel
