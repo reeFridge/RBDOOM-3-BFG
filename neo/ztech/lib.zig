@@ -5,7 +5,7 @@ const Game = @import("game.zig");
 
 const Entities = entity.Entities(Types);
 
-var g_entities: Entities = undefined;
+pub var g_entities: Entities = undefined;
 var g_gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 pub export fn ztech_init() callconv(.C) void {
