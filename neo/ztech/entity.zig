@@ -14,54 +14,113 @@ pub inline fn assertFields(comptime Required: type, comptime T: type) bool {
     return true;
 }
 
-pub fn TypedEntities(comptime Archetype: type) type {
+pub const CaptureType = enum { ByValue, ByReference, ByConstReference };
+pub const QueryField = struct {
+    name: [:0]const u8,
+    type: type,
+    capture: CaptureType,
+};
+
+fn Query(comptime query_fields: []const QueryField) type {
+    const StructField = std.builtin.Type.StructField;
+    comptime var required_fields: []const StructField = &.{};
+    comptime var out_fields: []const StructField = &.{};
+
+    inline for (query_fields) |field| {
+        required_fields = required_fields ++ [_]StructField{.{
+            .name = field.name,
+            .type = field.type,
+            .is_comptime = false,
+            .alignment = 0,
+            .default_value = null,
+        }};
+
+        out_fields = out_fields ++ [_]StructField{.{
+            .name = field.name,
+            .type = switch (field.capture) {
+                .ByValue => field.type,
+                .ByReference => *field.type,
+                .ByConstReference => *const field.type,
+            },
+            .is_comptime = false,
+            .alignment = 0,
+            .default_value = null,
+        }};
+    }
+
+    return struct {
+        pub const Required = @Type(.{
+            .Struct = .{
+                .layout = .auto,
+                .fields = required_fields,
+                .decls = &.{},
+                .is_tuple = false,
+            },
+        });
+
+        pub const Out = @Type(.{
+            .Struct = .{
+                .layout = .auto,
+                .fields = out_fields,
+                .decls = &.{},
+                .is_tuple = false,
+            },
+        });
+    };
+}
+
+pub fn TypedEntities(comptime Archetype: type, comptime EntityHandle: type) type {
     return struct {
         allocator: std.mem.Allocator,
-        storage: std.MultiArrayList(Archetype),
+        field_storage: std.MultiArrayList(Archetype),
 
         pub const Type = Archetype;
 
         pub fn init(allocator: std.mem.Allocator) @This() {
             return .{
                 .allocator = allocator,
-                .storage = std.MultiArrayList(Archetype){},
+                .field_storage = std.MultiArrayList(Archetype){},
             };
         }
 
         pub fn add(self: *@This(), instance: Archetype) error{OutOfMemory}!EntityId {
-            try self.storage.append(self.allocator, instance);
+            try self.field_storage.append(self.allocator, instance);
 
-            const index = self.storage.len - 1;
-            self.initFieldsAtIndex(index);
+            const index = self.field_storage.len - 1;
 
             return @intCast(index);
         }
 
         pub fn deinit(self: *@This()) void {
             self.deinitFields();
-            self.storage.deinit(self.allocator);
+            self.field_storage.deinit(self.allocator);
         }
 
-        fn initFieldsAtIndex(self: *@This(), index: usize) void {
-            const slices = self.storage.slice();
+        pub fn initFields(self: *@This(), handle: EntityHandle) void {
+            const slices = self.field_storage.slice();
             const fields = std.meta.fields(Type);
+            const StorageType = @TypeOf(self.field_storage);
 
             inline for (fields, 0..) |field_info, field_index| {
                 if (std.meta.hasMethod(field_info.type, "component_init")) {
-                    const StorageType = @TypeOf(self.storage);
                     const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
-                    field_slice[index].component_init();
+                    field_slice[handle.id].component_init();
+                }
+
+                if (std.meta.hasMethod(field_info.type, "component_handleUpdate")) {
+                    const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
+                    field_slice[handle.id].component_handleUpdate(handle);
                 }
             }
         }
 
         fn deinitFields(self: *@This()) void {
-            const slices = self.storage.slice();
+            const slices = self.field_storage.slice();
             const fields = std.meta.fields(Type);
 
             inline for (fields, 0..) |field_info, field_index| {
                 if (std.meta.hasMethod(field_info.type, "component_deinit")) {
-                    const StorageType = @TypeOf(self.storage);
+                    const StorageType = @TypeOf(self.field_storage);
                     const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
                     for (field_slice) |*item| {
                         item.component_deinit();
@@ -77,85 +136,173 @@ pub const EntityError = error{
 };
 
 pub fn Entities(comptime archetypes: anytype) type {
-    comptime var fields: []const std.builtin.Type.StructField = &.{};
-    inline for (archetypes) |Archetype| {
-        fields = fields ++ [_]std.builtin.Type.StructField{.{
+    comptime var enum_fields: []const std.builtin.Type.EnumField = &.{};
+
+    inline for (archetypes, 0..) |Archetype, i| {
+        enum_fields = enum_fields ++ [_]std.builtin.Type.EnumField{.{
             .name = @typeName(Archetype),
-            .type = TypedEntities(Archetype),
-            .is_comptime = false,
-            .default_value = null,
+            .value = i,
+        }};
+    }
+
+    const E = @Type(.{
+        .Enum = .{
+            .decls = &.{},
+            .fields = enum_fields,
+            .is_exhaustive = true,
+            .tag_type = std.math.IntFittingRange(0, enum_fields.len - 1),
+        },
+    });
+
+    const Handle = struct { type: E, id: EntityId };
+
+    comptime var union_fields: []const std.builtin.Type.UnionField = &.{};
+
+    inline for (archetypes) |Archetype| {
+        union_fields = union_fields ++ [_]std.builtin.Type.UnionField{.{
+            .name = @typeName(Archetype),
+            .type = TypedEntities(Archetype, Handle),
             .alignment = 0,
         }};
     }
 
-    const ComptimeEntities = @Type(.{
-        .Struct = .{
+    const U = @Type(.{
+        .Union = .{
             .layout = .auto,
-            .is_tuple = false,
             .decls = &.{},
-            .fields = fields,
+            .fields = union_fields,
+            .tag_type = E,
         },
     });
 
     return struct {
+        pub const EntityHandle = Handle;
+        const Storage = std.EnumArray(E, U);
+
+        storage: Storage,
         allocator: std.mem.Allocator,
-        comptime_entities: ComptimeEntities,
 
         pub fn init(allocator: std.mem.Allocator) @This() {
-            var comptime_entities: ComptimeEntities = undefined;
+            var storage = Storage.initUndefined();
             inline for (archetypes) |Archetype| {
-                @field(comptime_entities, @typeName(Archetype)) = TypedEntities(Archetype).init(allocator);
+                storage.set(
+                    std.enums.nameCast(E, @typeName(Archetype)),
+                    @unionInit(
+                        U,
+                        @typeName(Archetype),
+                        TypedEntities(Archetype, EntityHandle).init(allocator),
+                    ),
+                );
+
                 std.debug.print("register type_name: {s}\n", .{@typeName(Archetype)});
             }
 
             return .{
                 .allocator = allocator,
-                .comptime_entities = comptime_entities,
+                .storage = storage,
             };
         }
 
-        pub fn getByType(self: *@This(), comptime Archetype: type) *TypedEntities(Archetype) {
-            if (!@hasField(ComptimeEntities, @typeName(Archetype))) {
+        pub fn getByTag(self: *@This(), tag: E) *U {
+            return self.storage.getPtr(tag);
+        }
+
+        pub fn queryFieldsByHandle(
+            self: *@This(),
+            handle: EntityHandle,
+            comptime query_fields: []const QueryField,
+        ) ?Query(query_fields).Out {
+            return switch (self.getByTag(handle.type).*) {
+                inline else => |*obj| {
+                    const Archetype = @TypeOf(obj.*).Type;
+                    if (!assertFields(Query(query_fields).Required, Archetype)) return null;
+
+                    const Field = std.meta.FieldEnum(Archetype);
+                    const slice = obj.field_storage.slice();
+
+                    const Out = Query(query_fields).Out;
+                    var result: Out = undefined;
+
+                    inline for (query_fields) |field| {
+                        @field(result, field.name) = switch (field.capture) {
+                            .ByValue => slice.items(std.enums.nameCast(Field, field.name))[handle.id],
+                            .ByReference, .ByConstReference => &slice.items(std.enums.nameCast(Field, field.name))[handle.id],
+                        };
+                    }
+
+                    return result;
+                },
+            };
+        }
+
+        pub fn getByType(self: *@This(), comptime Archetype: type) *TypedEntities(Archetype, EntityHandle) {
+            if (!@hasField(E, @typeName(Archetype))) {
                 @compileError("Unknown Archetype " ++ @typeName(Archetype));
             }
 
-            return &@field(self.comptime_entities, @typeName(Archetype));
+            const tag = comptime std.enums.nameCast(E, @typeName(Archetype));
+            const storage = self.storage.getPtr(tag);
+
+            return switch (storage.*) {
+                tag => |*u| u,
+                else => unreachable,
+            };
         }
 
-        pub fn spawn(self: *@This(), type_name: []const u8, spawn_args: *const SpawnArgs, c_dict_ptr: ?*anyopaque) !EntityId {
-            inline for (std.meta.fields(ComptimeEntities)) |field_info| {
+        pub fn spawn(self: *@This(), type_name: []const u8, spawn_args: *const SpawnArgs, c_dict_ptr: ?*anyopaque) !EntityHandle {
+            const info = @typeInfo(U).Union;
+
+            inline for (info.fields, 0..) |field_info, i| {
                 if (std.mem.eql(u8, type_name, field_info.name)) {
                     const Archetype = field_info.type.Type;
-                    const entities = &@field(self.comptime_entities, field_info.name);
+                    const entities = self.getByType(Archetype);
 
-                    return try entities.add(try Archetype.spawn(spawn_args, c_dict_ptr));
+                    const id = try entities.add(try Archetype.spawn(spawn_args, c_dict_ptr));
+                    const handle: EntityHandle = .{
+                        .id = id,
+                        .type = @as(E, @enumFromInt(i)),
+                    };
+
+                    entities.initFields(handle);
+
+                    return handle;
                 }
             }
 
             return EntityError.UnknownEntityType;
         }
 
-        pub fn size(self: @This()) usize {
+        pub fn size(self: *const @This()) usize {
             var count = @as(usize, 0);
 
-            inline for (std.meta.fields(ComptimeEntities)) |info| {
-                const field = &@field(self.comptime_entities, info.name);
-                count += field.storage.len;
+            inline for (0..Storage.len) |i| {
+                switch (self.storage.values[i]) {
+                    inline else => |*storage| {
+                        count += storage.field_storage.len;
+                    },
+                }
             }
 
             return count;
         }
 
         pub fn process(self: *@This(), f: *const fn (type, anytype) void) void {
-            inline for (std.meta.fields(ComptimeEntities)) |info| {
-                const field = &@field(self.comptime_entities, info.name);
-                f(info.type.Type, &field.storage);
+            const info = @typeInfo(U).Union;
+
+            inline for (info.fields) |field_info| {
+                const Archetype = field_info.type.Type;
+                const entities = self.getByType(Archetype);
+                f(Archetype, &entities.field_storage);
             }
         }
 
         pub fn deinit(self: *@This()) void {
-            inline for (archetypes) |Archetype| {
-                @field(self.comptime_entities, @typeName(Archetype)).deinit();
+            const info = @typeInfo(U).Union;
+
+            inline for (info.fields) |field_info| {
+                const Archetype = field_info.type.Type;
+                const entities = self.getByType(Archetype);
+                entities.deinit();
             }
         }
     };
