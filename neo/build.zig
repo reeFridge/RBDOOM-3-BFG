@@ -27,8 +27,8 @@ pub fn build(b: *std.Build) !void {
     exe.addIncludePath(.{ .path = "extern/nvrhi/include" });
     exe.addIncludePath(.{ .path = "extern/ShaderMake/include" });
     exe.addIncludePath(.{ .path = "idlib" });
-    exe.addIncludePath(.{ .path = "libs/jpeg-6" });
-    exe.addIncludePath(.{ .path = "libs/png" });
+    exe.addIncludePath(.{ .path = "libs/stb" });
+    exe.addIncludePath(.{ .path = "libs/mikktspace" });
     exe.addIncludePath(.{ .path = "libs/zlib" });
     exe.addIncludePath(.{ .path = "libs/rapidjson/include" });
     exe.addIncludePath(.{ .path = "libs/imgui" });
@@ -67,57 +67,6 @@ pub fn build(b: *std.Build) !void {
     try butils.addFilesWithExts(b, &exe_src_cpp, "libs/imgui", &exts_cpp);
     //${MIKKTSPACE_SOURCES}
     try butils.addFilesWithExts(b, &exe_src_c, "libs/mikktspace", &exts_c);
-    //${JPEG_SOURCES}
-    try exe_src_cpp.appendSlice(&.{
-        "libs/jpeg-6/jcapimin.cpp",
-        "libs/jpeg-6/jcapistd.cpp",
-        "libs/jpeg-6/jccoefct.cpp",
-        "libs/jpeg-6/jccolor.cpp",
-        "libs/jpeg-6/jcdctmgr.cpp",
-        "libs/jpeg-6/jchuff.cpp",
-        "libs/jpeg-6/jcinit.cpp",
-        "libs/jpeg-6/jcmainct.cpp",
-        "libs/jpeg-6/jcmarker.cpp",
-        "libs/jpeg-6/jcmaster.cpp",
-        "libs/jpeg-6/jcomapi.cpp",
-        "libs/jpeg-6/jcparam.cpp",
-        "libs/jpeg-6/jcphuff.cpp",
-        "libs/jpeg-6/jcprepct.cpp",
-        "libs/jpeg-6/jcsample.cpp",
-        "libs/jpeg-6/jctrans.cpp",
-        "libs/jpeg-6/jdapimin.cpp",
-        "libs/jpeg-6/jdapistd.cpp",
-        "libs/jpeg-6/jdatadst.cpp",
-        "libs/jpeg-6/jdatasrc.cpp",
-        "libs/jpeg-6/jdcoefct.cpp",
-        "libs/jpeg-6/jdcolor.cpp",
-        "libs/jpeg-6/jddctmgr.cpp",
-        "libs/jpeg-6/jdhuff.cpp",
-        "libs/jpeg-6/jdinput.cpp",
-        "libs/jpeg-6/jdmainct.cpp",
-        "libs/jpeg-6/jdmarker.cpp",
-        "libs/jpeg-6/jdmaster.cpp",
-        "libs/jpeg-6/jdmerge.cpp",
-        "libs/jpeg-6/jdphuff.cpp",
-        "libs/jpeg-6/jdpostct.cpp",
-        "libs/jpeg-6/jdsample.cpp",
-        "libs/jpeg-6/jdtrans.cpp",
-        "libs/jpeg-6/jerror.cpp",
-        "libs/jpeg-6/jfdctflt.cpp",
-        "libs/jpeg-6/jfdctfst.cpp",
-        "libs/jpeg-6/jfdctint.cpp",
-        "libs/jpeg-6/jidctflt.cpp",
-        "libs/jpeg-6/jidctfst.cpp",
-        "libs/jpeg-6/jidctint.cpp",
-        "libs/jpeg-6/jidctred.cpp",
-        "libs/jpeg-6/jmemmgr.cpp",
-        "libs/jpeg-6/jmemnobs.cpp",
-        "libs/jpeg-6/jquant1.cpp",
-        "libs/jpeg-6/jquant2.cpp",
-        "libs/jpeg-6/jutils.cpp",
-    });
-    //${PNG_SOURCES}
-    try butils.addFilesWithExts(b, &exe_src_c, "libs/png", &exts_c);
     //${ZLIB_SOURCES}
     try butils.addFilesWithExts(b, &exe_src_c, "libs/zlib", &exts_c);
     //${MINIZIP_SOURCES}
