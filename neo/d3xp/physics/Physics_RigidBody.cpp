@@ -244,7 +244,6 @@ void idPhysics_RigidBody::ContactFriction( float deltaTime )
 
 	for( i = 0; i < contacts.Num(); i++ )
 	{
-
 		r = contacts[i].point - massCenter;
 
 		// calculate velocity at contact point
@@ -280,6 +279,157 @@ void idPhysics_RigidBody::ContactFriction( float deltaTime )
 			current.i.angularMomentum += r.Cross( impulse );
 		}
 	}
+}
+
+extern "C" void c_contactFriction(
+		idMat3 orientation,
+		idVec3 position,
+		contactInfo_t* contacts,
+		int contactsNum,
+		idVec3* linearMomentum,
+		idVec3* angularMomentum,
+		float inverseMass,
+		idMat3 inverseInertiaTensor,
+		idVec3 centerOfMass,
+		float contactFriction
+) {
+	int i;
+	float magnitude, impulseNumerator, impulseDenominator;
+	idMat3 inverseWorldInertiaTensor;
+	idVec3 linearVelocity, angularVelocity;
+	idVec3 massCenter, r, velocity, normal, impulse, normalVelocity;
+
+	inverseWorldInertiaTensor = orientation.Transpose() * inverseInertiaTensor * orientation;
+
+	massCenter = position + centerOfMass * orientation;
+
+	for( i = 0; i < contactsNum; i++ )
+	{
+
+		r = contacts[i].point - massCenter;
+
+		// calculate velocity at contact point
+		linearVelocity = inverseMass * (*linearMomentum);
+		angularVelocity = inverseWorldInertiaTensor * (*angularMomentum);
+		velocity = linearVelocity + angularVelocity.Cross( r );
+
+		// velocity along normal vector
+		normalVelocity = ( velocity * contacts[i].normal ) * contacts[i].normal;
+
+		// calculate friction impulse
+		normal = -( velocity - normalVelocity );
+		magnitude = normal.Normalize();
+		impulseNumerator = contactFriction * magnitude;
+		impulseDenominator = inverseMass + ( ( inverseWorldInertiaTensor * r.Cross( normal ) ).Cross( r ) * normal );
+		impulse = ( impulseNumerator / impulseDenominator ) * normal;
+
+		// apply friction impulse
+		*linearMomentum += impulse;
+		*angularMomentum += r.Cross( impulse );
+
+		// if moving towards the surface at the contact point
+		if( normalVelocity * contacts[i].normal < 0.0f )
+		{
+			// calculate impulse
+			normal = -normalVelocity;
+			impulseNumerator = normal.Normalize();
+			impulseDenominator = inverseMass + ( ( inverseWorldInertiaTensor * r.Cross( normal ) ).Cross( r ) * normal );
+			impulse = ( impulseNumerator / impulseDenominator ) * normal;
+
+			// apply impulse
+			*linearMomentum += impulse;
+			*angularMomentum += r.Cross( impulse );
+		}
+	}
+}
+
+extern "C" bool c_testIfAtRest(
+		const contactInfo_t* contacts,
+		size_t contacts_len,
+		idVec3 gravityNormal,
+		idVec3 position,
+		idMat3 orientation,
+		idVec3 linearMomentum,
+		idVec3 angularMomentum,
+		idVec3 centerOfMass,
+		idMat3 inverseInertiaTensor,
+		float inverseMass
+		) {
+	size_t i;
+	float gv;
+	idVec3 v, av, normal, point;
+	idMat3 inverseWorldInertiaTensor;
+	idFixedWinding contactWinding;
+
+	// get average contact plane normal
+	normal.Zero();
+	for( i = 0; i < contacts_len; i++ )
+	{
+		normal += contacts[i].normal;
+	}
+	normal /= ( float ) contacts_len;
+	normal.Normalize();
+
+	// if on a too steep surface
+	if( ( normal * gravityNormal ) > -0.7f )
+	{
+		return false;
+	}
+
+	// create bounds for contact points
+	contactWinding.Clear();
+	for( i = 0; i < contacts_len; i++ )
+	{
+		// project point onto plane through origin orthogonal to the gravity
+		point = contacts[i].point - ( contacts[i].point * gravityNormal ) * gravityNormal;
+		contactWinding.AddToConvexHull( point, gravityNormal );
+	}
+
+	// need at least 3 contact points to come to rest
+	if( contactWinding.GetNumPoints() < 3 )
+	{
+		return false;
+	}
+
+	// center of mass in world space
+	point = position + centerOfMass * orientation;
+	point -= ( point * gravityNormal ) * gravityNormal;
+
+	// if the point is not inside the winding
+	if( !contactWinding.PointInside( gravityNormal, point, 0 ) )
+	{
+		return false;
+	}
+
+	// linear velocity of body
+	v = inverseMass * linearMomentum;
+	// linear velocity in gravity direction
+	gv = v * gravityNormal;
+	// linear velocity orthogonal to gravity direction
+	v -= gv * gravityNormal;
+
+	// if too much velocity orthogonal to gravity direction
+	if( v.Length() > STOP_SPEED )
+	{
+		return false;
+	}
+	// if too much velocity in gravity direction
+	if( gv > 2.0f * STOP_SPEED || gv < -2.0f * STOP_SPEED )
+	{
+		return false;
+	}
+
+	// calculate rotational velocity
+	inverseWorldInertiaTensor = orientation * inverseInertiaTensor * orientation.Transpose();
+	av = inverseWorldInertiaTensor * angularMomentum;
+
+	// if too much rotational velocity
+	if( av.LengthSqr() > STOP_SPEED )
+	{
+		return false;
+	}
+
+	return true;
 }
 
 /*
@@ -642,6 +792,27 @@ idPhysics_RigidBody::SetClipModel
 ================
 */
 #define MAX_INERTIA_SCALE		10.0f
+
+extern "C" void c_balanceInertiaTensor(idMat3* inertiaTensor_) {
+	int minIndex;
+	idMat3 inertiaScale;
+	idMat3& inertiaTensor = *inertiaTensor_;
+
+	// check whether or not the inertia tensor is balanced
+	minIndex = Min3Index( inertiaTensor[0][0], inertiaTensor[1][1], inertiaTensor[2][2] );
+	inertiaScale.Identity();
+	inertiaScale[0][0] = inertiaTensor[0][0] / inertiaTensor[minIndex][minIndex];
+	inertiaScale[1][1] = inertiaTensor[1][1] / inertiaTensor[minIndex][minIndex];
+	inertiaScale[2][2] = inertiaTensor[2][2] / inertiaTensor[minIndex][minIndex];
+
+	if( inertiaScale[0][0] > MAX_INERTIA_SCALE || inertiaScale[1][1] > MAX_INERTIA_SCALE || inertiaScale[2][2] > MAX_INERTIA_SCALE )
+	{
+		float min = inertiaTensor[minIndex][minIndex] * MAX_INERTIA_SCALE;
+		inertiaScale[( minIndex + 1 ) % 3][( minIndex + 1 ) % 3] = min / inertiaTensor[( minIndex + 1 ) % 3][( minIndex + 1 ) % 3];
+		inertiaScale[( minIndex + 2 ) % 3][( minIndex + 2 ) % 3] = min / inertiaTensor[( minIndex + 2 ) % 3][( minIndex + 2 ) % 3];
+		inertiaTensor *= inertiaScale;
+	}
+}
 
 void idPhysics_RigidBody::SetClipModel( idClipModel* model, const float density, int id, bool freeOld )
 {

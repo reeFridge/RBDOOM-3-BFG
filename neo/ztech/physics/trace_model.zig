@@ -1,6 +1,6 @@
 const std = @import("std");
 const CVec3 = @import("../math/vector.zig").CVec3;
-const CBounds = @import("../renderer/render_entity.zig").CBounds;
+const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 
 const MAX_TRACEMODEL_VERTS = @as(usize, 32);
 const MAX_TRACEMODEL_EDGES = @as(usize, 32);
@@ -20,6 +20,8 @@ const Poly = extern struct {
     edges: [MAX_TRACEMODEL_POLYEDGES]Edge,
 };
 
+pub const TraceModelError = error{InitFailed};
+
 pub const TraceModel = extern struct {
     type: c_int,
     numVerts: c_int,
@@ -32,13 +34,13 @@ pub const TraceModel = extern struct {
     bounds: CBounds,
     isConvex: bool,
 
-    pub fn fromModel(model_path: []const u8) ?TraceModel {
+    pub fn fromModel(model_path: []const u8) TraceModelError!TraceModel {
         var trace_model: TraceModel = std.mem.zeroes(TraceModel);
 
         return if (c_initTraceModelFromModel(
             model_path.ptr,
             &trace_model,
-        )) trace_model else null;
+        )) trace_model else error.InitFailed;
     }
 };
 

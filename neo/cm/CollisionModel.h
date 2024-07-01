@@ -48,6 +48,8 @@ If you have questions concerning this license or the applicable additional terms
 ===============================================================================
 */
 
+struct external_entity_handle_t;
+
 // contact type
 typedef enum
 {
@@ -70,6 +72,7 @@ typedef struct
 	int						trmFeature;		// contact feature on trace model
 	int						entityNum;		// entity the contact surface is a part of
 	int						id;				// id of clip model the contact surface is part of
+	external_entity_handle_t externalEntityHandle;
 } contactInfo_t;
 
 // trace result

@@ -1,20 +1,20 @@
 const std = @import("std");
 const entity = @import("entity.zig");
-const Types = @import("types.zig").ExportedTypes;
 const Game = @import("game.zig");
+const global = @import("global.zig");
+const CVec3 = @import("math/vector.zig").CVec3;
+const CMat3 = @import("math/matrix.zig").CMat3;
+const types = @import("types.zig");
 
-const Entities = entity.Entities(Types);
-
-pub var g_entities: Entities = undefined;
 var g_gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 pub export fn ztech_init() callconv(.C) void {
-    g_entities = Entities.init(g_gpa.allocator());
+    global.entities = global.Entities.init(g_gpa.allocator());
     std.debug.print("[ztech] init: OK\n", .{});
 }
 
 pub export fn ztech_deinit() callconv(.C) void {
-    g_entities.deinit();
+    global.entities.deinit();
     if (g_gpa.deinit() == std.heap.Check.leak) @panic("[ztech] allocator leak!");
 
     std.debug.print("[ztech] deinit: OK\n", .{});
@@ -43,6 +43,76 @@ const CopySpawnArgs = struct {
 
 extern fn c_copy_dict_to_zig(*anyopaque, *const fn ([*c]const u8, [*c]const u8) callconv(.C) void) void;
 
+pub export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
+    std.debug.print("Spawn Player: {d}\n", .{client_num});
+
+    var spawn_args = entity.SpawnArgs.init(g_gpa.allocator());
+    defer spawn_args.deinit();
+
+    _ = global.entities.spawnType(types.Player, spawn_args) catch |err| {
+        std.debug.print("[error] {?}\n", .{err});
+        return false;
+    };
+
+    return true;
+}
+
+const pvs = @import("pvs.zig");
+
+extern fn c_getClientPVS([*]c_int, usize) callconv(.C) pvs.Handle;
+
+pub export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) callconv(.C) bool {
+    const len = global.entities.getByType(types.Player).field_storage.len;
+
+    if (len == 0) return false;
+
+    const handle = global.Entities.EntityHandle.fromType(types.Player, 0);
+    c_handle.* = .{
+        .id = handle.id,
+        .type = @intFromEnum(handle.type),
+    };
+
+    return true;
+}
+
+const RenderView = @import("renderer/render_world.zig").RenderView;
+
+pub export fn ztech_getPlayerRenderView(render_view: **const RenderView) callconv(.C) bool {
+    const players = global.entities.getByType(types.Player).field_storage;
+
+    if (players.len == 0) return false;
+
+    const player_view = &players.items(.view)[0];
+
+    render_view.* = &player_view.render_view;
+
+    return true;
+}
+
+pub export fn ztech_setupPlayerPVS(player_PVS: *pvs.Handle, player_connected_areas: *pvs.Handle) callconv(.C) void {
+    const all_areas = global.entities.getByType(types.Player).field_storage.items(.pvs_areas);
+
+    if (all_areas.len == 0) @panic("Player is not spawned yet!");
+
+    const player_areas = &all_areas[0];
+
+    player_PVS.* = c_getClientPVS(&player_areas.ids, player_areas.len);
+    player_connected_areas.* = c_getClientPVS(&player_areas.ids, player_areas.len);
+}
+
+pub export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C) bool {
+    const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
+
+    if (spots.len == 0) return false;
+
+    const first_spot = spots[0];
+
+    origin.* = CVec3.fromVec3f(first_spot.origin);
+    axis.* = CMat3.fromMat3f(first_spot.axis);
+
+    return true;
+}
+
 pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopaque) callconv(.C) bool {
     std.debug.print("[ztech] spawnExternal: {s}\n", .{c_type_name});
 
@@ -58,11 +128,8 @@ pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopa
     }
 
     const type_name: [:0]const u8 = std.mem.span(c_type_name);
-    _ = g_entities.spawn(type_name, &spawn_args, c_dict_ptr) catch |err| {
-        if (err == entity.EntityError.UnknownEntityType) {
-            std.debug.print("[error] UnknownEntityType\n", .{});
-        }
-
+    _ = global.entities.spawn(type_name, spawn_args, c_dict_ptr) catch |err| {
+        std.debug.print("[error] {?}\n", .{err});
         return false;
     };
 
@@ -71,12 +138,45 @@ pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopa
     return true;
 }
 
-const Update = @import("update.zig");
+const UpdatePlayer = @import("update/player.zig");
+const UpdateRenderEntity = @import("update/render_entity.zig");
+const UpdatePhysicsClip = @import("update/physics/clip.zig");
+const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
+const UpdatePhysicsImpact = @import("update/physics/impact.zig");
 
 pub export fn ztech_processEntities() callconv(.C) void {
     if (!Game.c_isNewFrame()) return;
 
-    g_entities.process(Update.updatePhysics);
-    g_entities.process(Update.updateRenderEntityFromPhysics);
-    g_entities.process(Update.presentRenderEntity);
+    global.entities.processWithQuery(types.Player, UpdatePlayer.update);
+    global.entities.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);
+    global.entities.processWithQuery(UpdatePhysicsContacts.Query, UpdatePhysicsContacts.update);
+    global.entities.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
+    global.entities.process(UpdateRenderEntity.fromPhysics);
+    global.entities.process(UpdateRenderEntity.present);
+}
+
+const QueryField = @import("entity.zig").QueryField;
+const Physics = @import("physics/physics.zig").Physics;
+
+pub export fn ztech_entityApplyImpulse(
+    chandle: global.Entities.ExternEntityHandle,
+    point: CVec3,
+    impulse: CVec3,
+) callconv(.C) void {
+    const handle = global.Entities.EntityHandle.fromExtern(chandle);
+    if (global.entities.queryFieldsByHandle(handle, &[_]QueryField{.{
+        .name = "physics",
+        .type = Physics,
+        .capture = .ByReference,
+    }})) |query_result| {
+        const physics_other = query_result.physics;
+
+        switch (physics_other.*) {
+            Physics.rigid_body => |*rigid_body| {
+                rigid_body.applyImpulse(point.toVec3f(), impulse.toVec3f());
+                rigid_body.activate();
+            },
+            else => {},
+        }
+    }
 }
