@@ -1,14 +1,15 @@
 const std = @import("std");
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
+const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const MAX_ENTITY_SHADER_PARMS = @as(usize, 12);
 const MAX_RENDERENTITY_GUI = @as(usize, 3);
 
 const RenderEntity = @This();
 
-pub const CBounds = extern struct { b: [2]CVec3 = [_]CVec3{ .{}, .{} } };
-
 const deferredEntityCallback_t = fn (?*anyopaque, ?*anyopaque) callconv(.C) bool;
+
+extern fn c_parse_spawn_args_to_render_entity(*anyopaque, *CRenderEntity) callconv(.C) void;
 
 pub const CRenderEntity = extern struct {
     // this can only be null if callback is set
@@ -104,4 +105,8 @@ pub const CRenderEntity = extern struct {
     forceUpdate: c_int = 0,
     timeGroup: c_int = 0,
     xrayIndex: c_int = 0,
+
+    pub fn initFromSpawnArgs(self: *CRenderEntity, dict: *anyopaque) void {
+        c_parse_spawn_args_to_render_entity(dict, self);
+    }
 };

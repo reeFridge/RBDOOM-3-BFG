@@ -115,6 +115,9 @@ int idGameLocal::ClientRemapDecl( declType_t type, int index )
 	return index;
 }
 
+extern "C" bool ztech_spawnPlayer(int);
+extern "C" bool ztech_getPlayerHandle(external_entity_handle_t*);
+
 /*
 ================
 idGameLocal::SyncPlayersWithLobbyUsers
@@ -208,6 +211,7 @@ void idGameLocal::SyncPlayersWithLobbyUsers( bool initial )
 				break;
 			}
 		}
+		
 		if( freePlayerDataIndex == -1 )
 		{
 			break;			// No player data slots (this shouldn't happen)
@@ -225,9 +229,118 @@ void idGameLocal::SyncPlayersWithLobbyUsers( bool initial )
 
 		common->UpdateLevelLoadPacifier();
 
-
 		// spawn the player
 		SpawnPlayer( freePlayerDataIndex );
+
+		common->UpdateLevelLoadPacifier();
+
+		ServerWriteInitialReliableMessages( freePlayerDataIndex, lobbyUserID );
+	}
+}
+
+/*
+================
+idGameLocal::SyncPlayersWithLobbyUsers
+================
+*/
+void idGameLocal::ztech_SyncPlayersWithLobbyUsers( bool initial )
+{
+	idLobbyBase& lobby = session->GetActingGameStateLobbyBase();
+	if( !lobby.IsHost() )
+	{
+		return;
+	}
+
+	idStaticList< lobbyUserID_t, MAX_CLIENTS > newLobbyUsers;
+
+	// First, loop over lobby users, and see if we find a lobby user that we haven't registered
+	for( int i = 0; i < lobby.GetNumLobbyUsers(); i++ )
+	{
+		lobbyUserID_t lobbyUserID1 = lobby.GetLobbyUserIdByOrdinal( i );
+
+		if( !lobbyUserID1.IsValid() )
+		{
+			continue;
+		}
+
+		if( !initial && !lobby.IsLobbyUserLoaded( lobbyUserID1 ) )
+		{
+			continue;
+		}
+
+		// Now, see if we find this lobby user in our list
+		bool found = false;
+
+		external_entity_handle_t handle;
+		if (ztech_getPlayerHandle(&handle)) {
+			lobbyUserID_t lobbyUserID2 = lobbyUserIDs[0];
+
+			if(lobbyUserID1 == lobbyUserID2)
+			{
+				found = true;
+			}
+		}
+
+		if( !found )
+		{
+			// If we didn't find it, we need to create a player and assign it to this new lobby user
+			newLobbyUsers.Append( lobbyUserID1 );
+		}
+	}
+
+	// Validate connected players
+	external_entity_handle_t handle;
+	if (ztech_getPlayerHandle(&handle)) {
+		lobbyUserID_t lobbyUserID = lobbyUserIDs[0];
+
+		if( !lobby.IsLobbyUserValid( lobbyUserID ) )
+		{
+			delete entities[ 0 ];
+			mpGame.DisconnectClient( 0 );
+			lobbyUserIDs[0] = lobbyUserID_t();
+		} else {
+			lobby.EnableSnapshotsForLobbyUser( lobbyUserID );
+		}
+	}
+
+	while( newLobbyUsers.Num() > 0 )
+	{
+		// Find a free player data slot to use for this new player
+		int freePlayerDataIndex = -1;
+		
+		external_entity_handle_t handle;
+		if (!ztech_getPlayerHandle(&handle)) {
+			freePlayerDataIndex = 0;
+		}
+
+		if( freePlayerDataIndex == -1 )
+		{
+			break;			// No player data slots (this shouldn't happen)
+		}
+		lobbyUserID_t lobbyUserID = newLobbyUsers[0];
+		newLobbyUsers.RemoveIndex( 0 );
+
+		mpGame.ServerClientConnect( freePlayerDataIndex );
+		Printf( "client %d connected.\n", freePlayerDataIndex );
+
+		lobbyUserIDs[ freePlayerDataIndex ] = lobbyUserID;
+
+		// Clear this player's old usercmds.
+		common->ResetPlayerInput( freePlayerDataIndex );
+
+		common->UpdateLevelLoadPacifier();
+
+		// spawn the player
+		{
+			if( freePlayerDataIndex >= numClients )
+			{
+				numClients = freePlayerDataIndex + 1;
+			}
+
+			if (!ztech_spawnPlayer(freePlayerDataIndex)) {
+				common->Error("Failed to spawn player entity\n");
+			}
+		}
 
 		common->UpdateLevelLoadPacifier();
 

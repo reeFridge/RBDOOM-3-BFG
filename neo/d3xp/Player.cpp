@@ -3051,6 +3051,8 @@ void idPlayer::ServerSpectate( bool spectate )
 	}
 }
 
+extern "C" bool ztech_getSpawnTransform(idVec3*, idMat3*);
+
 /*
 ===========
 idPlayer::SelectInitialSpawnPoint
@@ -3066,18 +3068,32 @@ void idPlayer::SelectInitialSpawnPoint( idVec3& origin, idAngles& angles )
 
 	spot = gameLocal.SelectInitialSpawnPoint( this );
 
-	// set the player skin from the spawn location
-	if( spot->spawnArgs.GetString( "skin", NULL, skin ) )
-	{
-		spawnArgs.Set( "spawn_skin", skin );
+	if (spot != NULL) {
+		// set the player skin from the spawn location
+		if( spot->spawnArgs.GetString( "skin", NULL, skin ) )
+		{
+			spawnArgs.Set( "spawn_skin", skin );
+		}
+
+		// activate the spawn locations targets
+		spot->PostEventMS( &EV_ActivateTargets, 0, this );
+
+		origin = spot->GetPhysics()->GetOrigin();
+		origin[2] += 4.0f + CM_BOX_EPSILON;		// move up to make sure the player is at least an epsilon above the floor
+		angles = spot->GetPhysics()->GetAxis().ToAngles();
+	} else {
+		idVec3 spot_origin;
+		idMat3 spot_axis;
+
+		bool found = ztech_getSpawnTransform(&spot_origin, &spot_axis);
+		if (!found) {
+			gameLocal.Error("Spawn spot not found -> exit");
+		}
+
+		origin = spot_origin;
+		origin[2] += 4.0f + CM_BOX_EPSILON;		// move up to make sure the player is at least an epsilon above the floor
+		angles = spot_axis.ToAngles();
 	}
-
-	// activate the spawn locations targets
-	spot->PostEventMS( &EV_ActivateTargets, 0, this );
-
-	origin = spot->GetPhysics()->GetOrigin();
-	origin[2] += 4.0f + CM_BOX_EPSILON;		// move up to make sure the player is at least an epsilon above the floor
-	angles = spot->GetPhysics()->GetAxis().ToAngles();
 }
 
 /*
@@ -10762,6 +10778,22 @@ Returns the renderView that was calculated for this tic
 renderView_t* idPlayer::GetRenderView()
 {
 	return renderView;
+}
+
+extern "C" void c_calculateRenderView(renderView_t* renderView, float fov) {
+	// copy global shader parms
+	for(int i = 0; i < MAX_GLOBAL_SHADER_PARMS; i++ )
+	{
+		renderView->shaderParms[ i ] = gameLocal.globalShaderParms[ i ];
+	}
+	renderView->globalMaterial = gameLocal.GetGlobalMaterial();
+
+	renderView->time[0] = gameLocal.slow.time;
+	renderView->time[1] = gameLocal.fast.time;
+
+	renderView->viewID = 0;
+
+	gameLocal.CalcFov( fov, renderView->fov_x, renderView->fov_y );
 }
 
 /*

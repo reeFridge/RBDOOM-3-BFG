@@ -4498,6 +4498,9 @@ void idWeapon::Event_StopWeaponLight( const char* name )
 		}
 	}
 }
+
+extern "C" void ztech_entityApplyImpulse(external_entity_handle_t, idVec3, idVec3);
+
 /*
 =====================
 idWeapon::Event_Melee
@@ -4545,6 +4548,13 @@ void idWeapon::Event_Melee()
 
 		bool hit = false;
 		const char* hitSound = meleeDef->dict.GetString( "snd_miss" );
+
+		if (tr.c.entityNum == -1) {
+			float push = meleeDef->dict.GetFloat( "push" );
+			idVec3 impulse = -push * owner->PowerUpModifier( SPEED ) * tr.c.normal;
+
+			ztech_entityApplyImpulse(tr.c.externalEntityHandle, tr.c.point, impulse);
+		}
 
 		if( ent != NULL )
 		{

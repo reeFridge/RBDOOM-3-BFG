@@ -340,6 +340,10 @@ float idMat3::Determinant() const
 	return mat[0][0] * det2_12_12 - mat[0][1] * det2_12_02 + mat[0][2] * det2_12_01;
 }
 
+extern "C" idMat3 c_mat3Inverse(const idMat3* m) {
+	return m->Inverse();
+}
+
 /*
 ============
 idMat3::InverseSelf

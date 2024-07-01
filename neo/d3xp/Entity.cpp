@@ -990,6 +990,10 @@ void idEntity::Restore( idRestoreGame* savefile )
 	}
 }
 
+extern "C" const idDecl* c_declByIndex(int index) {
+	return declManager->DeclByIndex( DECL_ENTITYDEF, index, false);
+}
+
 /*
 ================
 idEntity::GetEntityDefName

@@ -9,15 +9,25 @@ pub const CRotation = extern struct {
     vec: CVec3,
     angle: f32,
     axis: CMat3,
-    axis_valid: bool,
+    axisValid: bool,
 
-    pub fn fromRotation(rotation: *const Rotation) CRotation {
+    pub fn fromRotation(rotation: Rotation) CRotation {
         return .{
-            .origin = CVec3.fromVec3f(&rotation.origin),
-            .vec = CVec3.fromVec3f(&rotation.vec),
+            .origin = CVec3.fromVec3f(rotation.origin),
+            .vec = CVec3.fromVec3f(rotation.vec),
             .angle = rotation.angle,
-            .axis_valid = rotation.axis_valid,
-            .axis = CMat3.fromMat3f(&rotation.axis),
+            .axisValid = rotation.axis_valid,
+            .axis = CMat3.fromMat3f(rotation.axis),
+        };
+    }
+
+    pub fn toRotation(rotation: CRotation) Rotation {
+        return .{
+            .origin = rotation.origin.toVec3f(),
+            .vec = rotation.vec.toVec3f(),
+            .angle = rotation.angle,
+            .axis_valid = rotation.axisValid,
+            .axis = rotation.axis.toMat3f(),
         };
     }
 };
@@ -47,14 +57,14 @@ pub fn create(
     };
 }
 
-pub fn rotateVec3(self: *Rotation, v: *const Vec3(f32)) Vec3(f32) {
+pub fn rotateVec3(self: *Rotation, v: Vec3(f32)) Vec3(f32) {
     if (!self.axis_valid) {
         _ = self.toMat3();
     }
 
     const Vec3f = Vec3(f32);
 
-    return Vec3f.add(&self.origin, &self.axis.multiplyVec3(&Vec3f.subtract(v, &self.origin)));
+    return self.origin.add(self.axis.multiplyVec3(Vec3f.subtract(v, self.origin)));
 }
 
 pub fn scale(self: *Rotation, s: f32) void {
@@ -74,7 +84,7 @@ pub fn normalize180(self: *Rotation) void {
 pub fn toMat3(self: *Rotation) *const Mat3(f32) {
     if (self.axis_valid) return &self.axis;
 
-    const a: f32 = self.angle * ((std.math.pi / 180.0) * 0.5);
+    const a: f32 = self.angle * std.math.degreesToRadians(0.5);
     const s: f32 = std.math.sin(a);
     const c: f32 = std.math.cos(a);
 

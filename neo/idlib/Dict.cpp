@@ -461,6 +461,22 @@ bool idDict::GetAngles( const char* key, const char* defaultString, idAngles& ou
 	return found;
 }
 
+extern "C" idVec3 c_parseVector(uint8_t const * const s) {
+	idVec3 res;
+
+	sscanf( (const char*)s, "%f %f %f", &res.x, &res.y, &res.z );
+	return res;
+}
+
+extern "C" idMat3 c_parseMatrix(uint8_t const * const s) {
+	idMat3 res;
+
+	sscanf( (const char*)s, "%f %f %f %f %f %f %f %f %f", &res[0].x, &res[0].y, &res[0].z, &res[1].x, &res[1].y, &res[1].z, &res[2].x, &res[2].y, &res[2].z );
+	return res;
+}
+
+
+
 /*
 ================
 idDict::GetVector

@@ -1387,7 +1387,8 @@ void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorl
 	mpGame.Reset();
 	mpGame.Precache();
 
-	SyncPlayersWithLobbyUsers( true );
+	ztech_SyncPlayersWithLobbyUsers( true );
+	//SyncPlayersWithLobbyUsers( true );
 
 	// free up any unused animations
 	animationLib.FlushUnusedAnims();
@@ -2303,6 +2304,10 @@ pvsHandle_t idGameLocal::GetClientPVS( idPlayer* player, pvsType_t type )
 	}
 }
 
+extern "C" pvsHandle_t c_getClientPVS(int* areas, size_t num) {
+	return gameLocal.pvs.SetupCurrentPVS(areas, static_cast<int>(num));
+}
+
 /*
 ================
 idGameLocal::SetupPlayerPVS
@@ -2630,6 +2635,9 @@ void idGameLocal::RunSharedThink()
 // jmarshall end
 
 extern "C" void ztech_processEntities();
+extern "C" void ztech_setupPlayerPVS(pvsHandle_t*, pvsHandle_t*);
+extern "C" bool ztech_getPlayerRenderView(const renderView_t**);
+extern "C" bool ztech_getPlayerHandle(external_entity_handle_t*);
 
 /*
 ================
@@ -2669,10 +2677,14 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 		return;
 	}
 
-	SyncPlayersWithLobbyUsers( false );
+	ztech_SyncPlayersWithLobbyUsers( false );
+	//SyncPlayersWithLobbyUsers( false );
 	ServerSendNetworkSyncCvars();
 
 	player = GetLocalPlayer();
+
+	external_entity_handle_t player_handle;
+	bool player_exists = ztech_getPlayerHandle(&player_handle);
 
 	if( !common->IsMultiplayer() && g_stopTime.GetBool() )
 	{
@@ -2726,6 +2738,10 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 				{
 					gameRenderWorld->SetRenderView( view );
 				}
+			} else if (player_exists) {
+				if (ztech_getPlayerRenderView(&view)) {
+					gameRenderWorld->SetRenderView(view);
+				}
 			}
 
 			// clear any debug lines from a previous frame
@@ -2744,7 +2760,11 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 			UpdateGravity();
 
 			// create a merged pvs for all players
-			SetupPlayerPVS();
+			if (player) {
+				SetupPlayerPVS();
+			} else if (player_exists) {
+				ztech_setupPlayerPVS(&playerPVS, &playerConnectedAreas);
+			}
 
 			// sort the active entity list
 			SortActiveEntityList();
@@ -3213,15 +3233,23 @@ bool idGameLocal::Draw( int clientNum )
 
 	idPlayer* player = static_cast<idPlayer*>( entities[ clientNum ] );
 
-	if( ( player == NULL ) || ( player->GetRenderView() == NULL ) )
+	if( ( player != NULL ) && ( player->GetRenderView() != NULL ) )
 	{
-		return false;
+		// render the scene
+		player->playerView.RenderPlayerView( player->hudManager );
+
+		return true;
+	} else {
+		const renderView_t* view = NULL;
+		if (ztech_getPlayerRenderView(&view)) {
+			// do the first render
+			gameRenderWorld->RenderScene(view);
+
+			return true;
+		}
 	}
 
-	// render the scene
-	player->playerView.RenderPlayerView( player->hudManager );
-
-	return true;
+	return false;
 }
 
 /*
@@ -4007,6 +4035,12 @@ bool idGameLocal::SpawnEntityDefExternal( const idDict& args )
 	return false;
 }
 
+extern "C" const idDeclEntityDef* c_findEntityDef(uint8_t const * const name) {
+	const idDecl* decl = declManager->FindType(DECL_ENTITYDEF, (const char*)name, false);
+
+	return static_cast<const idDeclEntityDef*>(decl);
+}
+
 /*
 ================
 idGameLocal::FindEntityDef
@@ -4172,10 +4206,22 @@ void idGameLocal::SpawnMapEntities()
 			// Admer: brush origin offsets:
 			args.SetVector( BRUSH_ORIGIN_KEY, mapEnt->originOffset );
 
-			if (!SpawnEntityDef( args )) {
-				SpawnEntityDefExternal(args);
+			const char*	classname;
+			args.GetString( "classname", NULL, &classname );
+			const idDeclEntityDef* def = FindEntityDef( classname, false );
+
+			const idKeyValue* kv = def->dict.FindKey("spawnexternal");
+
+			bool spawned = false;
+			if (kv) {
+				spawned = SpawnEntityDefExternal(args);
+			} else {
+				spawned = SpawnEntityDef(args);
 			}
-			num++;
+
+			if (spawned) {
+				num++;
+			}
 		}
 		else
 		{
@@ -5430,7 +5476,8 @@ idEntity* idGameLocal::SelectInitialSpawnPoint( idPlayer* player )
 		spot.ent = FindEntityUsingDef( NULL, "info_player_start" );
 		if( !spot.ent )
 		{
-			Error( "No info_player_start on map.\n" );
+			Warning( "No info_player_start on map.\n" );
+			return NULL;
 		}
 		return spot.ent;
 	}

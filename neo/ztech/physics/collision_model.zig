@@ -1,5 +1,6 @@
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CMat3 = @import("../math/matrix.zig").CMat3;
+const ExternEntityHandle = @import("../global.zig").Entities.ExternEntityHandle;
 
 pub const ContactInfo = extern struct {
     type: c_int = 0,
@@ -12,6 +13,7 @@ pub const ContactInfo = extern struct {
     trmFeature: c_int = 0,
     entityNum: c_int = 0,
     id: c_int = 0,
+    externalEntityHandle: ExternEntityHandle = undefined,
 };
 
 pub const TraceResult = extern struct {

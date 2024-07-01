@@ -543,6 +543,7 @@ public:
 	int						ServerRemapDecl( int clientNum, declType_t type, int index );
 	int						ClientRemapDecl( declType_t type, int index );
 	void					SyncPlayersWithLobbyUsers( bool initial );
+	void					ztech_SyncPlayersWithLobbyUsers( bool initial );
 	void					ServerWriteInitialReliableMessages( int clientNum, lobbyUserID_t lobbyUserID );
 	void					ServerSendNetworkSyncCvars();
 

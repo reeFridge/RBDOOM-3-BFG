@@ -43,6 +43,7 @@ If you have questions concerning this license or the applicable additional terms
 class idClip;
 class idClipModel;
 class idEntity;
+struct external_entity_handle_t;
 
 //===============================================================
 //
@@ -112,6 +113,7 @@ public:
 	static void				RestoreTraceModels( idRestoreGame* savefile );
 public:
 	bool external;
+	external_entity_handle_t externalEntityHandle;
 
 private:
 	bool					enabled;				// true if this clip model is used for clipping

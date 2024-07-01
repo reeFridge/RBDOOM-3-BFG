@@ -285,9 +285,7 @@ pub fn build(b: *std.Build) !void {
 
     const cflags = flags ++ [_][]const u8{};
 
-    const cxxflags = flags ++ [_][]const u8{
-        "-std=c++17",
-    };
+    const cxxflags = flags ++ [_][]const u8{ "-std=c++17", "-Wno-inconsistent-missing-override" };
 
     exe.addCSourceFiles(.{ .files = exe_src_cpp.items, .flags = &cxxflags });
     exe.addCSourceFiles(.{ .files = exe_src_c.items, .flags = &cflags });

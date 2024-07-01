@@ -1070,6 +1070,10 @@ int idPVS::GetPVSArea( const idVec3& point ) const
 	return gameRenderWorld->PointInArea( point );
 }
 
+extern "C" size_t c_pvsGetPVSAreas(const idBounds* bounds, int* areas, int maxAreas) {
+	return static_cast<size_t>(gameLocal.pvs.GetPVSAreas(*bounds, areas, maxAreas));
+}
+
 /*
 ================
 idPVS::GetPVSAreas

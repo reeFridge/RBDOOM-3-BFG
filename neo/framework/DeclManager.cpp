@@ -1418,6 +1418,14 @@ int idDeclManagerLocal::GetNumDecls( declType_t type )
 	return linearLists[ typeIndex ].Num();
 }
 
+extern "C" uint8_t const * const c_declGetName(const idDecl* decl) {
+	return (uint8_t*)decl->GetName();
+}
+
+extern "C" int c_declIndex(const idDecl* decl) {
+	return decl->Index();
+}
+
 /*
 ===================
 idDeclManagerLocal::DeclByIndex
@@ -2593,6 +2601,7 @@ void idDeclManagerLocal::ExportEntityDefsToTrenchBroom_f( const idCmdArgs& args 
 					idStr::Icmp( decl->GetName(), "func_plat_model" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "func_rotating_model" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "test_cube" ) == 0 ||
+					idStr::Icmp( decl->GetName(), "test_moveable_cube" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "zig_cube_moveable" ) == 0 ||
 					idStr::Icmp( decl->GetName(), "zig_cube" ) == 0)
 			{

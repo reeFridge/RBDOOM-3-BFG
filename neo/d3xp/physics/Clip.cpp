@@ -646,6 +646,10 @@ cmHandle_t idClipModel::Handle() const
 	}
 }
 
+extern "C" void c_getMassProperties(const idClipModel* clipModel, float density, float* mass, idVec3* centerOfMass, idMat3* inertiaTensor) {
+	clipModel->GetMassProperties(density, *mass, *centerOfMass, *inertiaTensor);
+}
+
 /*
 ================
 idClipModel::GetMassProperties
@@ -736,8 +740,12 @@ void idClipModel::Link_r( struct clipSector_s* node )
 	clipLinks = link;
 }
 
-extern "C" void c_linkClipModel(idClipModel* self, int id, idVec3 origin, idMat3 axis) {
+extern "C" void c_linkClipModelUpdated(idClipModel* self, int id, idVec3 origin, idMat3 axis) {
 	self->LinkExternal(gameLocal.clip, id, origin, axis);
+}
+
+extern "C" void c_linkClipModel(idClipModel* self) {
+	self->LinkExternal(gameLocal.clip);
 }
 
 void idClipModel::LinkExternal( idClip& clp )
@@ -1460,6 +1468,12 @@ bool idClip::Translation( trace_t& results, const idVec3& start, const idVec3& e
 			continue;
 		}
 
+		if (touch->external && (mdl != NULL && mdl->external) &&
+				touch->externalEntityHandle.type == mdl->externalEntityHandle.type &&
+				touch->externalEntityHandle.id == mdl->externalEntityHandle.id) {
+			continue;
+		}
+
 		if( touch->renderModelHandle != -1 )
 		{
 			idClip::numRenderModelTraces++;
@@ -1477,6 +1491,7 @@ bool idClip::Translation( trace_t& results, const idVec3& start, const idVec3& e
 			results = trace;
 			if (touch->external) {
 				results.c.entityNum = -1;
+				results.c.externalEntityHandle = touch->externalEntityHandle;
 			} else {
 				results.c.entityNum = touch->entity->entityNumber;
 			}
@@ -1552,6 +1567,12 @@ bool idClip::Rotation( trace_t& results, const idVec3& start, const idRotation& 
 			continue;
 		}
 
+		if (touch->external && (mdl != NULL && mdl->external) &&
+				touch->externalEntityHandle.type == mdl->externalEntityHandle.type &&
+				touch->externalEntityHandle.id == mdl->externalEntityHandle.id) {
+			continue;
+		}
+
 		idClip::numRotations++;
 		collisionModelManager->Rotation( &trace, start, rotation, trm, trmAxis, contentMask,
 										 touch->Handle(), touch->origin, touch->axis );
@@ -1562,6 +1583,7 @@ bool idClip::Rotation( trace_t& results, const idVec3& start, const idRotation& 
 
 			if (touch->external) {
 				results.c.entityNum = -1;
+				results.c.externalEntityHandle = touch->externalEntityHandle;
 			} else {
 				results.c.entityNum = touch->entity->entityNumber;
 			}
@@ -1678,6 +1700,12 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 				continue;
 			}
 
+			if (touch->external && (mdl != NULL && mdl->external) &&
+					touch->externalEntityHandle.type == mdl->externalEntityHandle.type &&
+					touch->externalEntityHandle.id == mdl->externalEntityHandle.id) {
+				continue;
+			}
+
 			if( touch->renderModelHandle != -1 )
 			{
 				idClip::numRenderModelTraces++;
@@ -1696,6 +1724,7 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 
 				if (touch->external) {
 					translationalTrace.c.entityNum = -1;
+					translationalTrace.c.externalEntityHandle = touch->externalEntityHandle;
 				} else {
 					translationalTrace.c.entityNum = touch->entity->entityNumber;
 				}
@@ -1755,6 +1784,12 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 				continue;
 			}
 
+			if (touch->external && (mdl != NULL && mdl->external) &&
+					touch->externalEntityHandle.type == mdl->externalEntityHandle.type &&
+					touch->externalEntityHandle.id == mdl->externalEntityHandle.id) {
+				continue;
+			}
+
 			idClip::numRotations++;
 			collisionModelManager->Rotation( &trace, endPosition, endRotation, trm, trmAxis, contentMask,
 											 touch->Handle(), touch->origin, touch->axis );
@@ -1764,6 +1799,7 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 				rotationalTrace = trace;
 				if (touch->external) {
 					rotationalTrace.c.entityNum = -1;
+					rotationalTrace.c.externalEntityHandle = touch->externalEntityHandle;
 				} else {
 					rotationalTrace.c.entityNum = touch->entity->entityNumber;
 				}
@@ -1789,6 +1825,33 @@ bool idClip::Motion( trace_t& results, const idVec3& start, const idVec3& end, c
 	results.fraction = Max( translationalTrace.fraction, rotationalTrace.fraction );
 
 	return ( translationalTrace.fraction < 1.0f || rotationalTrace.fraction < 1.0f );
+}
+
+
+extern "C" size_t c_clipContacts(
+		contactInfo_t* contacts,
+		int maxContacts,
+		const idVec3* start,
+		const idVec6* dir,
+		float depth,
+		const idClipModel* mdl,
+		const idMat3* trmAxis,
+		int contentMask,
+		const idEntity* passEntity
+) {
+	int numContacts = gameLocal.clip.Contacts(
+			contacts,
+			maxContacts,
+			*start,
+			*dir,
+			depth,
+			mdl,
+			*trmAxis,
+			contentMask,
+			passEntity
+			);
+
+	return static_cast<size_t>(numContacts);
 }
 
 /*
@@ -1855,6 +1918,12 @@ int idClip::Contacts( contactInfo_t* contacts, const int maxContacts, const idVe
 			continue;
 		}
 
+		if (touch->external && (mdl != NULL && mdl->external) &&
+				touch->externalEntityHandle.type == mdl->externalEntityHandle.type &&
+				touch->externalEntityHandle.id == mdl->externalEntityHandle.id) {
+			continue;
+		}
+
 		idClip::numContacts++;
 		n = collisionModelManager->Contacts( contacts + numContacts, maxContacts - numContacts,
 											 start, dir, depth, trm, trmAxis, contentMask,
@@ -1864,6 +1933,7 @@ int idClip::Contacts( contactInfo_t* contacts, const int maxContacts, const idVe
 		{
 			if (touch->external) {
 				contacts[numContacts].entityNum = -1;
+				contacts[numContacts].externalEntityHandle = touch->externalEntityHandle;
 			} else {
 				contacts[numContacts].entityNum = touch->entity->entityNumber;
 			}
