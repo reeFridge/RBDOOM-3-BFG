@@ -5,6 +5,7 @@ const CMat3 = @import("../math/matrix.zig").CMat3;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const TraceModel = @import("trace_model.zig").TraceModel;
 const Entities = @import("../global.zig").Entities;
+const MassProperties = @import("physics.zig").MassProperties;
 
 extern fn c_getMassProperties(*const ClipModel, f32, *f32, *CVec3, *CMat3) callconv(.C) void;
 extern fn c_checkClipModelPath([*c]const u8) callconv(.C) bool;
@@ -16,6 +17,21 @@ extern fn c_linkClipModel(*ClipModel) callconv(.C) void;
 extern fn c_unlinkClipModel(*ClipModel) callconv(.C) void;
 
 pub const ClipModelError = error{CheckNotPassed};
+
+const ClipSector = extern struct {
+    axis: c_int,
+    dist: f32,
+    childred: [2]?*ClipSector,
+    clipLinks: ?*ClipLink,
+};
+
+const ClipLink = extern struct {
+    clipModel: ?*ClipModel,
+    sector: ?*ClipSector,
+    prevInSector: ?*ClipLink,
+    nextInSector: ?*ClipLink,
+    nextLink: ?*ClipLink,
+};
 
 pub const ClipModel = extern struct {
     external: bool = true,
@@ -33,7 +49,7 @@ pub const ClipModel = extern struct {
     collisionModelHandle: c_int = 0,
     renderModelHandle: c_int = -1,
     traceModelIndex: c_int = -1,
-    clipLinks: ?*anyopaque = null,
+    clipLinks: ?*ClipLink = null,
     touchCount: c_int = -1,
 
     pub fn fromModel(model_path: []const u8) ClipModelError!ClipModel {
@@ -53,7 +69,7 @@ pub const ClipModel = extern struct {
         return clip_model;
     }
 
-    pub fn mass_properties(self: ClipModel, density: f32) struct { f32, Vec3(f32), Mat3(f32) } {
+    pub fn mass_properties(self: ClipModel, density: f32) MassProperties {
         var mass: f32 = 0.0;
         var center_of_mass = CVec3{};
         var inertia_tensor = CMat3{};
@@ -61,9 +77,9 @@ pub const ClipModel = extern struct {
         c_getMassProperties(&self, density, &mass, &center_of_mass, &inertia_tensor);
 
         return .{
-            mass,
-            center_of_mass.toVec3f(),
-            inertia_tensor.toMat3f(),
+            .mass = mass,
+            .center_of_mass = center_of_mass.toVec3f(),
+            .inertia_tensor = inertia_tensor.toMat3f(),
         };
     }
 
@@ -95,6 +111,12 @@ pub const ClipModel = extern struct {
     }
 
     pub fn component_deinit(self: *ClipModel) void {
-        self.deinit();
+        // TODO: Fix segfault:
+        // 1. Fail to load map
+        // 2. Exit the game
+        // (clipModel still alive but clipLinks is not but also not == null)
+        if (self.clipLinks != null) {
+            self.deinit();
+        }
     }
 };

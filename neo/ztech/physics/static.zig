@@ -2,6 +2,7 @@ const std = @import("std");
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
 const Rotation = @import("../math/rotation.zig");
+const Transform = @import("physics.zig").Transform;
 
 const PhysicsStatic = @This();
 
@@ -13,6 +14,15 @@ pub const State = struct {
 };
 
 current: State = .{},
+
+pub fn init(transform: Transform) PhysicsStatic {
+    return .{
+        .current = .{
+            .origin = transform.origin,
+            .axis = transform.axis,
+        },
+    };
+}
 
 pub fn translate(self: *PhysicsStatic, translation: Vec3(f32)) void {
     self.current.origin = self.current.origin.add(translation);

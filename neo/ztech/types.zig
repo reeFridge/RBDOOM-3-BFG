@@ -3,6 +3,8 @@ const SpawnArgs = @import("entity.zig").SpawnArgs;
 const render_entity = @import("renderer/render_entity.zig");
 const ClipModel = @import("physics/clip_model.zig").ClipModel;
 const Physics = @import("physics/physics.zig").Physics;
+const PhysicsRigidBody = @import("physics/rigid_body.zig");
+const PhysicsStatic = @import("physics/static.zig");
 const Transform = @import("physics/physics.zig").Transform;
 const TraceModel = @import("physics/trace_model.zig").TraceModel;
 const ContactInfo = @import("physics/collision_model.zig").ContactInfo;
@@ -64,6 +66,7 @@ pub const PlayerSpawn = struct {
 };
 
 pub const StaticObject = struct {
+    transform: Transform,
     name: Name,
     // used to present a model to the renderer
     render_entity: render_entity.CRenderEntity,
@@ -88,15 +91,16 @@ pub const StaticObject = struct {
 
         clip_model.origin = c_render_entity.origin;
 
+        const transform = .{
+            .origin = c_render_entity.origin.toVec3f(),
+        };
+
         return .{
+            .transform = transform,
             .render_entity = c_render_entity,
             .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
             .physics = .{
-                .static = .{
-                    .current = .{
-                        .origin = c_render_entity.origin.toVec3f(),
-                    },
-                },
+                .static = PhysicsStatic.init(transform),
             },
             .clip_model = clip_model,
         };
@@ -136,6 +140,7 @@ pub const Contacts = struct {
 };
 
 pub const MoveableObject = struct {
+    transform: Transform,
     name: Name,
     // used to present a model to the renderer
     render_entity: render_entity.CRenderEntity,
@@ -171,23 +176,18 @@ pub const MoveableObject = struct {
 
         clip_model.origin = c_render_entity.origin;
         const density = 1;
-        const mass, const center_of_mass, const inertia_tensor = clip_model.mass_properties(density);
+
+        const transform = .{ .origin = c_render_entity.origin.toVec3f() };
 
         return .{
+            .transform = transform,
             .render_entity = c_render_entity,
             .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
             .physics = .{
-                .rigid_body = .{
-                    .mass = mass,
-                    .center_of_mass = center_of_mass,
-                    .inertia_tensor = inertia_tensor,
-                    .current = .{
-                        .integration = .{
-                            .position = c_render_entity.origin.toVec3f(),
-                        },
-                    },
-                    .content_mask = -1, // MASK_ALL
-                },
+                .rigid_body = PhysicsRigidBody.init(
+                    transform,
+                    clip_model.mass_properties(density),
+                ),
             },
             .clip_model = clip_model,
             .contacts = Contacts.init(allocator),
@@ -198,11 +198,19 @@ pub const MoveableObject = struct {
 
 const RenderView = @import("renderer/render_world.zig").RenderView;
 
+extern fn c_calculateRenderView(*RenderView, f32) void;
+
 pub const View = struct {
     origin: Vec3(f32),
     axis: Mat3(f32),
     fov: f32 = 80,
     render_view: RenderView = std.mem.zeroes(RenderView),
+
+    pub fn calculateRenderView(self: *View) void {
+        c_calculateRenderView(&self.render_view, self.fov);
+        self.render_view.vieworg = CVec3.fromVec3f(self.origin);
+        self.render_view.viewaxis = CMat3.fromMat3f(self.axis);
+    }
 };
 
 pub const PlayerSpawnError = error{

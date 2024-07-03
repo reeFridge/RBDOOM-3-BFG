@@ -143,6 +143,7 @@ const UpdateRenderEntity = @import("update/render_entity.zig");
 const UpdatePhysicsClip = @import("update/physics/clip.zig");
 const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
 const UpdatePhysicsImpact = @import("update/physics/impact.zig");
+const UpdatePhysicsTransform = @import("update/physics/transform.zig");
 
 pub export fn ztech_processEntities() callconv(.C) void {
     if (!Game.c_isNewFrame()) return;
@@ -151,12 +152,14 @@ pub export fn ztech_processEntities() callconv(.C) void {
     global.entities.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);
     global.entities.processWithQuery(UpdatePhysicsContacts.Query, UpdatePhysicsContacts.update);
     global.entities.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
-    global.entities.process(UpdateRenderEntity.fromPhysics);
+    global.entities.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
+    global.entities.process(UpdateRenderEntity.fromTransform);
     global.entities.process(UpdateRenderEntity.present);
 }
 
 const QueryField = @import("entity.zig").QueryField;
 const Physics = @import("physics/physics.zig").Physics;
+const Capture = @import("entity.zig").Capture;
 
 pub export fn ztech_entityApplyImpulse(
     chandle: global.Entities.ExternEntityHandle,
@@ -164,11 +167,10 @@ pub export fn ztech_entityApplyImpulse(
     impulse: CVec3,
 ) callconv(.C) void {
     const handle = global.Entities.EntityHandle.fromExtern(chandle);
-    if (global.entities.queryFieldsByHandle(handle, &[_]QueryField{.{
-        .name = "physics",
-        .type = Physics,
-        .capture = .ByReference,
-    }})) |query_result| {
+    if (global.entities.queryByHandle(
+        handle,
+        struct { physics: Capture.ref(Physics) },
+    )) |query_result| {
         const physics_other = query_result.physics;
 
         switch (physics_other.*) {

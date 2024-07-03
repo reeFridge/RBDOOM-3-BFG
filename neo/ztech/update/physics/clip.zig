@@ -1,4 +1,3 @@
-const QueryField = @import("../../entity.zig").QueryField;
 const Physics = @import("../../physics/physics.zig").Physics;
 const ImpactInfo = @import("../../physics/physics.zig").ImpactInfo;
 const Game = @import("../../game.zig");
@@ -7,6 +6,7 @@ const ClipModel = @import("../../physics/clip_model.zig").ClipModel;
 const Impact = @import("../../types.zig").Impact;
 const global = @import("../../global.zig");
 const Vec3 = @import("../../math/vector.zig").Vec3;
+const Capture = @import("../../entity.zig").Capture;
 
 pub const Query = struct {
     physics: Physics,
@@ -56,9 +56,10 @@ pub fn update(list: anytype) void {
                     null;
 
                 const impact: ImpactInfo = if (opt_handle) |handle| impact: {
-                    const query_result = global.entities.queryFieldsByHandle(handle, &[_]QueryField{
-                        .{ .name = "physics", .type = Physics, .capture = .ByReference },
-                    }) orelse break :impact .{};
+                    const query_result = global.entities.queryByHandle(
+                        handle,
+                        struct { physics: Capture.ref(Physics) },
+                    ) orelse break :impact .{};
 
                     const physics_other = query_result.physics;
 
@@ -74,9 +75,10 @@ pub fn update(list: anytype) void {
                 }
 
                 if (opt_handle) |handle| {
-                    if (global.entities.queryFieldsByHandle(handle, &[_]QueryField{
-                        .{ .name = "impact", .type = Impact, .capture = .ByReference },
-                    })) |query_result| {
+                    if (global.entities.queryByHandle(
+                        handle,
+                        struct { impact: Capture.ref(Impact) },
+                    )) |query_result| {
                         const impact_other = query_result.impact;
 
                         impact_other.set(collision_point, impulse.scale(-1));

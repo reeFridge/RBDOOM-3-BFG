@@ -15,7 +15,13 @@ pub const ImpactInfo = extern struct {
 
 pub const Transform = struct {
     origin: Vec3(f32),
-    axis: Mat3(f32),
+    axis: Mat3(f32) = Mat3(f32).identity(),
+};
+
+pub const MassProperties = struct {
+    mass: f32,
+    center_of_mass: Vec3(f32),
+    inertia_tensor: Mat3(f32),
 };
 
 pub const Physics = union(enum) {

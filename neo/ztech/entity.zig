@@ -14,14 +14,52 @@ pub inline fn assertFields(comptime Required: type, comptime T: type) bool {
     return true;
 }
 
-pub const CaptureType = enum { ByValue, ByReference, ByConstReference };
+pub const Capture = struct {
+    pub const Type = enum { ByValue, ByReference };
+    const ByValue = struct {};
+    const ByReference = struct {};
+
+    pub fn capturePayload(capture: type) type {
+        return std.meta.FieldType(capture, .payload);
+    }
+
+    pub fn captureType(capture: type) Type {
+        if (std.meta.FieldType(capture, .type) == ByValue) return .ByValue;
+        if (std.meta.FieldType(capture, .type) == ByReference) return .ByReference;
+
+        unreachable;
+    }
+
+    pub fn value(T: type) type {
+        return struct { type: ByValue, payload: T };
+    }
+
+    pub fn ref(T: type) type {
+        return struct { type: ByReference, payload: T };
+    }
+};
+
 pub const QueryField = struct {
     name: [:0]const u8,
     type: type,
-    capture: CaptureType = .ByValue,
+    capture_type: Capture.Type,
 };
 
-fn Query(comptime query_fields: []const QueryField) type {
+fn Query(query: anytype) []const QueryField {
+    comptime var query_fields: []const QueryField = &.{};
+
+    inline for (std.meta.fields(query)) |field_info| {
+        query_fields = query_fields ++ [_]QueryField{.{
+            .name = field_info.name,
+            .capture_type = Capture.captureType(field_info.type),
+            .type = Capture.capturePayload(field_info.type),
+        }};
+    }
+
+    return query_fields;
+}
+
+fn QueryMeta(comptime query_fields: []const QueryField) type {
     const StructField = std.builtin.Type.StructField;
     comptime var required_fields: []const StructField = &.{};
     comptime var out_fields: []const StructField = &.{};
@@ -37,10 +75,9 @@ fn Query(comptime query_fields: []const QueryField) type {
 
         out_fields = out_fields ++ [_]StructField{.{
             .name = field.name,
-            .type = switch (field.capture) {
+            .type = switch (field.capture_type) {
                 .ByValue => field.type,
                 .ByReference => *field.type,
-                .ByConstReference => *const field.type,
             },
             .is_comptime = false,
             .alignment = 0,
@@ -226,26 +263,32 @@ pub fn Entities(comptime archetypes: anytype) type {
             return self.storage.getPtr(tag);
         }
 
-        pub fn queryFieldsByHandle(
+        pub fn queryByHandle(
             self: *@This(),
             handle: EntityHandle,
-            comptime query_fields: []const QueryField,
-        ) ?Query(query_fields).Out {
+            query: type,
+        ) ?QueryMeta(Query(query)).Out {
+            const query_fields = Query(query);
+            const Meta = QueryMeta(query_fields);
+
             return switch (self.getByTag(handle.type).*) {
                 inline else => |*obj| {
                     const Archetype = @TypeOf(obj.*).Type;
-                    if (comptime !assertFields(Query(query_fields).Required, Archetype)) return null;
+                    if (comptime !assertFields(Meta.Required, Archetype))
+                        return null;
+
+                    if (obj.field_storage.len == 0 or handle.id > obj.field_storage.len - 1)
+                        return null;
 
                     const Field = std.meta.FieldEnum(Archetype);
                     const slice = obj.field_storage.slice();
 
-                    const Out = Query(query_fields).Out;
-                    var result: Out = undefined;
+                    var result: Meta.Out = undefined;
 
                     inline for (query_fields) |field| {
-                        @field(result, field.name) = switch (field.capture) {
+                        @field(result, field.name) = switch (field.capture_type) {
                             .ByValue => slice.items(std.enums.nameCast(Field, field.name))[handle.id],
-                            .ByReference, .ByConstReference => &slice.items(std.enums.nameCast(Field, field.name))[handle.id],
+                            .ByReference => &slice.items(std.enums.nameCast(Field, field.name))[handle.id],
                         };
                     }
 

@@ -12,6 +12,8 @@ const Clip = @import("clip.zig");
 const Game = @import("../game.zig");
 const global = @import("../global.zig");
 const ImpactInfo = @import("physics.zig").ImpactInfo;
+const Transform = @import("physics.zig").Transform;
+const MassProperties = @import("physics.zig").MassProperties;
 
 const STOP_SPEED: f32 = 10.0;
 
@@ -47,7 +49,21 @@ linear_friction: f32 = 0.6,
 angular_friction: f32 = 0.6,
 contact_friction: f32 = 0.05,
 // contents the physics object collides with
-content_mask: i32 = 0,
+content_mask: i32 = -1, // MASK_ALL
+
+pub fn init(transform: Transform, mass_props: MassProperties) PhysicsRigidBody {
+    return .{
+        .mass = mass_props.mass,
+        .center_of_mass = mass_props.center_of_mass,
+        .inertia_tensor = mass_props.inertia_tensor,
+        .current = .{
+            .integration = .{
+                .position = transform.origin,
+                .orientation = transform.axis,
+            },
+        },
+    };
+}
 
 const MS2SEC: f32 = 0.001;
 
