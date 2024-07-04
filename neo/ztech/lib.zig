@@ -141,6 +141,7 @@ pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopa
 
 const UpdatePlayer = @import("update/player.zig");
 const UpdateRenderEntity = @import("update/render_entity.zig");
+const UpdateRenderLight = @import("update/render_light.zig");
 const UpdatePhysicsClip = @import("update/physics/clip.zig");
 const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
 const UpdatePhysicsImpact = @import("update/physics/impact.zig");
@@ -160,6 +161,8 @@ pub export fn ztech_processEntities() callconv(.C) void {
     ents.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
     ents.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
 
+    ents.process(UpdateRenderLight.fromTransform);
+    ents.process(UpdateRenderLight.present);
     ents.process(UpdateRenderEntity.fromTransform);
     ents.process(UpdateRenderEntity.present);
 }

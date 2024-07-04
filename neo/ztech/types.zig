@@ -1,6 +1,6 @@
 const std = @import("std");
 const SpawnArgs = @import("entity.zig").SpawnArgs;
-const render_entity = @import("renderer/render_entity.zig");
+const CRenderEntity = @import("renderer/render_entity.zig").CRenderEntity;
 const ClipModel = @import("physics/clip_model.zig").ClipModel;
 const Physics = @import("physics/physics.zig").Physics;
 const PhysicsRigidBody = @import("physics/rigid_body.zig");
@@ -69,17 +69,13 @@ pub const StaticObject = struct {
     transform: Transform,
     name: Name,
     // used to present a model to the renderer
-    render_entity: render_entity.CRenderEntity,
+    render_entity: CRenderEntity,
     model_def_handle: c_int = -1,
     physics: Physics,
     clip_model: ClipModel,
 
-    pub fn spawn(
-        _: std.mem.Allocator,
-        spawn_args: SpawnArgs,
-        c_dict_ptr: ?*anyopaque,
-    ) !StaticObject {
-        var c_render_entity = render_entity.CRenderEntity{};
+    pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !StaticObject {
+        var c_render_entity = CRenderEntity{};
         if (c_dict_ptr) |ptr| {
             c_render_entity.initFromSpawnArgs(ptr);
         } else return error.CSpawnArgsIsUndefined;
@@ -143,7 +139,7 @@ pub const MoveableObject = struct {
     transform: Transform,
     name: Name,
     // used to present a model to the renderer
-    render_entity: render_entity.CRenderEntity,
+    render_entity: CRenderEntity,
     model_def_handle: c_int = -1,
     physics: Physics,
     clip_model: ClipModel,
@@ -164,7 +160,7 @@ pub const MoveableObject = struct {
         spawn_args: SpawnArgs,
         c_dict_ptr: ?*anyopaque,
     ) !MoveableObject {
-        var c_render_entity = render_entity.CRenderEntity{};
+        var c_render_entity = CRenderEntity{};
         if (c_dict_ptr) |ptr| {
             c_render_entity.initFromSpawnArgs(ptr);
         } else return error.CSpawnArgsIsUndefined;
@@ -240,8 +236,6 @@ pub const PVSAreas = struct {
     }
 };
 
-const global = @import("global.zig");
-
 pub const byte = u8;
 pub const uint16 = c_ushort;
 
@@ -285,6 +279,36 @@ pub const Player = struct {
     }
 };
 
+const RenderLight = @import("renderer/render_world.zig").RenderLight;
+
+pub const Light = struct {
+    transform: Transform,
+    light_def_handle: c_int = -1,
+    render_light: RenderLight,
+
+    pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !Light {
+        var c_render_light = std.mem.zeroes(RenderLight);
+        if (c_dict_ptr) |ptr| {
+            c_render_light.initFromSpawnArgs(ptr);
+        } else return error.CSpawnArgsIsUndefined;
+
+        const origin = if (spawn_args.get("origin")) |origin_str|
+            c_parseVector(origin_str.ptr).toVec3f()
+        else
+            Vec3(f32){};
+
+        const rotation = if (spawn_args.get("rotation")) |rotation_str|
+            c_parseMatrix(rotation_str.ptr).toMat3f()
+        else
+            Mat3(f32).identity();
+
+        return .{
+            .transform = .{ .origin = origin, .axis = rotation },
+            .render_light = c_render_light,
+        };
+    }
+};
+
 // TODO: idRenderWorldLocal::AddWorldModelEntities()
 
-pub const ExportedTypes = .{ StaticObject, MoveableObject, PlayerSpawn, Player };
+pub const ExportedTypes = .{ StaticObject, MoveableObject, PlayerSpawn, Player, Light };

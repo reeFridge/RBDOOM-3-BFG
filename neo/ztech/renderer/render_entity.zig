@@ -9,7 +9,7 @@ const RenderEntity = @This();
 
 const deferredEntityCallback_t = fn (?*anyopaque, ?*anyopaque) callconv(.C) bool;
 
-extern fn c_parse_spawn_args_to_render_entity(*anyopaque, *CRenderEntity) callconv(.C) void;
+extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *CRenderEntity) callconv(.C) void;
 
 pub const CRenderEntity = extern struct {
     // this can only be null if callback is set
@@ -107,6 +107,6 @@ pub const CRenderEntity = extern struct {
     xrayIndex: c_int = 0,
 
     pub fn initFromSpawnArgs(self: *CRenderEntity, dict: *anyopaque) void {
-        c_parse_spawn_args_to_render_entity(dict, self);
+        c_parseSpawnArgsToRenderEntity(dict, self);
     }
 };

@@ -220,7 +220,7 @@ void AddRenderGui( const char* name, idUserInterface** gui, const idDict* args )
 	UpdateGuiParms( *gui, args );
 }
 
-extern "C" void c_parse_spawn_args_to_render_entity(const idDict* args, renderEntity_t* renderEntity)
+extern "C" void c_parseSpawnArgsToRenderEntity(const idDict* args, renderEntity_t* renderEntity)
 {
 	gameEdit->ParseSpawnArgsToRenderEntity( args, renderEntity );
 }
@@ -1777,11 +1777,11 @@ void idEntity::Present()
 	}
 }
 
-extern "C" int c_add_entity_def(const renderEntity_t* renderEntity) {
+extern "C" int c_addEntityDef(const renderEntity_t* renderEntity) {
 	return gameRenderWorld->AddEntityDef(renderEntity);
 }
 
-extern "C" void c_update_entity_def(int modelDefHandle, const renderEntity_t* renderEntity) {
+extern "C" void c_updateEntityDef(int modelDefHandle, const renderEntity_t* renderEntity) {
 	gameRenderWorld->UpdateEntityDef(modelDefHandle, renderEntity);
 }
 

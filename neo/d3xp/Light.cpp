@@ -198,6 +198,11 @@ void idGameEdit::ParseSpawnArgsToRenderLight( const idDict* args, renderLight_t*
 	renderLight->shader = declManager->FindMaterial( texture, false );
 }
 
+extern "C" void c_parseSpawnArgsToRenderLight(const idDict* args, renderLight_t* renderLight)
+{
+	gameEdit->ParseSpawnArgsToRenderLight( args, renderLight );
+}
+
 /*
 ================
 idLight::UpdateChangeableSpawnArgs
@@ -889,6 +894,14 @@ void idLight::BecomeBroken( idEntity* activator )
 	}
 
 	UpdateVisuals();
+}
+
+extern "C" int c_addLightDef(const renderLight_t* renderLight) {
+	return gameRenderWorld->AddLightDef(renderLight);
+}
+
+extern "C" void c_updateLightDef(int lightDefHandle, const renderLight_t* renderLight) {
+	gameRenderWorld->UpdateLightDef(lightDefHandle, renderLight);
 }
 
 /*
