@@ -78,6 +78,14 @@ idCVar timescale( "timescale", "1", CVAR_SYSTEM | CVAR_FLOAT, "Number of game fr
 extern idCVar in_useJoystick;
 extern idCVar in_joystickRumble;
 
+extern "C" bool c_hasUserCmdForPlayer(int num) {
+	return commonLocal.GetUCmdMgr().HasUserCmdForPlayer(num);
+}
+
+extern "C" usercmd_t c_getUserCmdForPlayer(int num) {
+	return commonLocal.GetUCmdMgr().GetWritableUserCmdForPlayer(num);
+}
+
 /*
 ===============
 idGameThread::Run

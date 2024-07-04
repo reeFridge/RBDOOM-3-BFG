@@ -242,23 +242,44 @@ pub const PVSAreas = struct {
 
 const global = @import("global.zig");
 
+pub const byte = u8;
+pub const uint16 = c_ushort;
+
+pub const UserCmd = extern struct {
+    angles: [3]c_short,
+    forwardmove: i8,
+    rightmove: i8,
+    buttons: byte,
+    clientGameMilliseconds: c_int,
+    serverGameMilliseconds: c_int,
+    fireCount: uint16,
+    impulse: byte,
+    impulseSequence: byte,
+    mx: c_short,
+    my: c_short,
+    pos: CVec3,
+    speedSquared: f32,
+};
+
+pub const Input = struct {
+    user_cmd: UserCmd = std.mem.zeroes(UserCmd),
+};
+
 pub const Player = struct {
+    client_id: u8,
+    input: Input,
     transform: Transform,
     view: View,
     pvs_areas: PVSAreas = std.mem.zeroes(PVSAreas),
 
-    pub fn spawn(_: std.mem.Allocator, _: SpawnArgs, _: ?*anyopaque) !Player {
-        const spots = global.entities.getByType(PlayerSpawn).field_storage.items(.transform);
-
-        if (spots.len == 0) return error.PlayerSpawnNotFound;
-
-        const first_spot = spots[0];
-
+    pub fn init(client_id: u8, transform: Transform) Player {
         return .{
-            .transform = first_spot,
+            .client_id = client_id,
+            .input = .{},
+            .transform = transform,
             .view = .{
-                .origin = first_spot.origin,
-                .axis = first_spot.axis,
+                .origin = transform.origin,
+                .axis = transform.axis,
             },
         };
     }

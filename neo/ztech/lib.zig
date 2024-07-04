@@ -46,10 +46,11 @@ extern fn c_copy_dict_to_zig(*anyopaque, *const fn ([*c]const u8, [*c]const u8) 
 pub export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
     std.debug.print("Spawn Player: {d}\n", .{client_num});
 
-    var spawn_args = entity.SpawnArgs.init(g_gpa.allocator());
-    defer spawn_args.deinit();
+    const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
 
-    _ = global.entities.spawnType(types.Player, spawn_args) catch |err| {
+    if (spots.len == 0) return false;
+
+    _ = global.entities.register(types.Player.init(@intCast(client_num), spots[0])) catch |err| {
         std.debug.print("[error] {?}\n", .{err});
         return false;
     };
@@ -148,13 +149,19 @@ const UpdatePhysicsTransform = @import("update/physics/transform.zig");
 pub export fn ztech_processEntities() callconv(.C) void {
     if (!Game.c_isNewFrame()) return;
 
-    global.entities.processWithQuery(types.Player, UpdatePlayer.update);
-    global.entities.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);
-    global.entities.processWithQuery(UpdatePhysicsContacts.Query, UpdatePhysicsContacts.update);
-    global.entities.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
-    global.entities.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
-    global.entities.process(UpdateRenderEntity.fromTransform);
-    global.entities.process(UpdateRenderEntity.present);
+    var ents = &global.entities;
+
+    ents.process(UpdatePlayer.handleInput);
+    ents.process(UpdatePlayer.updateViewAngles);
+    ents.processWithQuery(types.Player, UpdatePlayer.update);
+
+    ents.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);
+    ents.processWithQuery(UpdatePhysicsContacts.Query, UpdatePhysicsContacts.update);
+    ents.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
+    ents.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
+
+    ents.process(UpdateRenderEntity.fromTransform);
+    ents.process(UpdateRenderEntity.present);
 }
 
 const QueryField = @import("entity.zig").QueryField;

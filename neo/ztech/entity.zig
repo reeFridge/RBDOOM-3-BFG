@@ -169,6 +169,7 @@ pub fn TypedEntities(comptime Archetype: type, comptime EntityHandle: type) type
 }
 
 pub const EntityError = error{
+    NoSpawnMethod,
     UnknownEntityType,
 };
 
@@ -317,6 +318,7 @@ pub fn Entities(comptime archetypes: anytype) type {
             inline for (info.fields, 0..) |field_info, i| {
                 if (std.mem.eql(u8, type_name, field_info.name)) {
                     const Archetype = field_info.type.Type;
+                    if (!std.meta.hasMethod(Archetype, "spawn")) return EntityError.NoSpawnMethod;
                     const entities = self.getByType(Archetype);
 
                     const id = try entities.add(try Archetype.spawn(self.allocator, spawn_args, c_dict_ptr));
@@ -332,6 +334,18 @@ pub fn Entities(comptime archetypes: anytype) type {
             }
 
             return EntityError.UnknownEntityType;
+        }
+
+        pub fn register(self: *@This(), instance: anytype) !EntityHandle {
+            const Archetype = @TypeOf(instance);
+
+            const entities = self.getByType(Archetype);
+            const id = try entities.add(instance);
+            const handle = EntityHandle.fromType(Archetype, id);
+
+            entities.initFields(handle);
+
+            return handle;
         }
 
         pub fn spawnType(self: *@This(), Archetype: type, spawn_args: SpawnArgs) !EntityHandle {
