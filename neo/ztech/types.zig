@@ -149,6 +149,7 @@ pub const MoveableObject = struct {
     inline fn createClipModel(model_path: []const u8) !ClipModel {
         // TODO: Why it is printed?
         // WARNING: idClipModel::FreeTraceModel: tried to free uncached trace model
+        // A: idClipModel::ClearTraceModelCache called before component_deinit!
         const trace_model = try TraceModel.fromModel(model_path);
         var clip_model = ClipModel.fromTraceModel(trace_model);
         clip_model.contents = 1; // CONTENTS_SOLID
@@ -259,11 +260,14 @@ pub const Input = struct {
     user_cmd: UserCmd = std.mem.zeroes(UserCmd),
 };
 
+const Angles = @import("math/angles.zig");
+
 pub const Player = struct {
     client_id: u8,
     input: Input,
     transform: Transform,
     view: View,
+    delta_view_angles: Angles = .{},
     pvs_areas: PVSAreas = std.mem.zeroes(PVSAreas),
 
     pub fn init(client_id: u8, transform: Transform) Player {

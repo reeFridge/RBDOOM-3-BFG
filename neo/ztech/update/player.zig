@@ -55,61 +55,50 @@ fn angleNormalize180(angle: f32) f32 {
         angle_;
 }
 
-fn sincos(a: f32, s: *f32, c: *f32) void {
-    s.* = std.math.sin(a);
-    c.* = std.math.cos(a);
+const Angles = @import("../math/angles.zig");
+
+inline fn shortToAngle(angle_short: c_short) f32 {
+    return @as(f32, @floatFromInt(angle_short)) * (360.0 / 65536.0);
 }
 
 pub fn updateViewAngles(T: type, list: anytype) void {
     if (comptime !assertFields(struct {
+        delta_view_angles: Angles,
         transform: Transform,
         input: Input,
     }, T)) return;
 
     var list_slice = list.slice();
     for (
+        list_slice.items(.delta_view_angles),
         list_slice.items(.transform),
         list_slice.items(.input),
-    ) |*transform, input| {
-        var view_angles: [3]f32 = .{0} ** 3; // pitch, yaw, roll
-        for (input.user_cmd.angles, 0..) |angle_short, i| {
-            view_angles[i] = angleNormalize180(@as(f32, @floatFromInt(angle_short)) * (360.0 / 65536.0));
-        }
+    ) |*delta_view_angles, *transform, input| {
+        const view_angles = Angles{
+            .pitch = angleNormalize180(
+                shortToAngle(input.user_cmd.angles[0]) + delta_view_angles.pitch,
+            ),
+            .yaw = angleNormalize180(
+                shortToAngle(input.user_cmd.angles[1]) + delta_view_angles.yaw,
+            ),
+            .roll = angleNormalize180(
+                shortToAngle(input.user_cmd.angles[2]) + delta_view_angles.roll,
+            ),
+        };
 
         const max_view_pitch = 89.0;
         const min_view_pitch = -89.0;
         const restrict = 1.0;
-        view_angles[0] = @min(view_angles[0], max_view_pitch * restrict);
-        view_angles[0] = @max(view_angles[0], min_view_pitch * restrict);
+        view_angles.pitch = @min(view_angles.pitch, max_view_pitch * restrict);
+        view_angles.pitch = @max(view_angles.pitch, min_view_pitch * restrict);
 
-        var view_axis = Mat3(f32).identity();
-        var sr: f32 = 0.0;
-        var sp: f32 = 0.0;
-        var sy: f32 = 0.0;
-        var cr: f32 = 0.0;
-        var cp: f32 = 0.0;
-        var cy: f32 = 0.0;
+        // update delta_view_angles
+        // docs: Prevents snapping at max and min angles
+        delta_view_angles.pitch = view_angles.pitch - shortToAngle(input.user_cmd.angles[0]);
+        delta_view_angles.yaw = view_angles.yaw - shortToAngle(input.user_cmd.angles[1]);
+        delta_view_angles.roll = view_angles.roll - shortToAngle(input.user_cmd.angles[2]);
 
-        sincos(std.math.degreesToRadians(view_angles[1]), &sy, &cy);
-        sincos(std.math.degreesToRadians(view_angles[0]), &sp, &cp);
-        sincos(std.math.degreesToRadians(view_angles[2]), &sr, &cr);
-
-        view_axis.v[0] = .{
-            .x = cp * cy,
-            .y = cp * sy,
-            .z = -sp,
-        };
-        view_axis.v[1] = .{
-            .x = sr * sp * cy + cr * -sy,
-            .y = sr * sp * sy + cr * cy,
-            .z = sr * cp,
-        };
-        view_axis.v[2] = .{
-            .x = cr * sp * cy + -sr * -sy,
-            .y = cr * sp * sy + -sr * cy,
-            .z = cr * cp,
-        };
-
-        transform.axis = view_axis;
+        // update transform
+        transform.axis = view_angles.toMat3();
     }
 }
