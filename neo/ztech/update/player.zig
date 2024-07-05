@@ -1,4 +1,5 @@
 const std = @import("std");
+const math = @import("../math/math.zig");
 const assertFields = @import("../entity.zig").assertFields;
 const Input = @import("../types.zig").Input;
 const UserCmd = @import("../types.zig").UserCmd;
@@ -40,21 +41,6 @@ pub fn handleInput(T: type, list: anytype) void {
     }
 }
 
-fn angleNormalize360(angle: f32) f32 {
-    return if ((angle >= 360.0) or (angle < 0.0))
-        angle - @floor(angle * (1.0 / 360.0)) * 360.0
-    else
-        angle;
-}
-
-fn angleNormalize180(angle: f32) f32 {
-    const angle_ = angleNormalize360(angle);
-    return if (angle_ > 180.0)
-        angle_ - 360.0
-    else
-        angle_;
-}
-
 const Angles = @import("../math/angles.zig");
 
 inline fn shortToAngle(angle_short: c_short) f32 {
@@ -74,14 +60,14 @@ pub fn updateViewAngles(T: type, list: anytype) void {
         list_slice.items(.transform),
         list_slice.items(.input),
     ) |*delta_view_angles, *transform, input| {
-        const view_angles = Angles{
-            .pitch = angleNormalize180(
+        var view_angles = Angles{
+            .pitch = math.angleNormalize180(
                 shortToAngle(input.user_cmd.angles[0]) + delta_view_angles.pitch,
             ),
-            .yaw = angleNormalize180(
+            .yaw = math.angleNormalize180(
                 shortToAngle(input.user_cmd.angles[1]) + delta_view_angles.yaw,
             ),
-            .roll = angleNormalize180(
+            .roll = math.angleNormalize180(
                 shortToAngle(input.user_cmd.angles[2]) + delta_view_angles.roll,
             ),
         };

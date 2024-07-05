@@ -1,10 +1,6 @@
 const std = @import("std");
 const Mat3 = @import("matrix.zig").Mat3;
-
-fn sincos(a: f32, s: *f32, c: *f32) void {
-    s.* = std.math.sin(a);
-    c.* = std.math.cos(a);
-}
+const math = @import("math.zig");
 
 const Angles = @This();
 
@@ -20,9 +16,9 @@ pub fn toMat3(self: Angles) Mat3(f32) {
     var cp: f32 = 0.0;
     var cy: f32 = 0.0;
 
-    sincos(std.math.degreesToRadians(self.yaw), &sy, &cy);
-    sincos(std.math.degreesToRadians(self.pitch), &sp, &cp);
-    sincos(std.math.degreesToRadians(self.roll), &sr, &cr);
+    math.sincos(std.math.degreesToRadians(self.yaw), &sy, &cy);
+    math.sincos(std.math.degreesToRadians(self.pitch), &sp, &cp);
+    math.sincos(std.math.degreesToRadians(self.roll), &sr, &cr);
 
     var mat = Mat3(f32).identity();
     mat.v[0] = .{
