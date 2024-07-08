@@ -24,18 +24,18 @@ pub fn build(b: *std.Build) !void {
     exe.defineCMacro("USE_OPENAL", null);
     exe.defineCMacro("__DOOM__", null);
 
-    exe.addIncludePath(.{ .path = "extern/nvrhi/include" });
-    exe.addIncludePath(.{ .path = "extern/ShaderMake/include" });
-    exe.addIncludePath(.{ .path = "idlib" });
-    exe.addIncludePath(.{ .path = "libs/stb" });
-    exe.addIncludePath(.{ .path = "libs/mikktspace" });
-    exe.addIncludePath(.{ .path = "libs/zlib" });
-    exe.addIncludePath(.{ .path = "libs/rapidjson/include" });
-    exe.addIncludePath(.{ .path = "libs/imgui" });
-    exe.addIncludePath(.{ .path = "libs/optick" });
-    exe.addIncludePath(.{ .path = "libs/vma/include" });
-    exe.addIncludePath(.{ .path = "libs/libbinkdec/include" });
-    exe.addIncludePath(.{ .path = "./" });
+    exe.addIncludePath(b.path("extern/nvrhi/include"));
+    exe.addIncludePath(b.path("extern/ShaderMake/include"));
+    exe.addIncludePath(b.path("idlib"));
+    exe.addIncludePath(b.path("libs/stb"));
+    exe.addIncludePath(b.path("libs/mikktspace"));
+    exe.addIncludePath(b.path("libs/zlib"));
+    exe.addIncludePath(b.path("libs/rapidjson/include"));
+    exe.addIncludePath(b.path("libs/imgui"));
+    exe.addIncludePath(b.path("libs/optick"));
+    exe.addIncludePath(b.path("libs/vma/include"));
+    exe.addIncludePath(b.path("libs/libbinkdec/include"));
+    exe.addIncludePath(b.path("./"));
 
     // TODO: find_package(Vulkan OPTIONAL_COMPONENTS ${Vulkan_COMPONENTS})
     // include_directories(${Vulkan_INCLUDE_DIRS})
@@ -241,7 +241,7 @@ pub fn build(b: *std.Build) !void {
 
     const ztech_lib = b.addStaticLibrary(.{
         .name = "libztech",
-        .root_source_file = .{ .path = "ztech/lib.zig" },
+        .root_source_file = b.path("ztech/lib.zig"),
         .optimize = optimize,
         .target = target,
     });

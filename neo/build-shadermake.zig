@@ -27,7 +27,7 @@ pub fn package(
         "-std=c++17",
     };
 
-    shader_make_blob.addIncludePath(.{ .path = thisDir() ++ "/include" });
+    shader_make_blob.addIncludePath(b.path(thisDir() ++ "/include"));
     shader_make_blob.addCSourceFiles(.{ .files = &blob_src, .flags = &cxxflags });
 
     shader_make_blob.linkLibC();
@@ -42,8 +42,8 @@ pub fn package(
         thisDir() ++ "/src/argparse.c",
     };
 
-    shader_make.addIncludePath(.{ .path = thisDir() ++ "/include" });
-    shader_make.addIncludePath(.{ .path = thisDir() ++ "/src" });
+    shader_make.addIncludePath(b.path(thisDir() ++ "/include"));
+    shader_make.addIncludePath(b.path(thisDir() ++ "/src"));
     shader_make.addCSourceFiles(.{ .files = &src_c, .flags = &flags });
     shader_make.addCSourceFiles(.{ .files = &src_cpp, .flags = &cxxflags });
 

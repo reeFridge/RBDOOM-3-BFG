@@ -25,7 +25,7 @@ pub fn package(
     // NVRHI_WITH_VALIDATION
     // NVRHI_WITH_VULKAN
     // TODO: add_subdirectory(thirdparty/Vulkan-Headers)
-    nvrhi.addIncludePath(.{ .path = thisDir() ++ "/include" });
+    nvrhi.addIncludePath(b.path(thisDir() ++ "/include"));
 
     const src_common = [_][]const u8{
         thisDir() ++ "/src/common/format-info.cpp",

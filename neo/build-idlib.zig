@@ -42,9 +42,9 @@ pub fn package(
     try butils.addFilesWithExts(b, &all_sources, thisDir() ++ "/sys/posix", &exts);
 
     idlib.addCSourceFiles(.{ .files = all_sources.items, .flags = &cxxflags });
-    idlib.addIncludePath(.{ .path = thisDir() });
-    idlib.addIncludePath(.{ .path = thisDir() ++ "/../extern/nvrhi/include" });
-    idlib.addIncludePath(.{ .path = thisDir() ++ "/../libs/rapidjson/include" });
+    idlib.addIncludePath(b.path(thisDir()));
+    idlib.addIncludePath(b.path(thisDir() ++ "/../extern/nvrhi/include"));
+    idlib.addIncludePath(b.path(thisDir() ++ "/../libs/rapidjson/include"));
 
     idlib.linkLibC();
     idlib.linkLibCpp();
