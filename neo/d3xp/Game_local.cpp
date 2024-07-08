@@ -1721,9 +1721,12 @@ void idGameLocal::MapClear( bool clearClients )
 idGameLocal::MapShutdown
 ============
 */
+extern "C" void ztech_clearEntities();
 void idGameLocal::MapShutdown()
 {
 	Printf( "--------- Game Map Shutdown ----------\n" );
+
+	ztech_clearEntities();
 
 	gamestate = GAMESTATE_SHUTDOWN;
 

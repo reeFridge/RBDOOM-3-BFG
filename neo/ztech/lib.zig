@@ -20,6 +20,12 @@ pub export fn ztech_deinit() callconv(.C) void {
     std.debug.print("[ztech] deinit: OK\n", .{});
 }
 
+pub export fn ztech_clearEntities() callconv(.C) void {
+    global.entities.clear();
+
+    std.debug.print("[ztech] clear: OK\n", .{});
+}
+
 const CopySpawnArgs = struct {
     var target: *entity.SpawnArgs = undefined;
     var dict_ptr: *anyopaque = undefined;

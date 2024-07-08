@@ -111,10 +111,6 @@ pub const ClipModel = extern struct {
     }
 
     pub fn component_deinit(self: *ClipModel) void {
-        // TODO: Fix segfault:
-        // 1. Fail to load map
-        // 2. Exit the game
-        // (clipModel still alive but clipLinks is not but also not == null)
         if (self.clipLinks != null) {
             self.deinit();
         }

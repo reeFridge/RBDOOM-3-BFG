@@ -147,9 +147,6 @@ pub const MoveableObject = struct {
     impact: Impact,
 
     inline fn createClipModel(model_path: []const u8) !ClipModel {
-        // TODO: Why it is printed?
-        // WARNING: idClipModel::FreeTraceModel: tried to free uncached trace model
-        // A: idClipModel::ClearTraceModelCache called before component_deinit!
         const trace_model = try TraceModel.fromModel(model_path);
         var clip_model = ClipModel.fromTraceModel(trace_model);
         clip_model.contents = 1; // CONTENTS_SOLID

@@ -128,6 +128,11 @@ pub fn TypedEntities(comptime Archetype: type, comptime EntityHandle: type) type
             return @intCast(index);
         }
 
+        pub fn clear(self: *@This()) void {
+            self.deinitFields();
+            self.field_storage.shrinkAndFree(self.allocator, 0);
+        }
+
         pub fn deinit(self: *@This()) void {
             self.deinitFields();
             self.field_storage.deinit(self.allocator);
@@ -390,6 +395,16 @@ pub fn Entities(comptime archetypes: anytype) type {
             inline for (info.fields) |field_info| {
                 const Archetype = field_info.type.Type;
                 f(Archetype, &self.getByType(Archetype).field_storage);
+            }
+        }
+
+        pub fn clear(self: *@This()) void {
+            const info = @typeInfo(U).Union;
+
+            inline for (info.fields) |field_info| {
+                const Archetype = field_info.type.Type;
+                const entities = self.getByType(Archetype);
+                entities.clear();
             }
         }
 
