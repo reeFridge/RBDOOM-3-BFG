@@ -1,4 +1,4 @@
-const RenderLight = @import("../renderer/render_world.zig").RenderLight;
+const RenderLight = @import("../renderer/render_light.zig").RenderLight;
 const assertFields = @import("../entity.zig").assertFields;
 const Transform = @import("../physics/physics.zig").Transform;
 const CMat3 = @import("../math/matrix.zig").CMat3;

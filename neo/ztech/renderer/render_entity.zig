@@ -2,16 +2,15 @@ const std = @import("std");
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
-const MAX_ENTITY_SHADER_PARMS = @as(usize, 12);
-const MAX_RENDERENTITY_GUI = @as(usize, 3);
 
-const RenderEntity = @This();
+pub const MAX_ENTITY_SHADER_PARMS: usize = 12;
+pub const MAX_RENDERENTITY_GUI: usize = 3;
 
 const deferredEntityCallback_t = fn (?*anyopaque, ?*anyopaque) callconv(.C) bool;
 
-extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *CRenderEntity) callconv(.C) void;
+extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *RenderEntity) callconv(.C) void;
 
-pub const CRenderEntity = extern struct {
+pub const RenderEntity = extern struct {
     // this can only be null if callback is set
     hModel: ?*anyopaque = null,
     entityNum: c_int = -1,
@@ -67,9 +66,9 @@ pub const CRenderEntity = extern struct {
     // for shader sound tables, allowing effects to vary with sounds
     referenceSound: ?*anyopaque = null,
     // can be used in any way by shader or model generation
-    shaderParms: [RenderEntity.MAX_ENTITY_SHADER_PARMS]f32 = std.mem.zeroes([RenderEntity.MAX_ENTITY_SHADER_PARMS]f32),
+    shaderParms: [MAX_ENTITY_SHADER_PARMS]f32 = std.mem.zeroes([MAX_ENTITY_SHADER_PARMS]f32),
     // networking: see WriteGUIToSnapshot / ReadGUIFromSnapshot
-    gui: [RenderEntity.MAX_RENDERENTITY_GUI]?*anyopaque = std.mem.zeroes([RenderEntity.MAX_RENDERENTITY_GUI]?*anyopaque),
+    gui: [MAX_RENDERENTITY_GUI]?*anyopaque = std.mem.zeroes([MAX_RENDERENTITY_GUI]?*anyopaque),
     // any remote camera surfaces will use this
     remoteRenderView: ?*anyopaque = null,
 
@@ -106,7 +105,55 @@ pub const CRenderEntity = extern struct {
     timeGroup: c_int = 0,
     xrayIndex: c_int = 0,
 
-    pub fn initFromSpawnArgs(self: *CRenderEntity, dict: *anyopaque) void {
+    pub fn initFromSpawnArgs(self: *RenderEntity, dict: *anyopaque) void {
         c_parseSpawnArgsToRenderEntity(dict, self);
     }
+};
+
+const RenderMatrix = @import("matrix.zig").RenderMatrix;
+const AreaReference = @import("common.zig").AreaReference;
+const Interaction = @import("interaction.zig").Interaction;
+
+pub const RenderEntityLocal = extern struct {
+    // specification
+    parms: RenderEntity,
+    // this is just a rearrangement of parms.axis and parms.origin
+    modelMatrix: [16]f32,
+    modelRenderMatrix: RenderMatrix,
+    // transforms the unit cube to exactly cover the model in world space
+    inverseBaseModelProject: RenderMatrix,
+    world: ?*anyopaque, // RenderWorld
+    // in world entityDefs
+    index: c_int,
+    // to determine if it is constantly changing,
+    // and should go in the dynamic frame memory, or kept
+    // in the cached memory
+    lastModifiedFrameNum: c_int,
+    // if parms.model->IsDynamicModel(), this is the generated data
+    dynamicModel: ?*anyopaque, // idRenderModel
+    // continuously animating dynamic models will recreate
+    dynamicModelFrameCount: c_int,
+    // dynamicModel if this doesn't == tr.viewCount
+    cachedDynamicModel: ?*anyopaque, // idRenderModel
+    // the local bounds used to place entityRefs, either from parms for dynamic entities, or a model bounds
+    localReferenceBounds: CBounds,
+    // axis aligned bounding box in world space, derived from refernceBounds and
+    // modelMatrix in R_CreateEntityRefs()
+    globalReferenceBounds: CBounds,
+    // a viewEntity_t is created whenever a idRenderEntityLocal is considered for inclusion
+    // in a given view, even if it turns out to not be visible
+    // if tr.viewCount == viewCount, viewEntity is valid,
+    // but the entity may still be off screen
+    viewCount: c_int,
+    // in frame temporary memory
+    viewEntity: ?*anyopaque, // viewEntity_t
+    // decals that have been projected on this model
+    decals: ?*anyopaque, //RenderModelDecal
+    overlays: ?*anyopaque, //RenderModelOverlay
+    // chain of all reference
+    entityRefs: ?*AreaReference,
+    // doubly linked list
+    firstInteraction: ?*Interaction,
+    lastInteraction: ?*Interaction,
+    needsPortalSky: bool,
 };
