@@ -376,6 +376,8 @@ void idCommonLocal::LoadLoadingGui( const char* mapName, bool& hellMap )
 	}
 }
 
+extern "C" bool ztech_RenderWorld_initFromMap(void*, uint8_t const *const);
+
 /*
 ===============
 idCommonLocal::ExecuteMapChange
@@ -526,9 +528,12 @@ void idCommonLocal::ExecuteMapChange()
 	Sys_GrabMouseCursor( false );
 
 	// let the renderSystem load all the geometry
-	if( !renderWorld->InitFromMap( fullMapName ) )
-	{
-		common->Error( "couldn't load %s", fullMapName.c_str() );
+	//if( !renderWorld->InitFromMap( fullMapName ) )
+	//{
+	//	common->Error( "couldn't load %s", fullMapName.c_str() );
+	//}
+	if (!ztech_RenderWorld_initFromMap(ztech_renderWorld, (const uint8_t*)fullMapName.c_str())) {
+		common->Error("couldn't load %s", fullMapName.c_str());
 	}
 
 	// for the synchronous networking we needed to roll the angles over from

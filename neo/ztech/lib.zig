@@ -6,21 +6,19 @@ const CVec3 = @import("math/vector.zig").CVec3;
 const CMat3 = @import("math/matrix.zig").CMat3;
 const types = @import("types.zig");
 
-var g_gpa = std.heap.GeneralPurposeAllocator(.{}){};
-
-pub export fn ztech_init() callconv(.C) void {
-    global.entities = global.Entities.init(g_gpa.allocator());
+export fn ztech_init() callconv(.C) void {
+    global.entities = global.Entities.init(global.gpa.allocator());
     std.debug.print("[ztech] init: OK\n", .{});
 }
 
-pub export fn ztech_deinit() callconv(.C) void {
+export fn ztech_deinit() callconv(.C) void {
     global.entities.deinit();
-    if (g_gpa.deinit() == std.heap.Check.leak) @panic("[ztech] allocator leak!");
+    if (global.gpa.deinit() == std.heap.Check.leak) @panic("[ztech] allocator leak!");
 
     std.debug.print("[ztech] deinit: OK\n", .{});
 }
 
-pub export fn ztech_clearEntities() callconv(.C) void {
+export fn ztech_clearEntities() callconv(.C) void {
     global.entities.clear();
 
     std.debug.print("[ztech] clear: OK\n", .{});
@@ -49,7 +47,7 @@ const CopySpawnArgs = struct {
 
 extern fn c_copy_dict_to_zig(*anyopaque, *const fn ([*c]const u8, [*c]const u8) callconv(.C) void) void;
 
-pub export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
+export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
     std.debug.print("Spawn Player: {d}\n", .{client_num});
 
     const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
@@ -68,7 +66,7 @@ const pvs = @import("pvs.zig");
 
 extern fn c_getClientPVS([*]c_int, usize) callconv(.C) pvs.Handle;
 
-pub export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) callconv(.C) bool {
+export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) callconv(.C) bool {
     const len = global.entities.getByType(types.Player).field_storage.len;
 
     if (len == 0) return false;
@@ -84,7 +82,7 @@ pub export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandl
 
 const RenderView = @import("renderer/render_world.zig").RenderView;
 
-pub export fn ztech_getPlayerRenderView(render_view: **const RenderView) callconv(.C) bool {
+export fn ztech_getPlayerRenderView(render_view: **const RenderView) callconv(.C) bool {
     const players = global.entities.getByType(types.Player).field_storage;
 
     if (players.len == 0) return false;
@@ -107,7 +105,7 @@ pub export fn ztech_setupPlayerPVS(player_PVS: *pvs.Handle, player_connected_are
     player_connected_areas.* = c_getClientPVS(&player_areas.ids, player_areas.len);
 }
 
-pub export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C) bool {
+export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C) bool {
     const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
 
     if (spots.len == 0) return false;
@@ -120,10 +118,10 @@ pub export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C)
     return true;
 }
 
-pub export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopaque) callconv(.C) bool {
+export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopaque) callconv(.C) bool {
     std.debug.print("[ztech] spawnExternal: {s}\n", .{c_type_name});
 
-    var spawn_args = entity.SpawnArgs.init(g_gpa.allocator());
+    var spawn_args = entity.SpawnArgs.init(global.gpa.allocator());
     defer spawn_args.deinit();
 
     CopySpawnArgs.init(c_dict_ptr, &spawn_args);
@@ -153,7 +151,7 @@ const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
 const UpdatePhysicsImpact = @import("update/physics/impact.zig");
 const UpdatePhysicsTransform = @import("update/physics/transform.zig");
 
-pub export fn ztech_processEntities() callconv(.C) void {
+export fn ztech_processEntities() callconv(.C) void {
     if (!Game.c_isNewFrame()) return;
 
     var ents = &global.entities;
@@ -177,7 +175,7 @@ const QueryField = @import("entity.zig").QueryField;
 const Physics = @import("physics/physics.zig").Physics;
 const Capture = @import("entity.zig").Capture;
 
-pub export fn ztech_entityApplyImpulse(
+export fn ztech_entityApplyImpulse(
     chandle: global.Entities.ExternEntityHandle,
     point: CVec3,
     impulse: CVec3,

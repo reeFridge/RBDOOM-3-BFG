@@ -972,6 +972,28 @@ idRenderWorld* idRenderSystemLocal::AllocRenderWorld()
 	return rw;
 }
 
+extern "C" bool ztech_allocRenderWorld(void**);
+void* idRenderSystemLocal::ztech_AllocRenderWorld()
+{
+	void* rw = NULL;
+	if (ztech_allocRenderWorld(&rw)) {
+		ztech_worlds.Append( rw );
+	}
+
+	return rw;
+}
+
+extern "C" void ztech_freeRenderWorld(void*);
+void idRenderSystemLocal::ztech_FreeRenderWorld(void* rw)
+{
+	if( ztech_primaryWorld == rw )
+	{
+		ztech_primaryWorld = NULL;
+	}
+	ztech_worlds.Remove(rw);
+	ztech_freeRenderWorld(rw);
+}
+
 /*
 ==============
 idRenderSystemLocal::FreeRenderWorld

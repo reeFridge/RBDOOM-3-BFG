@@ -195,6 +195,7 @@ idCommonLocal::idCommonLocal() :
 
 	currentMapName.Clear();
 
+	ztech_renderWorld = NULL;
 	renderWorld = NULL;
 	soundWorld = NULL;
 	menuSoundWorld = NULL;
@@ -1390,8 +1391,10 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		// the same idRenderWorld will be used for all games
 		// and demos, insuring that level specific models
 		// will be freed
-		renderWorld = renderSystem->AllocRenderWorld();
-		soundWorld = soundSystem->AllocSoundWorld( renderWorld );
+		//renderWorld = renderSystem->AllocRenderWorld();
+		//soundWorld = soundSystem->AllocSoundWorld( renderWorld );
+		soundWorld = soundSystem->AllocSoundWorld( NULL );
+		ztech_renderWorld = renderSystem->ztech_AllocRenderWorld();
 
 		menuSoundWorld = soundSystem->AllocSoundWorld( NULL );
 		menuSoundWorld->PlaceListener( vec3_origin, mat3_identity, 0 );
@@ -1533,8 +1536,10 @@ void idCommonLocal::Shutdown()
 
 	printf( "delete renderWorld;\n" );
 	// SRS - Call FreeRenderWorld() vs. delete, otherwise worlds list not updated on shutdown
-	renderSystem->FreeRenderWorld( renderWorld );
-	renderWorld = NULL;
+	//renderSystem->FreeRenderWorld( renderWorld );
+	//renderWorld = NULL;
+	renderSystem->ztech_FreeRenderWorld(ztech_renderWorld);
+	ztech_renderWorld = NULL;
 
 	printf( "delete soundWorld;\n" );
 	// SRS - Call FreeSoundWorld() vs. delete, otherwise soundWorlds list not updated and can segfault in soundSystem->Shutdown()

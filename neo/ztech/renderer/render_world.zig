@@ -113,30 +113,34 @@ const qhandle_t = c_int;
 
 const RenderModelDecal = @import("model_decal.zig").ModelDecal;
 pub const ReusableDecal = extern struct {
-    entityHandle: qhandle_t,
-    lastStartTime: c_int,
-    decals: ?*RenderModelDecal,
+    entityHandle: qhandle_t = -1,
+    lastStartTime: c_int = 0,
+    decals: ?*RenderModelDecal = null,
 };
 
 const RenderModelOverlay = @import("model_overlay.zig").ModelOverlay;
 pub const ReusableOverlay = extern struct {
-    entityHandle: qhandle_t,
-    lastStartTime: c_int,
-    overlays: ?*RenderModelOverlay,
+    entityHandle: qhandle_t = -1,
+    lastStartTime: c_int = 0,
+    overlays: ?*RenderModelOverlay = null,
 };
 
-map_name: []const u8,
+const FILE_NOT_FOUND_TIMESTAMP: Time = -1;
+
+allocator: std.mem.Allocator,
+arena: std.heap.ArenaAllocator,
+map_name: []u8,
 // for fast reloads of the same level
-map_time_stamp: Time,
-area_nodes: ?*AreaNode,
-area_nodes_num: usize,
-portal_areas: ?*PortalArea,
-portal_areas_num: usize,
+map_time_stamp: Time = FILE_NOT_FOUND_TIMESTAMP,
+area_nodes: ?*AreaNode = null,
+area_nodes_num: usize = 0,
+portal_areas: ?*PortalArea = null,
+portal_areas_num: usize = 0,
 // incremented every time a door portal state changes
-connected_area_num: usize,
-area_screen_rect: ?*ScreenRect,
-double_portals: ?*DoublePortal,
-inter_area_portals_num: usize,
+connected_area_num: usize = 0,
+area_screen_rect: ?*ScreenRect = null,
+double_portals: ?*DoublePortal = null,
+inter_area_portals_num: usize = 0,
 local_models: std.ArrayList(*anyopaque), // idRenderModel
 entity_defs: std.ArrayList(*RenderEntityLocal),
 light_defs: std.ArrayList(*RenderLightLocal),
@@ -152,9 +156,108 @@ overlays: [MAX_DECAL_SURFACES]ReusableOverlay,
 // cache access, because the table is accessed by light in idRenderWorldLocal::CreateLightDefInteractions()
 // Growing this table is time consuming, so we add a pad value to the number
 // of entityDefs and lightDefs
-interaction_table: **Interaction,
+interaction_table: ?**Interaction = null,
 // entityDefs
-interaction_table_width: usize,
+interaction_table_width: usize = 0,
 // lightDefs
-interaction_table_height: usize,
-generate_all_interactions_called: bool,
+interaction_table_height: usize = 0,
+generate_all_interactions_called: bool = false,
+
+const global = @import("../global.zig");
+
+export fn ztech_allocRenderWorld(rw: **anyopaque) callconv(.C) bool {
+    const allocator = global.gpa.allocator();
+    const render_world_ptr = allocator.create(RenderWorld) catch
+        return false;
+
+    render_world_ptr.* = RenderWorld.init(allocator) catch {
+        allocator.destroy(render_world_ptr);
+        return false;
+    };
+
+    rw.* = @ptrCast(render_world_ptr);
+
+    return true;
+}
+
+export fn ztech_freeRenderWorld(rw: *anyopaque) callconv(.C) void {
+    const allocator = global.gpa.allocator();
+    const render_world_ptr: *RenderWorld = @alignCast(@ptrCast(rw));
+    render_world_ptr.deinit();
+    allocator.destroy(render_world_ptr);
+}
+
+pub fn init(allocator: std.mem.Allocator) !RenderWorld {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var decals = [_]ReusableDecal{.{}} ** MAX_DECAL_SURFACES;
+    for (&decals) |*decal| {
+        decal.decals = try arena_allocator.create(RenderModelDecal);
+    }
+
+    var overlays = [_]ReusableOverlay{.{}} ** MAX_DECAL_SURFACES;
+    for (&overlays) |*overlay| {
+        overlay.overlays = try arena_allocator.create(RenderModelOverlay);
+    }
+
+    return .{
+        .allocator = allocator,
+        .arena = arena,
+        .map_name = try allocator.alloc(u8, 0),
+        .local_models = std.ArrayList(*anyopaque).init(allocator),
+        .entity_defs = std.ArrayList(*RenderEntityLocal).init(allocator),
+        .light_defs = std.ArrayList(*RenderLightLocal).init(allocator),
+        .envprobe_defs = std.ArrayList(*RenderEnvprobeLocal).init(allocator),
+        .area_reference_allocator = .{},
+        .interaction_allocator = .{},
+        .decals = decals,
+        .overlays = overlays,
+    };
+}
+
+pub fn deinit(render_world: *RenderWorld) void {
+    render_world.allocator.free(render_world.map_name);
+    render_world.local_models.deinit();
+    render_world.entity_defs.deinit();
+    render_world.light_defs.deinit();
+    render_world.envprobe_defs.deinit();
+
+    // frees .decals and .overlays
+    render_world.arena.deinit();
+}
+
+export fn ztech_RenderWorld_initFromMap(rw: *anyopaque, c_map_name: [*c]const u8) callconv(.C) bool {
+    const render_world_ptr: *RenderWorld = @alignCast(@ptrCast(rw));
+    const map_name: [:0]const u8 = std.mem.span(c_map_name);
+
+    render_world_ptr.initFromMap(map_name) catch return false;
+
+    return true;
+}
+
+pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
+    render_world.allocator.free(render_world.map_name);
+    render_world.map_name = try render_world.allocator.dupe(u8, map_name);
+
+    std.debug.print("RenderWorld: map = {s}\n", .{render_world.map_name});
+
+    // 1. Force `filename` ext to PROC_FILE_EXT
+    // 2. Create `filename` for output binary file as `generated/{filename}.bproc`
+    // 3. if we are reloading the same map, check the timestamp and try to skip all the work
+    // 4. call FreeWorld (removes defs)
+    // 5. Check if we have an already generated version of file (see 2)
+    // and load from .bproc
+    // 6. Else parse .proc file and generate binary .bproc from it
+    // model
+    // shadowModel
+    // interAreaPortals
+    // nodes
+    // 7. if it was a trivial map without any areas, create a single area
+    // 8. find the points where we can early-our of reference pushing into the BSP tree
+    // 9. AddWorldModelEntities
+    // 10. ClearPortalStates
+    // 11. SetupLightGrid
+    // !Done
+}

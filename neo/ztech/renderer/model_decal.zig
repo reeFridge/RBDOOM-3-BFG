@@ -45,7 +45,7 @@ pub const Decal align(16) = extern struct {
     material: ?*const anyopaque, // idMaterial
 };
 
-pub const Modeldecal = extern struct {
+pub const ModelDecal = extern struct {
     decals: [MAX_DECALS]Decal,
     firstDecal: c_uint,
     nextDecal: c_uint,

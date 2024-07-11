@@ -5,7 +5,7 @@ const MAX_OVERLAYS: usize = 8;
 
 const CPlane = @import("../math/plane.zig").CPlane;
 pub const OverlayProjectionParams = extern struct {
-    localTextureAxis: CPlane[2],
+    localTextureAxis: [2]CPlane,
     material: ?*const anyopaque, // idMaterial
     startTime: c_int,
 };

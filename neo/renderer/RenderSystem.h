@@ -271,6 +271,9 @@ public:
 	virtual idRenderWorld* 	AllocRenderWorld() = 0;
 	virtual	void			FreeRenderWorld( idRenderWorld* rw ) = 0;
 
+	virtual void* ztech_AllocRenderWorld() = 0;
+	virtual void ztech_FreeRenderWorld(void* rw) = 0;
+
 	// All data that will be used in a level should be
 	// registered before rendering any frames to prevent disk hits,
 	// but they can still be registered at a later time

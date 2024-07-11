@@ -885,6 +885,8 @@ public:
 	virtual float			GetPhysicalScreenWidthInCentimeters() const;
 	virtual idRenderWorld* 	AllocRenderWorld();
 	virtual void			FreeRenderWorld( idRenderWorld* rw );
+	virtual void* ztech_AllocRenderWorld();
+	virtual void ztech_FreeRenderWorld(void* rw);
 	virtual void			BeginLevelLoad();
 	virtual void			EndLevelLoad();
 	virtual void			LoadLevelImages();
@@ -983,8 +985,10 @@ public:
 	idVec4					ambientLightVector;	// used for "ambient bump mapping"
 
 	idList<idRenderWorldLocal*>worlds;
+	idList<void*>ztech_worlds;
 
 	idRenderWorldLocal* 	primaryWorld;
+	void* 	ztech_primaryWorld;
 	renderView_t			primaryRenderView;
 	viewDef_t* 				primaryView;
 	// many console commands need to know which world they should operate on
