@@ -95,6 +95,22 @@ private:
 idRenderModelManagerLocal	localModelManager;
 idRenderModelManager* 		renderModelManager = &localModelManager;
 
+extern "C" idRenderModel* c_renderModelManager_allocModel() {
+	return renderModelManager->AllocModel();
+}
+
+extern "C" void c_renderModelManager_addModel(idRenderModel* model) {
+	renderModelManager->AddModel(model);
+}
+
+extern "C" void c_renderModelManager_removeModel(idRenderModel* model) {
+	renderModelManager->RemoveModel(model);
+}
+
+extern "C" void c_renderModelManager_findModel(uint8_t const * const name) {
+	renderModelManager->FindModel((const char*)name);
+}
+
 /*
 ==============
 idRenderModelManagerLocal::idRenderModelManagerLocal

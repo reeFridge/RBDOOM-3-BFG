@@ -6,6 +6,8 @@ const CVec3 = @import("math/vector.zig").CVec3;
 const CMat3 = @import("math/matrix.zig").CMat3;
 const types = @import("types.zig");
 
+usingnamespace @import("renderer/render_world_interface.zig");
+
 export fn ztech_init() callconv(.C) void {
     global.entities = global.Entities.init(global.gpa.allocator());
     std.debug.print("[ztech] init: OK\n", .{});

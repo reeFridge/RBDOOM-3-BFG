@@ -1827,6 +1827,10 @@ void idDeclManagerLocal::WritePrecacheCommands( idFile* f )
 	}
 }
 
+extern "C" const idMaterial* c_declManager_findMaterial(uint8_t const * const name) {
+	return declManager->FindMaterial((const char*)name);
+}
+
 /********************************************************************/
 
 const idMaterial* idDeclManagerLocal::FindMaterial( const char* name, bool makeDefault )

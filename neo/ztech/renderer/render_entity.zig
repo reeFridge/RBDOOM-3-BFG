@@ -2,6 +2,9 @@ const std = @import("std");
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
+const Bounds = @import("../bounding_volume/bounds.zig");
+const ModelDecal = @import("model_decal.zig").ModelDecal;
+const ModelOverlay = @import("model_overlay.zig").ModelOverlay;
 
 pub const MAX_ENTITY_SHADER_PARMS: usize = 12;
 pub const MAX_RENDERENTITY_GUI: usize = 3;
@@ -116,44 +119,90 @@ const Interaction = @import("interaction.zig").Interaction;
 
 pub const RenderEntityLocal = extern struct {
     // specification
-    parms: RenderEntity,
+    parms: RenderEntity = RenderEntity{},
     // this is just a rearrangement of parms.axis and parms.origin
-    modelMatrix: [16]f32,
-    modelRenderMatrix: RenderMatrix,
+    modelMatrix: [16]f32 = std.mem.zeroes([16]f32),
+    modelRenderMatrix: RenderMatrix = std.mem.zeroes(RenderMatrix),
     // transforms the unit cube to exactly cover the model in world space
-    inverseBaseModelProject: RenderMatrix,
-    world: ?*anyopaque, // RenderWorld
+    inverseBaseModelProject: RenderMatrix = std.mem.zeroes(RenderMatrix),
+    world: ?*anyopaque = null, // RenderWorld
     // in world entityDefs
-    index: c_int,
+    index: c_int = 0,
     // to determine if it is constantly changing,
     // and should go in the dynamic frame memory, or kept
     // in the cached memory
-    lastModifiedFrameNum: c_int,
+    lastModifiedFrameNum: c_int = 0,
     // if parms.model->IsDynamicModel(), this is the generated data
-    dynamicModel: ?*anyopaque, // idRenderModel
+    dynamicModel: ?*anyopaque = null, // idRenderModel
     // continuously animating dynamic models will recreate
-    dynamicModelFrameCount: c_int,
+    dynamicModelFrameCount: c_int = 0,
     // dynamicModel if this doesn't == tr.viewCount
-    cachedDynamicModel: ?*anyopaque, // idRenderModel
+    cachedDynamicModel: ?*anyopaque = null, // idRenderModel
     // the local bounds used to place entityRefs, either from parms for dynamic entities, or a model bounds
-    localReferenceBounds: CBounds,
+    localReferenceBounds: CBounds = .{},
     // axis aligned bounding box in world space, derived from refernceBounds and
     // modelMatrix in R_CreateEntityRefs()
-    globalReferenceBounds: CBounds,
+    globalReferenceBounds: CBounds = .{},
     // a viewEntity_t is created whenever a idRenderEntityLocal is considered for inclusion
     // in a given view, even if it turns out to not be visible
     // if tr.viewCount == viewCount, viewEntity is valid,
     // but the entity may still be off screen
-    viewCount: c_int,
+    viewCount: c_int = 0,
     // in frame temporary memory
-    viewEntity: ?*anyopaque, // viewEntity_t
+    viewEntity: ?*anyopaque = null, // viewEntity_t
     // decals that have been projected on this model
-    decals: ?*anyopaque, //RenderModelDecal
-    overlays: ?*anyopaque, //RenderModelOverlay
+    decals: ?*ModelDecal = null, //RenderModelDecal
+    overlays: ?*ModelOverlay = null, //RenderModelOverlay
     // chain of all reference
-    entityRefs: ?*AreaReference,
+    entityRefs: ?*AreaReference = null,
     // doubly linked list
-    firstInteraction: ?*Interaction,
-    lastInteraction: ?*Interaction,
-    needsPortalSky: bool,
+    firstInteraction: ?*Interaction = null,
+    lastInteraction: ?*Interaction = null,
+    needsPortalSky: bool = false,
+
+    pub fn deriveEntityData(entity: *RenderEntityLocal) void {
+        axisToModelMatrix(entity.parms.axis, entity.parms.origin, &entity.modelMatrix);
+
+        RenderMatrix.createFromOriginAxis(
+            entity.parms.origin,
+            entity.parms.axis,
+            &entity.modelRenderMatrix,
+        );
+
+        // calculate the matrix that transforms the unit cube to exactly cover the model in world space
+        entity.modelRenderMatrix.offsetScaleForBounds(
+            entity.localReferenceBounds,
+            &entity.inverseBaseModelProject,
+        );
+
+        // calculate the global model bounds by inverse projecting the unit cube with the 'inverseBaseModelProject'
+        RenderMatrix.projectedBounds(
+            &entity.globalReferenceBounds,
+            entity.inverseBaseModelProject,
+            CBounds.fromBounds(Bounds.unitCube()),
+            false,
+        );
+    }
 };
+
+pub fn axisToModelMatrix(axis: CMat3, origin: CVec3, model_matrix: []f32) void {
+    model_matrix[0 * 4 + 0] = axis.mat[0].x;
+    model_matrix[1 * 4 + 0] = axis.mat[1].x;
+    model_matrix[2 * 4 + 0] = axis.mat[2].x;
+    model_matrix[3 * 4 + 0] = origin.x;
+
+    model_matrix[0 * 4 + 1] = axis.mat[0].y;
+    model_matrix[1 * 4 + 1] = axis.mat[1].y;
+    model_matrix[2 * 4 + 1] = axis.mat[2].y;
+    model_matrix[3 * 4 + 1] = origin.y;
+
+    model_matrix[0 * 4 + 2] = axis.mat[0].z;
+    model_matrix[1 * 4 + 2] = axis.mat[1].z;
+    model_matrix[2 * 4 + 2] = axis.mat[2].z;
+    model_matrix[3 * 4 + 2] = origin.z;
+
+    model_matrix[0 * 4 + 3] = 0.0;
+    model_matrix[1 * 4 + 3] = 0.0;
+    model_matrix[2 * 4 + 3] = 0.0;
+    model_matrix[3 * 4 + 3] = 1.0;
+}

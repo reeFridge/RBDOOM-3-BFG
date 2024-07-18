@@ -57,6 +57,10 @@ pub fn Vec3(comptime T: type) type {
         y: T = std.mem.zeroes(T),
         z: T = std.mem.zeroes(T),
 
+        pub fn fromScalar(s: T) Vec3(T) {
+            return .{ .x = s, .y = s, .z = s };
+        }
+
         pub fn slice(self: Self) [3]T {
             return [3]T{ self.x, self.y, self.z };
         }

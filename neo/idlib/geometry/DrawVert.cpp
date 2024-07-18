@@ -29,6 +29,11 @@ If you have questions concerning this license or the applicable additional terms
 #include "precompiled.h"
 #pragma hdrstop
 
+extern "C" halfFloat_t c_F32toF16( float a )
+{
+	return F32toF16(a);
+}
+
 #if 0
 /*
 ============

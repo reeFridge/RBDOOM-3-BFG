@@ -53,6 +53,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #endif
 
+void* game_ztechRenderWorld = NULL;
 idRenderWorld* 				gameRenderWorld = NULL;		// all drawing is done to this world
 idSoundWorld* 				gameSoundWorld = NULL;		// all audio goes to this world
 
@@ -1349,7 +1350,7 @@ void idGameLocal::PopulateEnvironmentProbes()
 idGameLocal::InitFromNewMap
 ===================
 */
-void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorld, idSoundWorld* soundWorld, int gameMode, int randseed )
+void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorld, void* ztech_renderWorld, idSoundWorld* soundWorld, int gameMode, int randseed )
 {
 
 	this->gameType = ( gameType_t )idMath::ClampInt( GAME_SP, GAME_COUNT - 1, gameMode );
@@ -1363,6 +1364,7 @@ void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorl
 
 	gamestate = GAMESTATE_STARTUP;
 
+	game_ztechRenderWorld = ztech_renderWorld;
 	gameRenderWorld = renderWorld;
 	gameSoundWorld = soundWorld;
 

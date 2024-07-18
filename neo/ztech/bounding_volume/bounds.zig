@@ -19,6 +19,13 @@ max: Vec3(f32),
 
 const Bounds = @This();
 
+pub fn unitCube() Bounds {
+    return .{
+        .min = Vec3(f32).fromScalar(-1),
+        .max = Vec3(f32).fromScalar(1),
+    };
+}
+
 pub fn fromVec3(vec: Vec3(f32)) Bounds {
     return .{
         .min = vec,

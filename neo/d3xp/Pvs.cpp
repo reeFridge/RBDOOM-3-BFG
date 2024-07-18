@@ -114,11 +114,19 @@ int idPVS::GetPortalCount() const
 {
 	int i, na, np;
 
-	na = gameRenderWorld->NumAreas();
+	if (gameRenderWorld)
+		na = gameRenderWorld->NumAreas();
+	else if (game_ztechRenderWorld)
+		na = ztech_renderWorld_numAreas(game_ztechRenderWorld);
+
 	np = 0;
 	for( i = 0; i < na; i++ )
 	{
-		np += gameRenderWorld->NumPortalsInArea( i );
+		if (gameRenderWorld)
+			np += gameRenderWorld->NumPortalsInArea( i );
+		else if (game_ztechRenderWorld) {
+			np += ztech_renderWorld_numPortalsInArea(game_ztechRenderWorld, i);
+		}
 	}
 	return np;
 }
@@ -920,7 +928,11 @@ void idPVS::Init()
 
 	Shutdown();
 
-	numAreas = gameRenderWorld->NumAreas();
+	if (gameRenderWorld)
+		numAreas = gameRenderWorld->NumAreas();
+	else if (game_ztechRenderWorld)
+		numAreas = ztech_renderWorld_numAreas(game_ztechRenderWorld);
+
 	if( numAreas <= 0 )
 	{
 		return;

@@ -1,7 +1,6 @@
 const RenderEntityLocal = @import("render_entity.zig").RenderEntityLocal;
 const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
-
-pub const VertexCacheHandle = c_ulonglong;
+const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 
 // Pre-generated shadow volumes from dmap are not present in surfaceInteraction_t,
 // they are added separately.

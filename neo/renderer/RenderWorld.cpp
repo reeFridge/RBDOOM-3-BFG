@@ -1800,6 +1800,10 @@ CREATE MODEL REFS
 =================================================================================
 */
 
+extern "C" void c_incEntityReferences() {
+	tr.pc.c_entityReferences++;
+}
+
 /*
 =================
 idRenderWorldLocal::AddEntityRefToArea

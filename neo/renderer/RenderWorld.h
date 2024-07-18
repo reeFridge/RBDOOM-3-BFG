@@ -39,6 +39,9 @@ If you have questions concerning this license or the applicable additional terms
 ===============================================================================
 */
 
+extern "C" size_t ztech_renderWorld_numAreas(void*);
+extern "C" size_t ztech_renderWorld_numPortalsInArea(void*, size_t);
+
 #define PROC_FILE_EXT				"proc"
 #define	PROC_FILE_ID				"mapProcFile003"
 

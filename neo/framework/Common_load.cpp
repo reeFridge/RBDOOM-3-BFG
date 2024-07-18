@@ -559,7 +559,7 @@ void idCommonLocal::ExecuteMapChange()
 			game->SetPersistentPlayerInfo( 0, mapSpawnData.persistentPlayerInfo );
 		}
 		game->SetServerInfo( matchParameters.serverInfo );
-		game->InitFromNewMap( fullMapName, renderWorld, soundWorld, matchParameters.gameMode, Sys_Milliseconds() );
+		game->InitFromNewMap( fullMapName, renderWorld, ztech_renderWorld, soundWorld, matchParameters.gameMode, Sys_Milliseconds() );
 	}
 
 	game->Shell_CreateMenu( true );

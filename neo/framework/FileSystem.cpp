@@ -343,6 +343,10 @@ idCVar	fs_enableBackgroundCaching( "fs_enableBackgroundCaching", "1", CVAR_SYSTE
 idFileSystemLocal	fileSystemLocal;
 idFileSystem* 		fileSystem = &fileSystemLocal;
 
+extern "C" ID_TIME_T c_fs_getTimestamp(uint8_t const * const relativePath) {
+	return fileSystem->GetTimestamp((const char*)relativePath);
+}
+
 /*
 ================
 idFileSystemLocal::ReadFromBGL

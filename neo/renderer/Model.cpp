@@ -47,6 +47,38 @@ idCVar idRenderModelStatic::r_slopNormal( "r_slopNormal", "0.02", CVAR_RENDERER,
 static const byte BRM_VERSION = 108;
 static const unsigned int BRM_MAGIC = ( 'B' << 24 ) | ( 'R' << 16 ) | ( 'M' << 8 ) | BRM_VERSION;
 
+extern "C" void c_renderModel_initEmpty(idRenderModel* model, uint8_t const * const fileName ) {
+	model->InitEmpty((const char*)fileName);
+}
+
+extern "C" void c_renderModel_addSurface(idRenderModel* model, modelSurface_t surface) {
+	model->AddSurface(surface);
+}
+
+extern "C" void c_renderModel_finishSurfaces(idRenderModel* model, bool useMikktspace) {
+	model->FinishSurfaces(useMikktspace);
+}
+
+extern "C" void c_renderModel_free(idRenderModel* model) {
+	delete model;
+}
+
+extern "C" int c_renderModel_numSurfaces(const idRenderModel* model) {
+	return model->NumSurfaces();
+}
+
+extern "C" const modelSurface_t* c_renderModel_surface(const idRenderModel* model, int surfaceNum) {
+	return model->Surface(surfaceNum);
+}
+
+extern "C" idBounds c_renderModel_bounds(const idRenderModel* model) {
+	return model->Bounds();
+}
+
+extern "C" void c_renderModel_clearSurfaces(idRenderModel* model) {
+	((idRenderModelStatic*)model)->surfaces.Clear();
+}
+
 /*
 ================
 idRenderModelStatic::idRenderModelStatic

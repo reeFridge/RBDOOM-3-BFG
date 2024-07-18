@@ -1,3 +1,5 @@
+const sys_types = @import("../sys/types.zig");
+
 const MAX_DEFERRED_DECALS: usize = 16;
 // don't create a decal if it wasn't visible within the first second
 const DEFFERED_DECAL_TIMEOUT: c_int = 1000;
@@ -7,6 +9,7 @@ const NUM_DECAL_BOUNDING_PLANES: usize = 6;
 const MAX_DECAL_VERTS: usize = 3 + NUM_DECAL_BOUNDING_PLANES + 3 + 6;
 const MAX_DECAL_INDEXES: usize = (MAX_DECAL_VERTS - 2) * 3;
 
+const CVec3 = @import("../math/vector.zig").CVec3;
 const CPlane = @import("../math/plane.zig").CPlane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 pub const DecalProjectionParams = extern struct {
@@ -22,22 +25,11 @@ pub const DecalProjectionParams = extern struct {
     force: bool,
 };
 
-const CVec3 = @import("../math/vector.zig").CVec3;
-const HalfFloat = c_ushort;
-pub const DrawVert = extern struct {
-    xyz: CVec3,
-    st: [2]HalfFloat,
-    normal: [4]u8,
-    tangent: [4]u8,
-    color: [4]u8,
-    color2: [4]u8,
-};
-
-const TriIndex = c_ushort;
+const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 
 pub const Decal align(16) = extern struct {
-    verts: [MAX_DECAL_VERTS]DrawVert align(16),
-    indexes: [MAX_DECAL_INDEXES]TriIndex align(16),
+    verts: [MAX_DECAL_VERTS]DrawVertex align(16),
+    indexes: [MAX_DECAL_INDEXES]sys_types.TriIndex align(16),
     vertDepthFade: [MAX_DECAL_VERTS]f32,
     numVerts: c_int,
     numIndexes: c_int,

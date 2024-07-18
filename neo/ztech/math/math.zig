@@ -27,6 +27,10 @@ pub inline fn invSqrt(x: f32) f32 {
         std.math.floatMax(f32);
 }
 
+pub inline fn ftob(f: f32) u8 {
+    return @intFromFloat(std.math.clamp(f, 0, 255));
+}
+
 pub inline fn acos(a: f32) f32 {
     if (a <= -1.0) return std.math.pi;
     if (a >= 1.0) return 0.0;

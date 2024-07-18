@@ -98,11 +98,12 @@ public:
 
 	void			NumberValue();				// calculate values for a TT_NUMBER
 
-private:
+public:
 	// DG: use int instead of long for 64bit compatibility
 	unsigned int	intvalue;							// integer value
 	// DG end
 	double			floatvalue;							// floating point value
+private:
 	const char* 	whiteSpaceStart_p;					// start of white space before token, only used by idLexer
 	const char* 	whiteSpaceEnd_p;					// end of white space before token, only used by idLexer
 	idToken* 		next;								// next token in chain, only used by idParser

@@ -45,6 +45,7 @@ If you have questions concerning this license or the applicable additional terms
 	#define protected	public
 #endif
 
+extern void* game_ztechRenderWorld;
 extern idRenderWorld* 				gameRenderWorld;
 extern idSoundWorld* 				gameSoundWorld;
 
@@ -399,7 +400,7 @@ public:
 
 	virtual const idDict& 	GetPersistentPlayerInfo( int clientNum );
 	virtual void			SetPersistentPlayerInfo( int clientNum, const idDict& playerInfo );
-	virtual void			InitFromNewMap( const char* mapName, idRenderWorld* renderWorld, idSoundWorld* soundWorld, int gameType, int randSeed );
+	virtual void			InitFromNewMap( const char* mapName, idRenderWorld* renderWorld, void* ztech_RenderWorld, idSoundWorld* soundWorld, int gameType, int randSeed );
 	virtual bool			InitFromSaveGame( const char* mapName, idRenderWorld* renderWorld, idSoundWorld* soundWorld, idFile* saveGameFile, idFile* stringTableFile, int saveGameVersion );
 	virtual void			SaveGame( idFile* saveGameFile, idFile* stringTableFile );
 	virtual void			GetSaveGameDetails( idSaveGameDetails& gameDetails );

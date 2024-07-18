@@ -29,6 +29,37 @@ If you have questions concerning this license or the applicable additional terms
 #include "precompiled.h"
 #pragma hdrstop
 
+extern "C" idToken* c_token_create() {
+	return new idToken();
+}
+
+extern "C" void c_token_destroy(idToken* mem) {
+	delete mem;
+}
+
+extern "C" const uint8_t* c_token_cStr(idToken* mem) {
+	return (const uint8_t*)mem->c_str();
+}
+
+extern "C" void c_token_calculateNumberValue(idToken* token) {
+	token->NumberValue();
+}
+
+extern "C" int c_token_type(idToken* token) {
+	return token->type;
+}
+
+extern "C" int c_token_subtype(idToken* token) {
+	return token->subtype;
+}
+
+extern "C" unsigned int c_token_intvalue(idToken* token) {
+	return token->intvalue;
+}
+
+extern "C" double c_token_floatvalue(idToken* token) {
+	return token->floatvalue;
+}
 
 /*
 ================

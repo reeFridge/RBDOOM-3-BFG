@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{ .name = "rbdoom3bfg", .target = target, .optimize = optimize });
 
+    exe.defineCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", null);
     exe.defineCMacro("USE_NVRHI", null);
     exe.defineCMacro("USE_AMD_ALLOCATOR", null);
     exe.defineCMacro("VULKAN_USE_PLATFORM_SDL", null);

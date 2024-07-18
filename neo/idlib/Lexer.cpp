@@ -2397,6 +2397,26 @@ idLexer::idLexer( const char* filename, int flags, bool OSPath )
 	idLexer::LoadFile( filename, OSPath );
 }
 
+extern "C" idLexer* c_lexer_create(uint8_t const * const filename, int flags) {
+	return new idLexer((const char*)filename, flags);
+}
+
+extern "C" void c_lexer_destroy(idLexer* mem) {
+	delete mem;
+}
+
+extern "C" bool c_lexer_readToken(idLexer* mem, idToken* token_mem) {
+	return mem->ReadToken(token_mem);
+}
+
+extern "C" bool c_lexer_isLoaded(idLexer* mem) {
+	return mem->IsLoaded();
+}
+
+extern "C" bool c_lexer_expectTokenType(idLexer* lexer, int type, int subtype, idToken* token) {
+	return (bool)lexer->ExpectTokenType(type, subtype, token);
+}
+
 /*
 ================
 idLexer::idLexer

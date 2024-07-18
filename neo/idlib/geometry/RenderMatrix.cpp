@@ -2287,6 +2287,10 @@ bool idRenderMatrix::CullExtrudedBoundsToMVPbits( const idRenderMatrix& mvp, con
 #endif
 }
 
+extern "C" void c_renderMatrix_projectedBounds(idBounds* projected, const idRenderMatrix* mvp, const idBounds* bounds, bool windowSpace) {
+	idRenderMatrix::ProjectedBounds(*projected, *mvp, *bounds, windowSpace);
+}
+
 /*
 ========================
 idRenderMatrix::ProjectedBounds
