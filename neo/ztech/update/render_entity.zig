@@ -3,9 +3,7 @@ const assertFields = @import("../entity.zig").assertFields;
 const Transform = @import("../physics/physics.zig").Transform;
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
-
-extern fn c_addEntityDef(*const RenderEntity) callconv(.C) c_int;
-extern fn c_updateEntityDef(c_int, *const RenderEntity) callconv(.C) void;
+const RenderWorld = @import("../renderer/render_world.zig");
 
 pub fn fromTransform(comptime T: type, list: anytype) void {
     if (comptime !assertFields(struct {
@@ -29,6 +27,8 @@ pub fn present(comptime T: type, list: anytype) void {
         render_entity: RenderEntity,
     }, T)) return;
 
+    var render_world = RenderWorld.instance();
+
     var list_slice = list.slice();
     for (
         list_slice.items(.render_entity),
@@ -38,9 +38,10 @@ pub fn present(comptime T: type, list: anytype) void {
 
         // add to refresh list
         if (model_def_handle.* == -1) {
-            model_def_handle.* = c_addEntityDef(render_entity);
+            const entity_index = render_world.addEntityDef(render_entity.*) catch @panic("Fail to addEntityDef");
+            model_def_handle.* = @intCast(entity_index);
         } else {
-            c_updateEntityDef(model_def_handle.*, render_entity);
+            render_world.updateEntityDef(@intCast(model_def_handle.*), render_entity.*) catch @panic("Fail to updateEntityDef");
         }
     }
 }

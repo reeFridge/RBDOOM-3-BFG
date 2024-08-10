@@ -42,6 +42,12 @@ pub const RenderView = extern struct {
 // RenderWorld
 const RenderWorld = @This();
 
+extern var game_ztechRenderWorld: ?*RenderWorld;
+
+pub inline fn instance() *RenderWorld {
+    return game_ztechRenderWorld orelse @panic("Unable to access RenderWorld instance");
+}
+
 pub const MAX_DECAL_SURFACES: usize = 32;
 
 pub const AreaNode = extern struct {

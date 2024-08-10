@@ -34,6 +34,12 @@ pub const SurfaceTriangles = extern struct {
     indexCache: VertexCacheHandle,
     ambientCache: VertexCacheHandle,
 
+    pub fn resizeVertices(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
+        const new_verts = try allocator.realloc(tris.verts[0..@intCast(tris.numVerts)], len);
+        tris.verts = new_verts.ptr;
+        tris.numVerts = @intCast(new_verts.len);
+    }
+
     pub fn resizeIndexes(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
         const new_indexes = try allocator.realloc(tris.indexes[0..@intCast(tris.numIndexes)], len);
         tris.indexes = new_indexes.ptr;

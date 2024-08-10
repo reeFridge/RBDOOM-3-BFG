@@ -1787,20 +1787,6 @@ void idEntity::Present()
 	}
 }
 
-extern "C" int c_addEntityDef(const renderEntity_t* renderEntity) {
-	if (gameRenderWorld)
-		return gameRenderWorld->AddEntityDef(renderEntity);
-	else if (game_ztechRenderWorld)
-		return ztech_renderWorld_addEntityDef(game_ztechRenderWorld, renderEntity);
-}
-
-extern "C" void c_updateEntityDef(int modelDefHandle, const renderEntity_t* renderEntity) {
-	if (gameRenderWorld)
-		gameRenderWorld->UpdateEntityDef(modelDefHandle, renderEntity);
-	else if (game_ztechRenderWorld)
-		ztech_renderWorld_updateEntityDef(game_ztechRenderWorld, modelDefHandle, renderEntity);
-}
-
 /*
 ================
 idEntity::GetRenderEntity

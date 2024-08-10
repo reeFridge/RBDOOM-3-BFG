@@ -899,20 +899,6 @@ void idLight::BecomeBroken( idEntity* activator )
 	UpdateVisuals();
 }
 
-extern "C" int c_addLightDef(const renderLight_t* renderLight) {
-	if (gameRenderWorld)
-		return gameRenderWorld->AddLightDef(renderLight);
-	else if (game_ztechRenderWorld)
-		return ztech_renderWorld_addLightDef(game_ztechRenderWorld, renderLight);
-}
-
-extern "C" void c_updateLightDef(int lightDefHandle, const renderLight_t* renderLight) {
-	if (gameRenderWorld)
-		gameRenderWorld->UpdateLightDef( lightDefHandle, renderLight );
-	else if (game_ztechRenderWorld)
-		ztech_renderWorld_updateLightDef(game_ztechRenderWorld, lightDefHandle, renderLight);
-}
-
 /*
 ================
 idLight::PresentLightDefChange
