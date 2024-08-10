@@ -1393,6 +1393,7 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		// will be freed
 		//renderWorld = renderSystem->AllocRenderWorld();
 		//soundWorld = soundSystem->AllocSoundWorld( renderWorld );
+		// TODO: #define USE_ZTECH_RENDER_WORLD
 		soundWorld = soundSystem->AllocSoundWorld( NULL );
 		ztech_renderWorld = renderSystem->ztech_AllocRenderWorld();
 
@@ -1536,10 +1537,13 @@ void idCommonLocal::Shutdown()
 
 	printf( "delete renderWorld;\n" );
 	// SRS - Call FreeRenderWorld() vs. delete, otherwise worlds list not updated on shutdown
-	//renderSystem->FreeRenderWorld( renderWorld );
-	//renderWorld = NULL;
-	renderSystem->ztech_FreeRenderWorld(ztech_renderWorld);
-	ztech_renderWorld = NULL;
+	if (renderWorld) {
+		renderSystem->FreeRenderWorld( renderWorld );
+		renderWorld = NULL;
+	} else if (ztech_renderWorld) {
+		renderSystem->ztech_FreeRenderWorld(ztech_renderWorld);
+		ztech_renderWorld = NULL;
+	}
 
 	printf( "delete soundWorld;\n" );
 	// SRS - Call FreeSoundWorld() vs. delete, otherwise soundWorlds list not updated and can segfault in soundSystem->Shutdown()

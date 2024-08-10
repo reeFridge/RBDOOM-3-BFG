@@ -1,8 +1,9 @@
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
-const CPlane = @import("../math/plane.zig").CPlane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const render_entity = @import("render_entity.zig");
+const RenderWorld = @import("render_world.zig");
+const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 
 pub const RenderEnvironmentProbe = extern struct {
     origin: CVec3,
@@ -20,14 +21,16 @@ pub const RenderEnvironmentProbe = extern struct {
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const AreaReference = @import("common.zig").AreaReference;
 const Interaction = @import("interaction.zig").Interaction;
+const Image = @import("image.zig").Image;
 
 pub const RenderEnvprobeLocal = extern struct {
+    _vptr: *anyopaque = undefined,
     // specification
     parms: RenderEnvironmentProbe,
     // the envprobe has changed its position since it was
     // first added, so the preenvprobe model is not valid
     envprobeHasMoved: bool,
-    world: *anyopaque, // RenderWorld
+    world: ?*RenderWorld,
     // in world envprobeDefs
     index: c_int,
     // if not -1, we may be able to cull all the light's
@@ -42,15 +45,15 @@ pub const RenderEnvprobeLocal = extern struct {
 
     // derived information
     // transforms the zero-to-one cube to exactly cover the light in world space
-    inverseBaseLightProject: RenderMatrix,
+    inverseBaseProbeProject: RenderMatrix,
     globalProbeBounds: CBounds,
     // each area the light is present in will have a envprobeRef
     references: ?*AreaReference,
     // cubemap image used for diffuse IBL by backend
-    irradianceImage: ?*anyopaque, // idImage
+    irradianceImage: ?*Image,
     // cubemap image used for specular IBL by backend
-    radianceImage: ?*anyopaque, // idImage
+    radianceImage: ?*Image,
     // if == tr.viewCount, the envprobe is on the viewDef->viewEnvprobes list
     viewCount: c_int,
-    viewEnvprobe: ?*anyopaque, // viewEnvprobe_t
+    viewEnvprobe: ?*ViewEnvprobe,
 };

@@ -90,7 +90,7 @@ pub fn update(list: anytype) void {
             Physics.static => |*static| moved: {
                 var rotation = Rotation.create(
                     static.current.origin,
-                    Vec3(f32){ .z = 1.0 },
+                    Vec3(f32){ .v = .{ 0, 0, 1 } },
                     45.0 * dt,
                 );
 

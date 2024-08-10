@@ -5,6 +5,12 @@ const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const ModelDecal = @import("model_decal.zig").ModelDecal;
 const ModelOverlay = @import("model_overlay.zig").ModelOverlay;
+const RenderWorld = @import("render_world.zig");
+const RenderModel = @import("model.zig").RenderModel;
+const Material = @import("material.zig").Material;
+const DeclSkin = @import("common.zig").DeclSkin;
+const ViewEntity = @import("common.zig").ViewEntity;
+const RenderSystem = @import("render_system.zig");
 
 pub const MAX_ENTITY_SHADER_PARMS: usize = 12;
 pub const MAX_RENDERENTITY_GUI: usize = 3;
@@ -15,7 +21,7 @@ extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *RenderEntity) callconv(.C)
 
 pub const RenderEntity = extern struct {
     // this can only be null if callback is set
-    hModel: ?*anyopaque = null,
+    hModel: ?*RenderModel = null,
     entityNum: c_int = -1,
     bodyId: c_int = -1,
 
@@ -61,11 +67,11 @@ pub const RenderEntity = extern struct {
     // texturing
 
     // if non-0, all surfaces will use this
-    customShader: ?*anyopaque = null,
+    customShader: ?*const Material = null,
     // used so flares can reference the proper light shader
-    referenceShader: ?*anyopaque = null,
+    referenceShader: ?*const Material = null,
     // 0 for no remapping
-    customSkin: ?*anyopaque = null,
+    customSkin: ?*const DeclSkin = null,
     // for shader sound tables, allowing effects to vary with sounds
     referenceSound: ?*anyopaque = null,
     // can be used in any way by shader or model generation
@@ -116,8 +122,11 @@ pub const RenderEntity = extern struct {
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const AreaReference = @import("common.zig").AreaReference;
 const Interaction = @import("interaction.zig").Interaction;
+const global = @import("../global.zig");
+const model = @import("model.zig");
 
 pub const RenderEntityLocal = extern struct {
+    _vptr: *anyopaque = undefined,
     // specification
     parms: RenderEntity = RenderEntity{},
     // this is just a rearrangement of parms.axis and parms.origin
@@ -125,7 +134,7 @@ pub const RenderEntityLocal = extern struct {
     modelRenderMatrix: RenderMatrix = std.mem.zeroes(RenderMatrix),
     // transforms the unit cube to exactly cover the model in world space
     inverseBaseModelProject: RenderMatrix = std.mem.zeroes(RenderMatrix),
-    world: ?*anyopaque = null, // RenderWorld
+    world: ?*RenderWorld = null,
     // in world entityDefs
     index: c_int = 0,
     // to determine if it is constantly changing,
@@ -133,11 +142,11 @@ pub const RenderEntityLocal = extern struct {
     // in the cached memory
     lastModifiedFrameNum: c_int = 0,
     // if parms.model->IsDynamicModel(), this is the generated data
-    dynamicModel: ?*anyopaque = null, // idRenderModel
+    dynamicModel: ?*RenderModel = null,
     // continuously animating dynamic models will recreate
     dynamicModelFrameCount: c_int = 0,
     // dynamicModel if this doesn't == tr.viewCount
-    cachedDynamicModel: ?*anyopaque = null, // idRenderModel
+    cachedDynamicModel: ?*RenderModel = null,
     // the local bounds used to place entityRefs, either from parms for dynamic entities, or a model bounds
     localReferenceBounds: CBounds = .{},
     // axis aligned bounding box in world space, derived from refernceBounds and
@@ -149,10 +158,10 @@ pub const RenderEntityLocal = extern struct {
     // but the entity may still be off screen
     viewCount: c_int = 0,
     // in frame temporary memory
-    viewEntity: ?*anyopaque = null, // viewEntity_t
+    viewEntity: ?*ViewEntity = null,
     // decals that have been projected on this model
-    decals: ?*ModelDecal = null, //RenderModelDecal
-    overlays: ?*ModelOverlay = null, //RenderModelOverlay
+    decals: ?*ModelDecal = null,
+    overlays: ?*ModelOverlay = null,
     // chain of all reference
     entityRefs: ?*AreaReference = null,
     // doubly linked list
@@ -160,6 +169,56 @@ pub const RenderEntityLocal = extern struct {
     lastInteraction: ?*Interaction = null,
     needsPortalSky: bool = false,
 
+    /// Calls `entity.parms.callback()`
+    pub fn issueEntityDefCallback(_: *RenderEntityLocal) bool {
+        // TODO: implement
+        return false;
+    }
+
+    /// Creates all needed model references in portal areas,
+    /// chaining them to both the area and the entityDef.
+    /// Bumps tr.viewCount, which means viewCount can change many times each frame.
+    pub fn createEntityRefs(entity: *RenderEntityLocal) !void {
+        const model_ptr = if (entity.parms.hModel) |ptr|
+            ptr
+        else
+            try global.RenderModelManager.defaultModel();
+
+        entity.parms.hModel = model_ptr;
+
+        // if the entity hasn't been fully specified due to expensive animation calcs
+        // for md5 and particles, use the provided conservative bounds.
+        entity.localReferenceBounds = if (entity.parms.callback != null)
+            entity.parms.bounds
+        else
+            model_ptr.boundsFromDef(&entity.parms);
+
+        const local_reference_bounds = entity.localReferenceBounds.toBounds();
+
+        // some models, like empty particles, may not need to be added at all
+        if (local_reference_bounds.isCleared()) return;
+
+        // TODO: Report big bounds
+
+        // derive entity data
+        entity.deriveEntityData();
+
+        // bump the view count so we can tell if an
+        // area already has a reference
+        RenderSystem.instance.incViewCount();
+
+        // push the model frustum down the BSP tree into areas
+        if (entity.world) |render_world|
+            try render_world.pushFrustumIntoTree(
+                entity,
+                null,
+                entity.inverseBaseModelProject,
+                Bounds.unit_cube,
+            );
+    }
+
+    /// Updates entity.modelRenderMatrix, entity.modelMatrix
+    /// based on entity.parms.axis, entity.parms.origin
     pub fn deriveEntityData(entity: *RenderEntityLocal) void {
         axisToModelMatrix(entity.parms.axis, entity.parms.origin, &entity.modelMatrix);
 
@@ -179,9 +238,67 @@ pub const RenderEntityLocal = extern struct {
         RenderMatrix.projectedBounds(
             &entity.globalReferenceBounds,
             entity.inverseBaseModelProject,
-            CBounds.fromBounds(Bounds.unitCube()),
+            CBounds.fromBounds(Bounds.unit_cube),
             false,
         );
+    }
+
+    /// If we know the reference bounds stays the same, we
+    /// only need to do this on entity update, not the full
+    /// freeEntityDerivedData
+    pub fn clearEntityDynamicModel(entity: *RenderEntityLocal) void {
+        // free all the interaction surfaces
+        var opt_inter = entity.firstInteraction;
+        while (opt_inter) |inter| : (opt_inter = inter.entityNext) {
+            if (inter.isEmpty()) break;
+
+            if (entity.world) |world|
+                inter.freeSurfaces(world.allocator);
+        }
+
+        // this is copied from cachedDynamicModel, so it doesn't need to be freed
+        if (entity.dynamicModel != null) entity.dynamicModel = null;
+        entity.dynamicModelFrameCount = 0;
+    }
+
+    /// Used by both FreeEntityDef and UpdateEntityDef
+    /// Does not actually free the entityDef.
+    pub fn freeEntityDerivedData(entity: *RenderEntityLocal, keep_decals: bool, keep_cached_dynamic_model: bool) void {
+        var render_world = entity.world orelse return;
+
+        while (entity.firstInteraction) |interaction| {
+            interaction.unlinkAndFree(render_world.allocator);
+        }
+        entity.dynamicModelFrameCount = 0;
+
+        // clear the dynamic model if present
+        if (entity.dynamicModel != null) entity.dynamicModel = null;
+
+        if (!keep_decals) {
+            entity.decals = null;
+            entity.overlays = null;
+        }
+
+        if (!keep_cached_dynamic_model) {
+            if (entity.cachedDynamicModel) |model_ptr| {
+                model_ptr.deinit(render_world);
+            }
+            entity.cachedDynamicModel = null;
+        }
+
+        // free the entityRefs from the areas
+        var opt_ref = entity.entityRefs;
+        var next: ?*AreaReference = null;
+        while (opt_ref) |ref| : (opt_ref = next) {
+            next = ref.ownerNext;
+
+            ref.areaNext.?.areaPrev = ref.areaPrev;
+            ref.areaPrev.?.areaNext = ref.areaNext;
+
+            render_world.area_reference_allocator.destroy(ref);
+        }
+
+        entity.entityRefs = null;
     }
 };
 

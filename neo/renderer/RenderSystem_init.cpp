@@ -2075,7 +2075,10 @@ void idRenderSystemLocal::Init()
 	R_InitCommands();
 
 	// allocate the frame data, which may be more if smp is enabled
-	R_InitFrameData();
+	if (USE_ZTECH_FRAME_DATA)
+		ztech_frameData_init();
+	else
+		R_InitFrameData();
 
 	guiModel = new( TAG_RENDER ) idGuiModel;
 	guiModel->Clear();
@@ -2211,7 +2214,10 @@ void idRenderSystemLocal::Shutdown()
 	// RB end
 
 	// free frame memory
-	R_ShutdownFrameData();
+	if (USE_ZTECH_FRAME_DATA)
+		ztech_frameData_shutdown();
+	else
+		R_ShutdownFrameData();
 
 	UnbindBufferObjects();
 
@@ -2399,7 +2405,10 @@ idRenderSystemLocal::ShutdownOpenGL
 void idRenderSystemLocal::ShutdownOpenGL()
 {
 	// free the context and close the window
-	R_ShutdownFrameData();
+	if (USE_ZTECH_FRAME_DATA)
+		ztech_frameData_shutdown();
+	else
+		R_ShutdownFrameData();
 
 	backend.Shutdown();
 }

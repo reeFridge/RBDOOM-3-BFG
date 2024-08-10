@@ -1,6 +1,6 @@
 const CBounds = @import("bounding_volume/bounds.zig").CBounds;
 const CWinding = @import("geometry/winding.zig").CWinding;
-const CPlane = @import("math/plane.zig").CPlane;
+const Plane = @import("math/plane.zig").Plane;
 
 const MAX_CURRENT_PVS: usize = 64;
 
@@ -18,7 +18,7 @@ pub const Portal = extern struct {
     areaNum: c_int,
     w: *CWinding,
     bounds: CBounds,
-    plane: CPlane,
+    plane: Plane,
     passages: [*]Passage,
     done: bool,
     vis: [*]u8,

@@ -596,6 +596,16 @@ idRenderMatrix implementation
 ================================================================================================
 */
 
+extern "C" bool c_renderMatrix_cullPointToMVP(const idRenderMatrix* mvp, const idVec3* p, bool zeroToOne) {
+	byte bits;
+	return idRenderMatrix::CullPointToMVPbits(*mvp, *p, &bits, zeroToOne);
+}
+
+extern "C" bool c_renderMatrix_cullBoundsToMVP(const idRenderMatrix* mvp, const idBounds* bounds, bool zeroToOne) {
+	byte bits;
+	return idRenderMatrix::CullBoundsToMVPbits(*mvp, *bounds, &bits, zeroToOne);
+}
+
 /*
 ========================
 idRenderMatrix::CreateFromOriginAxis
@@ -4422,6 +4432,10 @@ void idRenderMatrix::DepthBoundsForShadowBounds( float& min, float& max, const i
 #endif
 }
 
+extern "C" void c_renderMatrix_getFrustumPlanes(idPlane planes[6], const idRenderMatrix* frustum, bool zeroToOne, bool normalize) {
+	idRenderMatrix::GetFrustumPlanes(planes, *frustum, zeroToOne, normalize);
+}
+
 /*
 ========================
 idRenderMatrix::GetFrustumPlanes
@@ -4509,6 +4523,10 @@ void idRenderMatrix::GetFrustumPlanes( idPlane planes[6], const idRenderMatrix& 
 			planes[i][3] *= s;
 		}
 	}
+}
+
+extern "C" void c_renderMatrix_getFrustumCorners(frustumCorners_t* corners, const idRenderMatrix* frustumTransform, const idBounds* frustumBounds) {
+	idRenderMatrix::GetFrustumCorners(*corners, *frustumTransform, *frustumBounds);
 }
 
 /*
@@ -4623,6 +4641,10 @@ void idRenderMatrix::GetFrustumCorners( frustumCorners_t& corners, const idRende
 	}
 
 #endif
+}
+
+extern "C" frustumCull_t c_renderMatrix_cullFrustumCornersToPlane(const frustumCorners_t* corners, const idPlane* plane) {
+	return idRenderMatrix::CullFrustumCornersToPlane(*corners, *plane);
 }
 
 /*

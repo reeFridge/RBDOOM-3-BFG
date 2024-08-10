@@ -80,6 +80,34 @@ extern "C" void c_material_addReference(idMaterial* material) {
 	material->AddReference();
 }
 
+extern "C" bool c_material_receivesLighting(const idMaterial* material) {
+	return material->ReceivesLighting();
+}
+
+extern "C" bool c_material_isDrawn(const idMaterial* material) {
+	return material->IsDrawn();
+}
+
+extern "C" deform_t c_material_deform(const idMaterial* material) {
+	return material->Deform();
+}
+
+extern "C" const idMaterial* c_material_remapShaderBySkin(const idDeclSkin* skin, const idMaterial* shader) {
+	return skin->RemapShaderBySkin(shader);
+}
+
+extern "C" int c_material_spectrum(const idMaterial* material) {
+	return material->Spectrum();
+}
+
+extern "C" bool c_material_isFogLight(const idMaterial* material) {
+	return material->IsFogLight();
+}
+
+extern "C" bool c_material_testMaterialFlag(const idMaterial* material, int flag) {
+	return material->TestMaterialFlag(flag);
+}
+
 /*
 =============
 idMaterial::CommonInit

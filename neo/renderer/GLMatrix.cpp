@@ -350,7 +350,7 @@ R_SetupViewMatrix
 Sets up the world to view matrix for a given viewParm
 ======================
 */
-void R_SetupViewMatrix( viewDef_t* viewDef )
+extern "C" void R_SetupViewMatrix( viewDef_t* viewDef )
 {
 	static float s_flipMatrix[16] =
 	{
@@ -475,7 +475,7 @@ void ModifyProjectionMatrix( viewDef_t* viewDef, const idPlane& clipPlane )
 
 #if !defined( DMAP )
 
-void R_SetupProjectionMatrix( viewDef_t* viewDef, bool doJitter )
+extern "C" void R_SetupProjectionMatrix( viewDef_t* viewDef, bool doJitter )
 {
 	// random jittering is usefull when multiple
 	// frames are going to be blended together
@@ -668,7 +668,7 @@ R_SetupUnprojection
 create a matrix with similar functionality like gluUnproject, project from window space to world space
 =================
 */
-void R_SetupUnprojection( viewDef_t* viewDef )
+extern "C" void R_SetupUnprojection( viewDef_t* viewDef )
 {
 	// RB: I don't like that this doesn't work
 	//idRenderMatrix::Inverse( *( idRenderMatrix* ) viewDef->projectionMatrix, viewDef->unprojectionToCameraRenderMatrix );

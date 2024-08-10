@@ -1045,11 +1045,17 @@ void idPVS::GetConnectedAreas( int srcArea, bool* areas ) const
 	for( curArea = srcArea; queueStart < queueEnd; curArea = areaQueue[++queueStart] )
 	{
 
-		n = gameRenderWorld->NumPortalsInArea( curArea );
+		if (gameRenderWorld)
+			n = gameRenderWorld->NumPortalsInArea( curArea );
+		else if (game_ztechRenderWorld)
+			n = ztech_renderWorld_numPortalsInArea(game_ztechRenderWorld, curArea);
 
 		for( i = 0; i < n; i++ )
 		{
-			portal = gameRenderWorld->GetPortal( curArea, i );
+			if (gameRenderWorld)
+				portal = gameRenderWorld->GetPortal( curArea, i );
+			else if (game_ztechRenderWorld)
+				portal = ztech_renderWorld_getPortal(game_ztechRenderWorld, curArea, i);
 
 			if( portal.blockingBits & PS_BLOCK_VIEW )
 			{
@@ -1093,7 +1099,10 @@ idPVS::GetPVSAreas
 */
 int idPVS::GetPVSAreas( const idBounds& bounds, int* areas, int maxAreas ) const
 {
-	return gameRenderWorld->BoundsInAreas( bounds, areas, maxAreas );
+	if (gameRenderWorld)
+		return gameRenderWorld->BoundsInAreas( bounds, areas, maxAreas );
+	else if (game_ztechRenderWorld)
+		return ztech_renderWorld_boundsInAreas(game_ztechRenderWorld, areas, maxAreas);
 }
 
 /*

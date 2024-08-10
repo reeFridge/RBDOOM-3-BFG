@@ -42,6 +42,110 @@ extern DeviceManager* deviceManager;
 idRenderSystemLocal	tr;
 idRenderSystem* renderSystem = &tr;
 
+extern "C" bool c_renderSystem_isInitialized(const idRenderSystemLocal* renderSystem) {
+	return renderSystem->IsInitialized();
+}
+
+extern "C" void c_renderSystem_incLightUpdates(idRenderSystemLocal* renderSystem) {
+	renderSystem->pc.c_lightUpdates++;
+}
+
+extern "C" void c_renderSystem_incEntityReferences(idRenderSystemLocal* renderSystem) {
+	renderSystem->pc.c_entityReferences++;
+}
+
+extern "C" void c_renderSystem_incLightReferences(idRenderSystemLocal* renderSystem) {
+	renderSystem->pc.c_lightReferences++;
+}
+
+extern "C" void c_renderSystem_incEntityUpdates(idRenderSystemLocal* renderSystem) {
+	renderSystem->pc.c_entityUpdates++;
+}
+
+extern "C" void c_renderSystem_incViewCount(idRenderSystemLocal* renderSystem) {
+	renderSystem->viewCount++;
+}
+
+extern "C" int c_renderSystem_frameCount(const idRenderSystemLocal* renderSystem) {
+	return renderSystem->frameCount;
+}
+
+extern "C" int c_renderSystem_viewCount(const idRenderSystemLocal* renderSystem) {
+	return renderSystem->viewCount;
+}
+
+extern "C" void c_renderSystem_clearViewDef(idRenderSystemLocal* renderSystem) {
+	renderSystem->viewDef = NULL;
+}
+
+extern "C" void c_renderSystem_openCommandList(idRenderSystemLocal* renderSystem) {
+	renderSystem->commandList->open();
+}
+
+extern "C" void c_renderSystem_closeCommandList(idRenderSystemLocal* renderSystem) {
+	renderSystem->commandList->close();
+}
+
+extern "C" void* c_renderSystem_commandList(const idRenderSystemLocal* renderSystem) {
+	return (void*)renderSystem->commandList;
+}
+
+extern "C" int c_renderSystem_getWidth(const idRenderSystemLocal* renderSystem) {
+	return renderSystem->GetWidth();
+}
+
+extern "C" int c_renderSystem_getHeight(const idRenderSystemLocal* renderSystem) {
+	return renderSystem->GetHeight();
+}
+
+extern "C" void c_renderSystem_performResolutionScaling(idRenderSystemLocal* renderSystem, int* width, int* height) {
+	renderSystem->PerformResolutionScaling(*width, *height);
+}
+
+extern "C" void c_renderSystem_cropRenderSize(idRenderSystemLocal* renderSystem, int width, int height) {
+	renderSystem->CropRenderSize(width, height);
+}
+
+extern "C" void c_renderSystem_getCroppedViewport(idRenderSystemLocal* renderSystem, idScreenRect* viewport) {
+	renderSystem->GetCroppedViewport(viewport);
+}
+
+extern "C" void c_renderSystem_uncrop(idRenderSystemLocal* renderSystem) {
+	renderSystem->UnCrop();
+}
+
+extern "C" void c_renderSystem_setPrimaryRenderView(idRenderSystemLocal* renderSystem, renderView_t renderView) {
+	renderSystem->primaryRenderView = renderView;
+}
+
+extern "C" void c_renderSystem_setPrimaryWorld(idRenderSystemLocal* renderSystem, void* renderWorld) {
+	renderSystem->primaryWorld = (idRenderWorldLocal*)renderWorld;
+}
+
+extern "C" void c_renderSystem_setPrimaryView(idRenderSystemLocal* renderSystem, viewDef_t* viewDef) {
+	renderSystem->primaryView = viewDef;
+}
+
+extern "C" viewDef_t* c_renderSystem_getView(idRenderSystemLocal* renderSystem) {
+	return renderSystem->viewDef;
+}
+
+extern "C" viewEntity_t* c_renderSystem_getIdentitySpace(idRenderSystemLocal* renderSystem) {
+	return &renderSystem->identitySpace;
+}
+
+extern "C" void c_renderSystem_setView(idRenderSystemLocal* renderSystem, viewDef_t* view) {
+	renderSystem->viewDef = view;
+}
+
+extern "C" idParallelJobList* c_renderSystem_getFrontEndJobList(idRenderSystemLocal* renderSystem) {
+	return renderSystem->frontEndJobList;
+}
+
+extern "C" void c_parallelJobList_wait(idParallelJobList* jobList) {
+	jobList->Wait();
+}
+
 /*
 =====================
 R_PerformanceCounters
@@ -152,14 +256,18 @@ current command chain.
 */
 void* R_GetCommandBuffer( int bytes )
 {
-	emptyCommand_t*	cmd;
+	if (USE_ZTECH_FRAME_DATA) {
+		return ztech_frameData_createCommandBuffer(bytes);
+	} else {
+		emptyCommand_t*	cmd;
 
-	cmd = ( emptyCommand_t* )R_FrameAlloc( bytes, FRAME_ALLOC_DRAW_COMMAND );
-	cmd->next = NULL;
-	frameData->cmdTail->next = &cmd->commandId;
-	frameData->cmdTail = cmd;
+		cmd = ( emptyCommand_t* )R_FrameAlloc( bytes, FRAME_ALLOC_DRAW_COMMAND );
+		cmd->next = NULL;
+		frameData->cmdTail->next = &cmd->commandId;
+		frameData->cmdTail = cmd;
 
-	return ( void* )cmd;
+		return ( void* )cmd;
+	}
 }
 
 /*
@@ -185,7 +293,7 @@ This is the main 3D rendering command.  A single scene may
 have multiple views if a mirror, portal, or dynamic texture is present.
 =============
 */
-void	R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly )
+extern "C" void	R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly )
 {
 	drawSurfsCommand_t*	cmd;
 
@@ -721,7 +829,11 @@ const emptyCommand_t* idRenderSystemLocal::SwapCommandBuffers_FinishCommandBuffe
 	vertexCache.BeginBackEnd();
 
 	// save off this command buffer
-	const emptyCommand_t* commandBufferHead = frameData->cmdHead;
+	const emptyCommand_t* commandBufferHead = NULL;
+	if (USE_ZTECH_FRAME_DATA)
+		commandBufferHead = ztech_frameData_get()->cmdHead;
+	else
+		commandBufferHead = frameData->cmdHead;
 
 	// copy the code-used drawsurfs that were
 	// allocated at the start of the buffer memory to the backEnd referenced locations
@@ -732,7 +844,10 @@ const emptyCommand_t* idRenderSystemLocal::SwapCommandBuffers_FinishCommandBuffe
 
 	// use the other buffers next frame, because another CPU
 	// may still be rendering into the current buffers
-	R_ToggleSmpFrame();
+	if (USE_ZTECH_FRAME_DATA)
+		ztech_frameData_toggleSmpFrame();
+	else
+		R_ToggleSmpFrame();
 
 	// possibly change the stereo3D mode
 	// PC

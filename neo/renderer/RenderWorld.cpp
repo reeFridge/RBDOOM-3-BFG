@@ -1800,8 +1800,16 @@ CREATE MODEL REFS
 =================================================================================
 */
 
-extern "C" void c_incEntityReferences() {
-	tr.pc.c_entityReferences++;
+extern "C" void* c_deviceManager_getDevice() {
+	return (void*)deviceManager->GetDevice();
+}
+
+extern "C" void c_device_executeCommandList(nvrhi::IDevice* device, nvrhi::ICommandList* commandList) {
+	device->executeCommandList(commandList);
+}
+
+extern "C" void c_session_pump() {
+	session->Pump();
 }
 
 /*

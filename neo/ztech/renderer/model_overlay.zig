@@ -3,9 +3,9 @@ const MAX_DEFERRED_OVERLAYS: usize = 4;
 const DEFFERED_OVERLAY_TIMEOUT: c_int = 200;
 const MAX_OVERLAYS: usize = 8;
 
-const CPlane = @import("../math/plane.zig").CPlane;
+const Plane = @import("../math/plane.zig").Plane;
 pub const OverlayProjectionParams = extern struct {
-    localTextureAxis: [2]CPlane,
+    localTextureAxis: [2]Plane,
     material: ?*const anyopaque, // idMaterial
     startTime: c_int,
 };

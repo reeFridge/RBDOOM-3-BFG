@@ -260,6 +260,7 @@ pub fn build(b: *std.Build) !void {
     exe.linkLibCpp();
 
     b.installArtifact(exe);
+    //_ = ztech_lib.getEmittedH();
 
     const shaders_cmd = b.addRunArtifact(shader_make_pkg.shader_make);
     shaders_cmd.addArg("--config=shaders/shaders.cfg");

@@ -303,7 +303,10 @@ idLight::~idLight()
 {
 	if( lightDefHandle != -1 )
 	{
-		gameRenderWorld->FreeLightDef( lightDefHandle );
+		if (gameRenderWorld)
+			gameRenderWorld->FreeLightDef( lightDefHandle );
+		else if (game_ztechRenderWorld)
+			ztech_renderWorld_freeLightDef(game_ztechRenderWorld, lightDefHandle);
 	}
 }
 
@@ -897,11 +900,17 @@ void idLight::BecomeBroken( idEntity* activator )
 }
 
 extern "C" int c_addLightDef(const renderLight_t* renderLight) {
-	return gameRenderWorld->AddLightDef(renderLight);
+	if (gameRenderWorld)
+		return gameRenderWorld->AddLightDef(renderLight);
+	else if (game_ztechRenderWorld)
+		return ztech_renderWorld_addLightDef(game_ztechRenderWorld, renderLight);
 }
 
 extern "C" void c_updateLightDef(int lightDefHandle, const renderLight_t* renderLight) {
-	gameRenderWorld->UpdateLightDef(lightDefHandle, renderLight);
+	if (gameRenderWorld)
+		gameRenderWorld->UpdateLightDef( lightDefHandle, renderLight );
+	else if (game_ztechRenderWorld)
+		ztech_renderWorld_updateLightDef(game_ztechRenderWorld, lightDefHandle, renderLight);
 }
 
 /*
@@ -914,11 +923,17 @@ void idLight::PresentLightDefChange()
 	// let the renderer apply it to the world
 	if( ( lightDefHandle != -1 ) )
 	{
-		gameRenderWorld->UpdateLightDef( lightDefHandle, &renderLight );
+		if (gameRenderWorld)
+			gameRenderWorld->UpdateLightDef( lightDefHandle, &renderLight );
+		else if (game_ztechRenderWorld)
+			ztech_renderWorld_updateLightDef(game_ztechRenderWorld, lightDefHandle, &renderLight);
 	}
 	else
 	{
-		lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
+		if (gameRenderWorld)
+			lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
+		else if (game_ztechRenderWorld)
+			lightDefHandle = ztech_renderWorld_addLightDef(game_ztechRenderWorld, &renderLight);
 	}
 }
 

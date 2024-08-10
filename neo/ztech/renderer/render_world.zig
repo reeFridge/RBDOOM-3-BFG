@@ -1,9 +1,15 @@
 const CVec3 = @import("../math/vector.zig").CVec3;
+const Vec3 = @import("../math/vector.zig").Vec3;
 const std = @import("std");
 const CMat3 = @import("../math/matrix.zig").CMat3;
-const CPlane = @import("../math/plane.zig").CPlane;
+const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
+const Bounds = @import("../bounding_volume/bounds.zig");
+const RenderMatrix = @import("matrix.zig").RenderMatrix;
+const FrustumCorners = @import("matrix.zig").FrustumCorners;
+const FrustumCull = @import("matrix.zig").FrustumCull;
 const CWinding = @import("../geometry/winding.zig").CWinding;
+const CFixedWinding = @import("../geometry/winding.zig").CFixedWinding;
 const material = @import("material.zig");
 const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
 const RenderEntityLocal = @import("render_entity.zig").RenderEntityLocal;
@@ -11,7 +17,9 @@ const RenderEnvprobeLocal = @import("render_envprobe.zig").RenderEnvprobeLocal;
 const AreaReference = @import("common.zig").AreaReference;
 const Interaction = @import("interaction.zig").Interaction;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
+const RenderSystem = @import("render_system.zig");
 const fs = @import("../fs.zig");
+const Image = @import("image.zig").Image;
 
 pub const RenderView = extern struct {
     viewID: c_int,
@@ -25,7 +33,7 @@ pub const RenderView = extern struct {
     forceUpdate: bool,
     time: [2]c_int,
     shaderParms: [material.MAX_GLOBAL_SHADER_PARMS]f32,
-    globalMaterial: ?*const anyopaque,
+    globalMaterial: ?*const material.Material,
     viewEyeBuffer: c_int,
     stereoScreenSeparation: f32,
     rdflags: c_int,
@@ -40,7 +48,7 @@ pub const AreaNode = extern struct {
     pub const CHILDREN_HAVE_MULTIPLE_AREAS: c_int = -2;
     pub const AREANUM_SOLID: c_int = -1;
 
-    plane: CPlane,
+    plane: Plane,
     // negative numbers are (-1 - areaNumber), 0 = solid
     children: [2]c_int,
     // if all children are either solid or a single area,
@@ -73,7 +81,7 @@ pub const LightGrid = extern struct {
     lightGridBounds: [3]c_int,
     lightGridPoints: List,
     area: c_int,
-    irradianceImage: ?*anyopaque, // idImage
+    irradianceImage: ?*Image,
     imageSingleProbeSize: c_int,
     imageBorderSize: c_int,
 };
@@ -84,10 +92,17 @@ pub const Portal = extern struct {
     // winding points have counter clockwise ordering seen this area
     w: *CWinding,
     // view must be on the positive side of the plane to cross
-    plane: CPlane,
+    plane: Plane,
     // next portal of the area
     next: ?*Portal,
     doublePortal: ?*DoublePortal,
+};
+
+pub const ExitPortal = extern struct {
+    areas: [2]c_int,
+    w: *CWinding,
+    blockingBits: c_int,
+    portalHandle: qhandle_t,
 };
 
 pub const DoublePortal = extern struct {
@@ -109,7 +124,7 @@ pub const PortalArea = extern struct {
     globalBounds: CBounds,
     lightGrid: LightGrid,
     viewCount: c_int,
-    portals: *Portal,
+    portals: ?*Portal,
     entityRefs: AreaReference,
     lightRefs: AreaReference,
     envprobeRefs: AreaReference,
@@ -142,9 +157,9 @@ area_nodes: ?[]AreaNode = null,
 portal_areas: ?[]PortalArea = null,
 // incremented every time a door portal state changes
 connected_area_num: usize = 0,
-area_screen_rect: ?*ScreenRect = null,
+area_screen_rect: ?[]ScreenRect = null,
 double_portals: ?[]DoublePortal = null,
-local_models: std.ArrayList(model.RenderModel), // idRenderModel
+local_models: std.ArrayList(*model.RenderModel),
 entity_defs: std.ArrayList(?*RenderEntityLocal),
 light_defs: std.ArrayList(?*RenderLightLocal),
 envprobe_defs: std.ArrayList(?*RenderEnvprobeLocal),
@@ -159,7 +174,7 @@ overlays: [MAX_DECAL_SURFACES]ReusableOverlay,
 // cache access, because the table is accessed by light in idRenderWorldLocal::CreateLightDefInteractions()
 // Growing this table is time consuming, so we add a pad value to the number
 // of entityDefs and lightDefs
-interaction_table: ?**Interaction = null,
+interaction_table: ?[]?*Interaction = null,
 // entityDefs
 interaction_table_width: usize = 0,
 // lightDefs
@@ -167,8 +182,1099 @@ interaction_table_height: usize = 0,
 generate_all_interactions_called: bool = false,
 
 const global = @import("../global.zig");
+const RenderEntity = @import("render_entity.zig").RenderEntity;
+const RenderLight = @import("render_light.zig").RenderLight;
 
-pub fn numPortalsInArea(render_world: RenderWorld, area_index: usize) error{ BadAreaIndex, NotInitialized }!usize {
+pub const DefIndexAccessError = error{
+    OutOfRange,
+    SlotIsNull,
+};
+
+// Frees all references and lit surfaces from the light, and
+// NULL's out it's entry in the world list
+pub fn freeLightDef(render_world: *RenderWorld, light_index: usize) DefIndexAccessError!void {
+    if (light_index >= render_world.light_defs.items.len) return error.OutOfRange;
+
+    if (render_world.light_defs.items[light_index]) |def| {
+        def.freeLightDerivedData();
+
+        render_world.allocator.destroy(def);
+        render_world.light_defs.items[light_index] = null;
+    } else return error.SlotIsNull;
+}
+
+pub fn addLightDef(render_world: *RenderWorld, render_light: RenderLight) !usize {
+    // try reuse a free slot
+    const index = for (render_world.light_defs.items, 0..) |item, item_index| {
+        if (item == null) break item_index;
+    } else index: {
+        try render_world.light_defs.append(null);
+        const new_len = render_world.light_defs.items.len;
+
+        if (render_world.interaction_table != null and
+            new_len > render_world.interaction_table_width)
+        {
+            try render_world.resizeInteractionTable();
+        }
+
+        break :index new_len - 1;
+    };
+
+    try render_world.updateLightDef(index, render_light);
+
+    return index;
+}
+
+pub fn updateLightDef(
+    render_world: *RenderWorld,
+    light_index: usize,
+    render_light: RenderLight,
+) !void {
+    RenderSystem.instance.incLightUpdates();
+
+    // TODO: light_index > MAX_LIGHT_DEFS_INDEX(10000)
+
+    // create new slots if needed
+    while (light_index >= render_world.light_defs.items.len)
+        try render_world.light_defs.append(null);
+
+    var just_update = false;
+    var light = if (render_world.light_defs.items[light_index]) |light_def| light: {
+        // if the shape of the light stays the same, we don't need to dump
+        // any of our derived data, because shader parms are calculated every frame
+        const axis_match = render_light.axis.toMat3f().eql(light_def.parms.axis.toMat3f());
+        const light_center_match = render_light.lightCenter.toVec3f().eql(light_def.parms.lightCenter.toVec3f());
+        const light_radius_match = render_light.lightRadius.toVec3f().eql(light_def.parms.lightRadius.toVec3f());
+        const noshadows_match = render_light.noShadows == light_def.parms.noShadows;
+        const origin_match = render_light.origin.toVec3f().eql(light_def.parms.origin.toVec3f());
+        const parallel_match = render_light.parallel == light_def.parms.parallel;
+        const pointlight_match = render_light.pointLight == light_def.parms.pointLight;
+        const shader_match = render_light.shader == light_def.lightShader;
+        const start_match = render_light.start.toVec3f().eql(light_def.parms.start.toVec3f());
+        const end_match = render_light.end.toVec3f().eql(light_def.parms.end.toVec3f());
+        const right_match = render_light.right.toVec3f().eql(light_def.parms.right.toVec3f());
+        const up_match = render_light.up.toVec3f().eql(light_def.parms.up.toVec3f());
+        const target_match = render_light.target.toVec3f().eql(light_def.parms.target.toVec3f());
+
+        if (axis_match and
+            light_center_match and
+            noshadows_match and
+            light_radius_match and
+            origin_match and
+            parallel_match and
+            pointlight_match and
+            shader_match and
+            start_match and
+            end_match and
+            right_match and
+            up_match and
+            target_match)
+        {
+            just_update = true;
+        } else {
+            // if we are updating shadows, the prelight model is no longer valid
+            light_def.lightHasMoved = true;
+            light_def.freeLightDerivedData();
+        }
+
+        break :light light_def;
+    } else light: {
+        // create a new one
+        var light_def = try render_world.allocator.create(RenderLightLocal);
+        light_def.* = RenderLightLocal{};
+        render_world.light_defs.items[light_index] = light_def;
+
+        light_def.index = @intCast(light_index);
+        light_def.world = @ptrCast(render_world);
+        break :light light_def;
+    };
+
+    light.parms = render_light;
+    light.lastModifiedFrameNum = RenderSystem.instance.frameCount();
+
+    // new for BFG edition: force noShadows on spectrum lights so teleport spawns
+    // don't cause such a slowdown.  Hell writing shouldn't be shadowed anyway...
+    if (light.parms.shader) |shader| {
+        if (shader.spectrum() > 0)
+            light.parms.noShadows = true;
+    }
+
+    if (!just_update)
+        try light.createLightRefs();
+}
+
+pub fn freeEntityDef(render_world: *RenderWorld, entity_index: usize) DefIndexAccessError!void {
+    if (entity_index >= render_world.entity_defs.items.len) return error.OutOfRange;
+
+    if (render_world.entity_defs.items[entity_index]) |def| {
+        def.freeEntityDerivedData(false, false);
+
+        def.parms.gui[0] = null;
+        def.parms.gui[1] = null;
+        def.parms.gui[2] = null;
+
+        render_world.allocator.destroy(def);
+        render_world.entity_defs.items[entity_index] = null;
+    } else return error.SlotIsNull;
+}
+
+pub fn addEntityDef(render_world: *RenderWorld, render_entity: RenderEntity) !usize {
+    // try reuse a free slot
+    const index = for (render_world.entity_defs.items, 0..) |item, item_index| {
+        if (item == null) break item_index;
+    } else index: {
+        try render_world.entity_defs.append(null);
+        const new_len = render_world.entity_defs.items.len;
+
+        if (render_world.interaction_table != null and
+            new_len > render_world.interaction_table_width)
+        {
+            try render_world.resizeInteractionTable();
+        }
+
+        break :index new_len - 1;
+    };
+
+    try render_world.updateEntityDef(index, render_entity);
+
+    return index;
+}
+
+fn resizeInteractionTable(render_world: *RenderWorld) error{OutOfMemory}!void {
+    // we overflowed the interaction table, so make it larger
+    const old_table = render_world.interaction_table orelse return;
+    const old_width = render_world.interaction_table_width;
+    const old_height = render_world.interaction_table_height;
+
+    // build the interaction table
+    // this will be dynamically resized if the entity / light counts grow too much
+    render_world.interaction_table_width = render_world.entity_defs.items.len + 100;
+    render_world.interaction_table_height = render_world.light_defs.items.len + 100;
+    const size: usize = render_world.interaction_table_width * render_world.interaction_table_height;
+    const interaction_table = try render_world.allocator.alloc(?*Interaction, size);
+    for (interaction_table) |*elem| elem.* = null;
+
+    for (0..old_height) |h| {
+        for (0..old_width) |w| {
+            interaction_table[h * render_world.interaction_table_width + w] = old_table[h * old_width + w];
+        }
+    }
+
+    render_world.interaction_table = interaction_table;
+    render_world.allocator.free(old_table);
+}
+
+extern fn c_deviceManager_getDevice() *anyopaque;
+extern fn c_device_executeCommandList(*anyopaque, *anyopaque) void;
+extern fn c_session_pump() void;
+
+/// Force the generation of all light / surface interactions at the start of a level
+/// If this isn't called, they will all be dynamically generated
+pub fn generateAllInteractions(render_world: *RenderWorld) !void {
+    if (!RenderSystem.instance.isInitialized()) return;
+    render_world.generate_all_interactions_called = false;
+
+    // let the interaction creation code know that it shouldn't
+    // try and do any view specific optimizations
+    RenderSystem.instance.clearViewDef();
+
+    render_world.interaction_table_width = render_world.entity_defs.items.len + 100;
+    render_world.interaction_table_height = render_world.light_defs.items.len + 100;
+
+    const size: usize = render_world.interaction_table_width * render_world.interaction_table_height;
+    const interaction_table = try render_world.allocator.alloc(?*Interaction, size);
+    for (interaction_table) |*elem| elem.* = null;
+    render_world.interaction_table = interaction_table;
+
+    RenderSystem.instance.openCommandList();
+    defer {
+        RenderSystem.instance.closeCommandList();
+        c_device_executeCommandList(
+            c_deviceManager_getDevice(),
+            RenderSystem.instance.commandList(),
+        );
+    }
+
+    for (render_world.light_defs.items) |opt_light_def| {
+        const light_def = opt_light_def orelse continue;
+        defer c_session_pump();
+
+        var opt_light_ref = light_def.references;
+        while (opt_light_ref) |light_ref| : (opt_light_ref = light_ref.ownerNext) {
+            var area = light_ref.area orelse continue;
+            var opt_entity_ref = area.entityRefs.areaNext;
+
+            // check all the models in this area
+            while (opt_entity_ref) |entity_ref| : (opt_entity_ref = entity_ref.areaNext) {
+                if (entity_ref == &area.entityRefs) break;
+                const entity_def = entity_ref.entity orelse continue;
+
+                var opt_inter = entity_def.firstInteraction;
+                while (opt_inter) |inter| : (opt_inter = inter.entityNext) {
+                    if (inter.lightDef == light_def) break;
+                }
+
+                // if we already have an interaction, we don't need to do anything
+                if (opt_inter != null) continue;
+
+                var new_inter = try Interaction.allocAndLink(entity_def, light_def);
+                try new_inter.createStaticInteraction(
+                    RenderSystem.instance.commandList(),
+                    render_world.allocator,
+                );
+            }
+        }
+    }
+
+    render_world.generate_all_interactions_called = true;
+}
+
+const FrameData = @import("frame_data.zig");
+const ViewDef = @import("common.zig").ViewDef;
+const ViewEntity = @import("common.zig").ViewEntity;
+const ViewLight = @import("common.zig").ViewLight;
+const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
+const DrawSurface = @import("common.zig").DrawSurface;
+
+extern fn idtech_renderView(*ViewDef) callconv(.C) void;
+extern fn R_SetupViewMatrix(*ViewDef) callconv(.C) void;
+extern fn R_SetupProjectionMatrix(*ViewDef, bool) callconv(.C) void;
+extern fn R_SetupUnprojection(*ViewDef) callconv(.C) void;
+extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
+extern fn R_AddLights() callconv(.C) void;
+extern fn R_AddModels() callconv(.C) void;
+extern fn R_AddInGameGuis([*]*DrawSurface, c_int) callconv(.C) void;
+extern fn R_OptimizeViewLightsList() callconv(.C) void;
+extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
+extern fn R_AddDrawViewCmd(*ViewDef, bool) callconv(.C) void;
+extern fn c_setDefaultEnvironmentProbes() callconv(.C) void;
+
+pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
+    if (!RenderSystem.instance.isInitialized()) return;
+
+    // close any gui drawing
+    //tr.guiModel->EmitFullScreen();
+    //tr.guiModel->Clear();
+
+    const r_skip_front_end = false;
+
+    if (r_skip_front_end) return;
+
+    var view_def = FrameData.frameCreate(ViewDef);
+    view_def.renderView = render_view;
+    view_def.targetRender = null;
+
+    var window_width = RenderSystem.instance.getWidth();
+    var window_height = RenderSystem.instance.getHeight();
+
+    RenderSystem.instance.performResolutionScaling(&window_width, &window_height);
+    RenderSystem.instance.cropRenderSize(window_width, window_height);
+    RenderSystem.instance.getCroppedViewport(&view_def.viewport);
+
+    view_def.scissor.x1 = 0;
+    view_def.scissor.y1 = 0;
+    view_def.scissor.x2 = view_def.viewport.x2 - view_def.viewport.x1;
+    view_def.scissor.y2 = view_def.viewport.y2 - view_def.viewport.y1;
+
+    view_def.isSubview = false;
+    view_def.isObliqueProjection = false;
+    view_def.initialViewAreaOrigin = render_view.vieworg;
+    view_def.renderWorld = @ptrCast(render_world);
+
+    const cross = Vec3(f32).cross(
+        render_view.viewaxis.mat[1].toVec3f(),
+        render_view.viewaxis.mat[2].toVec3f(),
+    );
+
+    view_def.isMirror = cross.dot(render_view.viewaxis.mat[0].toVec3f()) <= 0;
+
+    RenderSystem.instance.setPrimaryWorld(render_world);
+    RenderSystem.instance.setPrimaryRenderView(render_view);
+    RenderSystem.instance.setPrimaryView(view_def);
+
+    //idtech_renderView(view_def);
+    const old_view_def = RenderSystem.instance.getView();
+    RenderSystem.instance.setView(view_def);
+    defer RenderSystem.instance.setView(old_view_def);
+
+    R_SetupViewMatrix(view_def);
+    R_SetupProjectionMatrix(view_def, true);
+    R_SetupProjectionMatrix(view_def, false);
+    R_SetupUnprojection(view_def);
+
+    const projection_matrix = RenderMatrix{ .m = view_def.projectionMatrix };
+    view_def.projectionRenderMatrix = projection_matrix.transpose();
+    const model_view_matrix = RenderMatrix{ .m = view_def.worldSpace.modelViewMatrix };
+    const view_render_matrix = model_view_matrix.transpose();
+    view_def.worldSpace.mvp = view_def.projectionRenderMatrix.multiply(view_render_matrix);
+    const unjittered_projection_matrix = RenderMatrix{ .m = view_def.unjitteredProjectionMatrix };
+    view_def.unjitteredProjectionRenderMatrix = unjittered_projection_matrix.transpose();
+    view_def.worldSpace.unjitteredMVP = view_def.unjitteredProjectionRenderMatrix.multiply(view_render_matrix);
+
+    // TODO: assign it to view_def.frustums[PRIMARY_PLANE]
+    var frustum_planes = RenderMatrix.getFrustumPlanes(
+        view_def.worldSpace.mvp,
+        false,
+        true,
+    );
+
+    for (&frustum_planes) |*plane| {
+        plane.* = plane.flip();
+    }
+
+    const r_znear: f32 = 3.0;
+    frustum_planes[4].d -= r_znear;
+    const FRUSTUM_PRIMARY: usize = 0;
+    view_def.frustums[FRUSTUM_PRIMARY] = frustum_planes;
+
+    R_SetupSplitFrustums(view_def);
+
+    render_world.findViewLightsAndEntities(&view_def.frustums[FRUSTUM_PRIMARY]);
+
+    RenderSystem.instance.getFrontEndJobList().wait();
+
+    render_world.addLights();
+    render_world.addModels();
+
+    if (view_def.drawSurfs) |draw_surfs| {
+        R_AddInGameGuis(draw_surfs, view_def.numDrawSurfs);
+    }
+
+    R_OptimizeViewLightsList();
+
+    if (view_def.drawSurfs) |draw_surfs| {
+        R_SortDrawSurfs(draw_surfs, view_def.numDrawSurfs);
+    }
+
+    // TODO: R_FindClosestEnvironmentProbes();
+    c_setDefaultEnvironmentProbes();
+    R_AddDrawViewCmd(view_def, false);
+
+    // TODO: R_GenerateSubViews()
+
+    RenderSystem.instance.uncrop();
+}
+
+extern fn c_addSingleLight(*anyopaque, *ViewLight) callconv(.C) void;
+extern fn c_cullLightsMarkedAsRemoved() callconv(.C) void;
+
+fn addLights(render_world: *RenderWorld) void {
+    const view_def = RenderSystem.instance.getView();
+    var opt_view_light = view_def.viewLights;
+    while (opt_view_light) |view_light| : (opt_view_light = view_light.next) {
+        c_addSingleLight(@ptrCast(render_world), view_light);
+    }
+
+    c_cullLightsMarkedAsRemoved();
+}
+
+extern fn c_addSingleModel(*anyopaque, *ViewEntity) callconv(.C) void;
+extern fn c_moveDrawSurfsToView() callconv(.C) void;
+extern fn R_SortViewEntities(?*ViewEntity) callconv(.C) ?*ViewEntity;
+
+fn addModels(render_world: *RenderWorld) void {
+    const view_def = RenderSystem.instance.getView();
+    view_def.viewEntitys = R_SortViewEntities(view_def.viewEntitys);
+
+    var opt_view_entity = view_def.viewEntitys;
+    while (opt_view_entity) |view_entity| : (opt_view_entity = view_entity.next) {
+        c_addSingleModel(@ptrCast(render_world), view_entity);
+    }
+
+    c_moveDrawSurfsToView();
+}
+
+pub fn findViewLightsAndEntities(render_world: *RenderWorld, frustum_planes: []Plane) void {
+    RenderSystem.instance.incViewCount();
+
+    const view_def = RenderSystem.instance.getView();
+    view_def.viewLights = null;
+    view_def.viewEntitys = null;
+    view_def.viewEnvprobes = null;
+
+    for (render_world.area_screen_rect.?) |*screen_rect| {
+        screen_rect.clear();
+    }
+
+    const r_use_portals = true;
+    if (!r_use_portals) {
+        view_def.areaNum = -1;
+    } else {
+        if (render_world.pointInArea(view_def.initialViewAreaOrigin.toVec3f())) |area_num| {
+            view_def.areaNum = @intCast(area_num);
+        } else |_| {
+            view_def.areaNum = -1;
+        }
+    }
+
+    render_world.buildConnectedAreas(view_def);
+
+    const r_single_area = false;
+    if (r_single_area) {
+        if (view_def.areaNum >= 0) {
+            var ps = std.mem.zeroes(PortalStack);
+            ps.next = null;
+            ps.p = null;
+
+            for (&ps.portalPlanes[0..5], frustum_planes[0..5]) |*portal_plane, plane| {
+                portal_plane.* = plane;
+            }
+
+            ps.numPortalPlanes = 5;
+            ps.rect = view_def.scissor;
+
+            render_world.addAreaToView(@intCast(view_def.areaNum), &ps);
+        }
+    } else {
+        render_world.flowViewThroughPortals(
+            view_def.renderView.vieworg.toVec3f(),
+            frustum_planes[0..5],
+        );
+    }
+}
+
+const MAX_PORTAL_PLANES: usize = 20;
+const PortalStack = extern struct {
+    p: ?*const Portal,
+    next: ?*const PortalStack,
+    numPortalPlanes: c_int,
+    portalPlanes: [MAX_PORTAL_PLANES + 1]Plane,
+    rect: ScreenRect,
+};
+
+fn flowViewThroughPortals(
+    render_world: *RenderWorld,
+    origin: Vec3(f32),
+    planes: []Plane,
+) void {
+    std.debug.assert(planes.len <= MAX_PORTAL_PLANES);
+
+    var ps = std.mem.zeroes(PortalStack);
+    ps.next = null;
+    ps.p = null;
+
+    for (planes, 0..) |plane, i| {
+        ps.portalPlanes[i] = plane;
+    }
+
+    ps.numPortalPlanes = @intCast(planes.len);
+    const view_def = RenderSystem.instance.getView();
+    ps.rect = view_def.scissor;
+
+    if (view_def.areaNum < 0) {
+        for (render_world.area_screen_rect.?, 0..) |*rect, i| {
+            rect.* = view_def.scissor;
+            render_world.addAreaToView(i, &ps);
+        }
+    } else {
+        render_world.floodViewThroughArea_r(origin, @intCast(view_def.areaNum), &ps);
+    }
+}
+
+extern fn c_screenRectFromWinding(*const CWinding, *const ViewEntity) callconv(.C) ScreenRect;
+
+fn floodViewThroughArea_r(
+    render_world: *RenderWorld,
+    origin: Vec3(f32),
+    area_num: usize,
+    ps: *const PortalStack,
+) void {
+    const area = &render_world.portal_areas.?[area_num];
+    render_world.addAreaToView(area_num, ps);
+
+    if (render_world.area_screen_rect) |rects| {
+        if (rects[area_num].isEmpty()) {
+            rects[area_num] = ps.rect;
+        } else {
+            rects[area_num].unionWith(ps.rect);
+        }
+    }
+
+    var opt_portal: ?*Portal = area.portals;
+    while (opt_portal) |portal| : (opt_portal = portal.next) {
+        if ((portal.doublePortal.?.blockingBits & PS_BLOCK_VIEW) > 0)
+            continue;
+
+        const d = portal.plane.distance(origin);
+        if (d < -0.1)
+            continue;
+
+        var opt_check: ?*const PortalStack = ps;
+        while (opt_check) |check| : (opt_check = check.next) {
+            if (check.p == portal) break;
+        }
+
+        if (opt_check != null) continue;
+
+        if (d < 1.0) {
+            var new_ps = ps.*;
+            new_ps.p = portal;
+            new_ps.next = ps;
+            render_world.floodViewThroughArea_r(origin, @intCast(portal.intoArea), &new_ps);
+            continue;
+        }
+
+        var w = CFixedWinding.fromWinding(portal.w.*);
+        for (ps.portalPlanes[0..@intCast(ps.numPortalPlanes)]) |plane| {
+            if (!w.clipInPlace(plane.flip(), 0, false)) break;
+        }
+
+        if (w.numPoints == 0) continue;
+        if (render_world.portalIsFoggedOut(portal.*)) continue;
+
+        var new_ps = std.mem.zeroes(PortalStack);
+        new_ps.next = ps;
+        new_ps.p = portal;
+        new_ps.rect = c_screenRectFromWinding(@ptrCast(&w), RenderSystem.instance.getIdentitySpace());
+        new_ps.rect.intersect(ps.rect);
+
+        const add_planes: usize = if (w.numPoints > MAX_PORTAL_PLANES)
+            MAX_PORTAL_PLANES
+        else
+            @intCast(w.numPoints);
+
+        new_ps.numPortalPlanes = 0;
+
+        for (0..add_planes) |i| {
+            const j = if (i + 1 == @as(usize, @intCast(w.numPoints))) 0 else i + 1;
+
+            const v1 = origin.subtract(w.p[i].toVec3().toVec3f());
+            const v2 = origin.subtract(w.p[j].toVec3().toVec3f());
+            var portal_plane = &new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)];
+            portal_plane.setNormal(Vec3(f32).cross(v1, v2));
+
+            if (portal_plane.normalize(true) < 0.01) continue;
+
+            portal_plane.fitThroughPoint(origin);
+            new_ps.numPortalPlanes += 1;
+        }
+
+        new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)] = portal.plane;
+        new_ps.numPortalPlanes += 1;
+
+        render_world.floodViewThroughArea_r(origin, @intCast(portal.intoArea), &new_ps);
+    }
+}
+
+fn portalIsFoggedOut(_: RenderWorld, portal: Portal) bool {
+    _ = portal.doublePortal.?.fogLight orelse return false;
+
+    // TODO: convert
+    return false;
+}
+
+fn addAreaToView(
+    render_world: *RenderWorld,
+    area_num: usize,
+    ps: *const PortalStack,
+) void {
+    render_world.portal_areas.?[area_num].viewCount = RenderSystem.instance.viewCount();
+
+    render_world.addAreaViewEntities(area_num, ps);
+    render_world.addAreaViewLights(area_num, ps);
+    render_world.addAreaViewEnvprobes(area_num, ps);
+}
+
+extern fn c_cullEntityByPortals(*const RenderMatrix, *const PortalStack) callconv(.C) bool;
+
+fn addAreaViewEntities(
+    render_world: *RenderWorld,
+    area_num: usize,
+    ps: *const PortalStack,
+) void {
+    const area = &render_world.portal_areas.?[area_num];
+    var opt_ref: ?*AreaReference = area.entityRefs.areaNext;
+    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
+        if (ref == &area.entityRefs) break;
+        const entity = ref.entity orelse continue;
+
+        if (c_cullEntityByPortals(&entity.inverseBaseModelProject, ps))
+            continue;
+
+        var view_entity = setEntityDefViewEntity(entity);
+        view_entity.scissorRect.unionWith(ps.rect);
+    }
+}
+
+fn setEntityDefViewEntity(def: *RenderEntityLocal) *ViewEntity {
+    const view_count = RenderSystem.instance.viewCount();
+    if (def.viewCount == view_count)
+        return def.viewEntity.?;
+
+    def.viewCount = view_count;
+    var v_model = FrameData.frameCreate(ViewEntity);
+    v_model.entityDef = def;
+    v_model.scissorRect.clear();
+    const view_def = RenderSystem.instance.getView();
+    v_model.next = view_def.viewEntitys;
+    view_def.viewEntitys = v_model;
+    def.viewEntity = v_model;
+
+    return v_model;
+}
+
+extern fn c_cullLightByPortals(*const RenderMatrix, *const RenderMatrix, *const PortalStack) callconv(.C) bool;
+
+fn addAreaViewLights(
+    render_world: *RenderWorld,
+    area_num: usize,
+    ps: *const PortalStack,
+) void {
+    const area = &render_world.portal_areas.?[area_num];
+    var opt_ref: ?*AreaReference = area.lightRefs.areaNext;
+    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
+        if (ref == &area.lightRefs) break;
+        const light = ref.light orelse continue;
+
+        if (c_cullLightByPortals(&light.inverseBaseLightProject, &light.baseLightProject, ps))
+            continue;
+
+        var view_light = setLightDefViewLight(light);
+        view_light.scissorRect.unionWith(ps.rect);
+    }
+}
+
+fn setLightDefViewLight(light: *RenderLightLocal) *ViewLight {
+    const view_count = RenderSystem.instance.viewCount();
+    if (light.viewCount == view_count)
+        return light.viewLight.?;
+
+    light.viewCount = view_count;
+    var v_light = FrameData.frameCreate(ViewLight);
+    v_light.lightDef = light;
+    v_light.scissorRect.clear();
+
+    const view_def = RenderSystem.instance.getView();
+    v_light.next = view_def.viewLights;
+    view_def.viewLights = v_light;
+
+    light.viewLight = v_light;
+
+    return v_light;
+}
+
+fn addAreaViewEnvprobes(
+    render_world: *RenderWorld,
+    area_num: usize,
+    ps: *const PortalStack,
+) void {
+    const area = &render_world.portal_areas.?[area_num];
+    var opt_ref: ?*AreaReference = area.envprobeRefs.areaNext;
+    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
+        if (ref == &area.envprobeRefs) break;
+        const probe = ref.envprobe orelse continue;
+
+        var v_probe = setEnvprobeDefViewEnvprobe(probe);
+        v_probe.scissorRect.unionWith(ps.rect);
+    }
+}
+
+fn setEnvprobeDefViewEnvprobe(probe: *RenderEnvprobeLocal) *ViewEnvprobe {
+    const view_count = RenderSystem.instance.viewCount();
+    if (probe.viewCount == view_count)
+        return probe.viewEnvprobe.?;
+
+    probe.viewCount = view_count;
+    var v_probe = FrameData.frameCreate(ViewEnvprobe);
+    v_probe.envprobeDef = probe;
+    v_probe.scissorRect.clear();
+    v_probe.globalOrigin = probe.parms.origin;
+    v_probe.globalProbeBounds = probe.globalProbeBounds;
+    v_probe.inverseBaseProbeProject = probe.inverseBaseProbeProject;
+    v_probe.irradianceImage = probe.irradianceImage;
+    v_probe.radianceImage = probe.radianceImage;
+
+    const view_def = RenderSystem.instance.getView();
+    v_probe.next = view_def.viewEnvprobes;
+    view_def.viewEnvprobes = v_probe;
+    probe.viewEnvprobe = v_probe;
+
+    return v_probe;
+}
+
+fn buildConnectedAreas(render_world: *RenderWorld, view_def: *ViewDef) void {
+    const connected_areas = FrameData.frameAlloc(bool, render_world.portal_areas.?.len);
+    @memset(connected_areas, false);
+    view_def.connectedAreas = connected_areas.ptr;
+
+    if (view_def.areaNum == -1) {
+        @memset(connected_areas, true);
+        return;
+    }
+
+    render_world.buildConnectedAreas_r(view_def, view_def.areaNum);
+}
+
+const PS_BLOCK_VIEW: c_int = 1;
+
+fn buildConnectedAreas_r(render_world: *RenderWorld, view_def: *ViewDef, area_num: c_int) void {
+    const connected_state = &view_def.connectedAreas.?[@intCast(area_num)];
+
+    if (connected_state.*) return;
+
+    connected_state.* = true;
+
+    var opt_portal: ?*Portal = render_world.portal_areas.?[@intCast(area_num)].portals;
+    while (opt_portal) |portal| : (opt_portal = portal.next) {
+        if ((portal.doublePortal.?.blockingBits & PS_BLOCK_VIEW) == 0) {
+            render_world.buildConnectedAreas_r(view_def, portal.intoArea);
+        }
+    }
+}
+
+pub fn updateEntityDef(
+    render_world: *RenderWorld,
+    entity_index: usize,
+    render_entity: RenderEntity,
+) !void {
+    RenderSystem.instance.incEntityUpdates();
+
+    if (render_entity.hModel == null and render_entity.callback == null)
+        return error.NoModel;
+
+    // TODO: entity_index > MAX_ENTITY_DEFS_INDEX(10000)
+
+    // create new slots if needed
+    while (entity_index >= render_world.entity_defs.items.len)
+        try render_world.entity_defs.append(null);
+
+    var def = if (render_world.entity_defs.items[entity_index]) |entity_def| def: {
+        if (!(render_entity.forceUpdate == 1)) {
+            // check for exact match (OPTIMIZE: check through pointers more)
+            if (render_entity.joints == null and
+                render_entity.callbackData == null and
+                entity_def.dynamicModel == null and
+                std.mem.eql(u8, std.mem.asBytes(&entity_def.parms), std.mem.asBytes(&render_entity)))
+                return;
+
+            // if the only thing that changed was shaderparms, we can just leave things as they are
+            // after updating parms
+
+            // if we have a callback function and the bounds, origin, axis and model match,
+            // then we can leave the references as they are
+            if (render_entity.callback != null) {
+                const axis_match = render_entity.axis.toMat3f().eql(entity_def.parms.axis.toMat3f());
+                const origin_match = render_entity.origin.toVec3f().eql(entity_def.parms.origin.toVec3f());
+                const bounds_match = render_entity.bounds.toBounds().eql(entity_def.localReferenceBounds.toBounds());
+                const model_match = render_entity.hModel == entity_def.parms.hModel;
+
+                if (bounds_match and origin_match and axis_match and model_match) {
+                    // only clear the dynamic model and interaction surfaces if they exist
+                    entity_def.clearEntityDynamicModel();
+                    entity_def.parms = render_entity;
+                    return;
+                }
+            }
+        }
+
+        if (entity_def.parms.hModel == render_entity.hModel)
+            entity_def.freeEntityDerivedData(true, true)
+        else
+            entity_def.freeEntityDerivedData(false, false);
+
+        break :def entity_def;
+    } else def: {
+        // creating a new one
+        var entity_def = try render_world.allocator.create(RenderEntityLocal);
+        entity_def.* = RenderEntityLocal{};
+        render_world.entity_defs.items[entity_index] = entity_def;
+
+        entity_def.index = @intCast(entity_index);
+        entity_def.world = @ptrCast(render_world);
+        break :def entity_def;
+    };
+
+    def.parms = render_entity;
+    def.lastModifiedFrameNum = RenderSystem.instance.frameCount();
+
+    // optionally immediately issue any callbacks
+    const r_use_entity_callbacks = true; // TODO: CVar system
+    if (!r_use_entity_callbacks and def.parms.callback != null) {
+        def.issueEntityDefCallback();
+    }
+
+    // trigger entities don't need to get linked in and processed,
+    // they only exist for editor use
+    if (def.parms.hModel) |model_ptr| {
+        if (!model_ptr.hasDrawingSurfaces()) return;
+    }
+
+    // based on the model bounds, add references in each area
+    // that may contain the updated surface
+    try def.createEntityRefs();
+}
+
+pub fn pushFrustumIntoTree(
+    render_world: *RenderWorld,
+    def: ?*RenderEntityLocal,
+    light: ?*RenderLightLocal,
+    frustumTransform: RenderMatrix,
+    frustumBounds: Bounds,
+) !void {
+    // TODO: properly check
+    const area_nodes = render_world.area_nodes orelse return;
+    const portal_areas = render_world.portal_areas orelse return;
+
+    // calculate the corners of the frustum in world space
+    const corners = RenderMatrix.getFrustumCorners(frustumTransform, CBounds.fromBounds(frustumBounds));
+
+    try render_world.pushFrustumIntoTree_r(
+        def,
+        light,
+        corners,
+        0,
+        area_nodes,
+        portal_areas,
+    );
+}
+
+/// Used for both light volumes and model volumes.
+/// This does not clip the points by the planes, so some slop
+/// occurs.
+/// tr.viewCount should be bumped before calling, allowing it
+/// to prevent double checking areas.
+/// We might alternatively choose to do this with an area flow.
+fn pushFrustumIntoTree_r(
+    render_world: *RenderWorld,
+    def: ?*RenderEntityLocal,
+    light: ?*RenderLightLocal,
+    corners: FrustumCorners,
+    node_num: c_int,
+    area_nodes: []AreaNode,
+    portal_areas: []PortalArea,
+) !void {
+    if (node_num < 0) {
+        const area_num: usize = @intCast(-1 - node_num);
+        var area = &portal_areas[area_num];
+
+        // already added a reference here
+        if (area.viewCount == RenderSystem.instance.viewCount()) return;
+
+        area.viewCount = RenderSystem.instance.viewCount();
+
+        if (def) |render_entity|
+            try render_world.addEntityRefToArea(render_entity, area);
+
+        if (light) |render_light|
+            try render_world.addLightRefToArea(render_light, area);
+
+        return;
+    }
+
+    const node = area_nodes[@intCast(node_num)];
+
+    const r_use_node_common_children = true;
+
+    // if we know that all possible children nodes only touch an area
+    // we have already marked, we can early out
+    if (node.commonChildrenArea != AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS and
+        r_use_node_common_children)
+    {
+        // note that we do NOT try to set a reference in this area
+        // yet, because the test volume may yet wind up being in the
+        // solid part, which would cause bounds slightly poked into
+        // a wall to show up in the next room
+        if (portal_areas[@intCast(node.commonChildrenArea)].viewCount == RenderSystem.instance.viewCount())
+            return;
+    }
+
+    // exact check all the corners against the node plane
+    const cull = RenderMatrix.cullFrustumCornersToPlane(corners, node.plane);
+
+    if (cull != FrustumCull.BACK) {
+        const node_num_ = node.children[0];
+        if (node_num_ != 0) // 0 = solid
+            try render_world.pushFrustumIntoTree_r(
+                def,
+                light,
+                corners,
+                node_num_,
+                area_nodes,
+                portal_areas,
+            );
+    }
+
+    if (cull != FrustumCull.FRONT) {
+        const node_num_ = node.children[1];
+        if (node_num_ != 0) // 0 = solid
+            try render_world.pushFrustumIntoTree_r(
+                def,
+                light,
+                corners,
+                node_num_,
+                area_nodes,
+                portal_areas,
+            );
+    }
+}
+
+pub const AreaAccessError = error{
+    BadAreaIndex,
+    NotInitialized,
+};
+
+pub const GetPortalError = error{
+    BadPortalIndex,
+    NoDoublePortal,
+    DoublePortalHandleNotFound,
+} || AreaAccessError;
+
+pub fn getPortal(render_world: RenderWorld, area_num: usize, portal_num: usize) GetPortalError!ExitPortal {
+    const portal_areas = render_world.portal_areas orelse return error.NotInitialized;
+    const double_portals = render_world.double_portals orelse return error.NotInitialized;
+    if (area_num >= portal_areas.len) return error.BadAreaIndex;
+
+    const area = &portal_areas[area_num];
+    var count: usize = 0;
+    var opt_portal: ?*Portal = area.portals;
+    var ret: ExitPortal = std.mem.zeroes(ExitPortal);
+
+    while (opt_portal) |portal| : (opt_portal = portal.next) {
+        if (count == portal_num) {
+            ret.areas[0] = @intCast(area_num);
+            ret.areas[1] = portal.intoArea;
+            ret.w = portal.w;
+
+            const double_portal = portal.doublePortal orelse return error.NoDoublePortal;
+            ret.blockingBits = double_portal.blockingBits;
+            for (double_portals, 0..) |*double_portal_ptr, i| {
+                if (double_portal_ptr == double_portal) {
+                    ret.portalHandle = @intCast(i);
+                    break;
+                }
+            } else return error.DoublePortalHandleNotFound;
+            return ret;
+        }
+        count += 1;
+    }
+
+    return error.BadPortalIndex;
+}
+
+pub const PointInAreaError = error{
+    AreaNotFound,
+    PointNotInArea,
+    NotInitialized,
+    AreaOutOfRange,
+};
+
+/// Will return -1 if the point is not in an area, otherwise
+/// it will return 0 <= value < tr.world->numPortalAreas
+pub fn pointInArea(render_world: RenderWorld, point: Vec3(f32)) PointInAreaError!usize {
+    return if (render_world.area_nodes) |area_nodes| index: {
+        var node_num: usize = 0;
+        var node = &area_nodes[node_num];
+        break :index while (true) : (node = &area_nodes[node_num]) {
+            const normal = Vec3(f32){ .v = .{ node.plane.a, node.plane.b, node.plane.c } };
+            const d = point.dot(normal) + node.plane.d;
+
+            const node_num_ = if (d > 0) node.children[0] else node.children[1];
+
+            if (node_num_ == 0) break error.PointNotInArea; // in solid
+
+            if (node_num_ < 0) {
+                node_num = @intCast(-1 - node_num_);
+                if (node_num >= area_nodes.len) break error.AreaOutOfRange;
+
+                break node_num;
+            }
+        } else error.AreaNotFound;
+    } else error.NotInitialized;
+}
+
+pub fn boundsInAreas(render_world: RenderWorld, bounds: Bounds, areas: []c_int) usize {
+    // TODO: assert
+    const area_nodes = render_world.area_nodes orelse return 0;
+
+    var num_areas: usize = 0;
+    boundsInAreas_r(0, bounds, areas, &num_areas, area_nodes);
+
+    return num_areas;
+}
+
+pub fn boundsInAreas_r(
+    arg_node_num: c_int,
+    bounds: Bounds,
+    areas: []c_int,
+    num_areas: *usize,
+    area_nodes: []AreaNode,
+) void {
+    var node_num = arg_node_num;
+
+    var first_iteration = true;
+    while (first_iteration or node_num != 0) {
+        defer first_iteration = false;
+
+        if (node_num < 0) {
+            node_num = -1 - node_num;
+            const max = num_areas.*;
+            const i = for (0..max) |n| {
+                if (areas[n] == node_num) break n;
+            } else max;
+
+            if (i >= max and max < areas.len) {
+                num_areas.* += 1;
+                areas[num_areas.*] = node_num;
+            }
+
+            return;
+        }
+
+        const node = &area_nodes[@intCast(node_num)];
+        switch (bounds.planeSide(node.plane)) {
+            .front => node_num = node.children[0],
+            .back => node_num = node.children[1],
+            else => {
+                if (node.children[1] != 0) {
+                    boundsInAreas_r(
+                        node.children[1],
+                        bounds,
+                        areas,
+                        num_areas,
+                        area_nodes,
+                    );
+
+                    if (num_areas.* >= areas.len) return;
+                }
+                node_num = node.children[0];
+            },
+        }
+    }
+}
+
+pub fn areaBounds(render_world: RenderWorld, area_num: usize) !Bounds {
+    return if (render_world.portal_areas) |portal_areas| bounds: {
+        if (area_num >= portal_areas.len) return error.AreaOutOfRange;
+
+        break :bounds portal_areas[area_num].globalBounds.toBounds();
+    } else error.NotInitialized;
+}
+
+pub fn areasAreConnected(render_world: RenderWorld, area_a: usize, area_b: usize, connection: c_int) !bool {
+    return if (render_world.portal_areas) |portal_areas| connected: {
+        if (area_a >= portal_areas.len or area_b >= portal_areas.len)
+            break :connected error.AreaOutOfRange;
+
+        var attribute: c_int = 0;
+        var int_connection = connection;
+
+        while (int_connection > 1) {
+            attribute += 1;
+            int_connection >>= 1;
+        }
+
+        const attribute_mask = @as(c_int, 1) << @intCast(attribute);
+        if (attribute >= NUM_PORTAL_ATTRIBUTES or attribute_mask != connection)
+            break :connected error.BadConnectionNumber;
+
+        const num_a = portal_areas[area_a].connectedAreaNum[@intCast(attribute)];
+        const num_b = portal_areas[area_b].connectedAreaNum[@intCast(attribute)];
+
+        break :connected num_a == num_b;
+    } else error.NotInitialized;
+}
+
+pub fn numPortalsInArea(render_world: RenderWorld, area_index: usize) AreaAccessError!usize {
     return if (render_world.portal_areas) |portal_areas| num: {
         if (area_index >= portal_areas.len) break :num error.BadAreaIndex;
 
@@ -200,7 +1306,7 @@ pub fn init(allocator: std.mem.Allocator) !RenderWorld {
 
     return .{
         .map_name = try allocator.alloc(u8, 0),
-        .local_models = std.ArrayList(model.RenderModel).init(allocator),
+        .local_models = std.ArrayList(*model.RenderModel).init(allocator),
         .entity_defs = std.ArrayList(?*RenderEntityLocal).init(allocator),
         .light_defs = std.ArrayList(?*RenderLightLocal).init(allocator),
         .envprobe_defs = std.ArrayList(?*RenderEnvprobeLocal).init(allocator),
@@ -233,7 +1339,8 @@ pub fn deinit(render_world: *RenderWorld) void {
 pub fn freeDefs(render_world: *RenderWorld) void {
     render_world.generate_all_interactions_called = false;
 
-    if (render_world.interaction_table != null) {
+    if (render_world.interaction_table) |table| {
+        render_world.allocator.free(table);
         render_world.interaction_table = null;
     }
 
@@ -282,7 +1389,7 @@ pub fn freeWorld(render_world: *RenderWorld) void {
     }
 
     if (render_world.area_screen_rect) |area_screen_rect| {
-        render_world.allocator.destroy(area_screen_rect);
+        render_world.allocator.free(area_screen_rect);
         render_world.area_screen_rect = null;
     }
 
@@ -296,8 +1403,8 @@ pub fn freeWorld(render_world: *RenderWorld) void {
         render_world.area_nodes = null;
     }
 
-    for (render_world.local_models.items) |*item| {
-        global.RenderModelManager.removeModel(item.ptr);
+    for (render_world.local_models.items) |item| {
+        global.RenderModelManager.removeModel(item);
         item.deinit(render_world);
     }
     render_world.local_models.clearAndFree();
@@ -323,11 +1430,11 @@ pub fn clearWorld(render_world: *RenderWorld) !void {
 
     render_world.portal_areas = portal_areas;
 
-    const screen_rect = try render_world.allocator.create(ScreenRect);
-    errdefer render_world.allocator.destroy(screen_rect);
-    screen_rect.* = std.mem.zeroes(ScreenRect);
+    const screen_rects = try render_world.allocator.alloc(ScreenRect, 1);
+    errdefer render_world.allocator.free(screen_rects);
+    screen_rects[0] = std.mem.zeroes(ScreenRect);
 
-    render_world.area_screen_rect = screen_rect;
+    render_world.area_screen_rect = screen_rects;
 
     render_world.setupAreaRefs(portal_areas);
 
@@ -467,7 +1574,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             if (std.mem.eql(u8, token.slice(), "model")) {
                 const render_model = try render_world.parseModel(&lexer);
                 // add it to the model manager list
-                global.RenderModelManager.addModel(render_model.ptr);
+                global.RenderModelManager.addModel(render_model);
 
                 // save it in the list to free when clearing this map
                 try render_world.local_models.append(render_model);
@@ -575,16 +1682,17 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         def.world = @ptrCast(render_world);
 
         const model_name = try std.fmt.allocPrintZ(string_allocator, "_area{d}", .{area_index});
-        const model_ptr = global.RenderModelManager.findModel(model_name);
-        const render_model = model.RenderModel{ .ptr = model_ptr };
+        const model_ptr = try global.RenderModelManager.findModel(model_name);
         def.parms.hModel = model_ptr;
 
-        // TODO: error if hModel->IsDefaultModel() or !hModel->IsStaticWorldModel()
+        if (model_ptr.isDefaultModel() or !model_ptr.isStaticWorldModel())
+            return error.BadModel;
+
         // TODO: set needsPortalSky if model shader name matches "textures/smf/portal_sky"
 
         // the local and global reference bounds are the same for area models
-        def.localReferenceBounds = render_model.bounds();
-        def.globalReferenceBounds = render_model.bounds();
+        def.localReferenceBounds = model_ptr.bounds();
+        def.globalReferenceBounds = model_ptr.bounds();
 
         def.parms.axis.mat[0].x = 1.0;
         def.parms.axis.mat[1].y = 1.0;
@@ -602,7 +1710,31 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
     }
 }
 
-extern fn c_incEntityReferences() callconv(.C) void;
+pub fn addLightRefToArea(
+    render_world: *RenderWorld,
+    def: *RenderLightLocal,
+    area: *PortalArea,
+) error{OutOfMemory}!void {
+    {
+        var opt_ref = def.references;
+        while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+            if (ref.area == area) return;
+        }
+    }
+
+    var ref = try render_world.area_reference_allocator.create();
+    ref.* = AreaReference{};
+    ref.light = def;
+    ref.area = area;
+    ref.ownerNext = def.references;
+    def.references = ref;
+    RenderSystem.instance.incLightReferences();
+
+    area.lightRefs.areaNext.?.areaPrev = ref;
+    ref.areaNext = area.lightRefs.areaNext;
+    ref.areaPrev = &area.lightRefs;
+    area.lightRefs.areaNext = ref;
+}
 
 pub fn addEntityRefToArea(
     render_world: *RenderWorld,
@@ -620,7 +1752,7 @@ pub fn addEntityRefToArea(
     var ref = try render_world.area_reference_allocator.create();
     ref.* = AreaReference{};
 
-    c_incEntityReferences();
+    RenderSystem.instance.incEntityReferences();
 
     ref.entity = def;
 
@@ -700,7 +1832,7 @@ const ParseModelError = error{
 const sys_types = @import("../sys/types.zig");
 const model = @import("model.zig");
 
-fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !model.RenderModel { // idRenderModel
+fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
     try lexer.expectTokenString("{");
 
     // reusable token
@@ -763,7 +1895,6 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !model.RenderModel { //
 }
 
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
-extern fn c_material_addReference(*anyopaque) callconv(.C) void;
 
 inline fn createModelSurface(
     render_world: *RenderWorld,
@@ -779,7 +1910,7 @@ inline fn createModelSurface(
     surface_triangles.numIndexes = @intCast(indices.len);
 
     const opt_material_ptr = try global.DeclManager.findMaterial(meterial_name);
-    if (opt_material_ptr) |ptr| c_material_addReference(ptr);
+    if (opt_material_ptr) |material_ptr| material_ptr.addReference();
 
     const surface: model.ModelSurface = .{
         .id = @intCast(surface_id),
@@ -870,7 +2001,7 @@ inline fn createModelSurface(
         }
     }
 
-    // TODO: alloc alignment = 16
+    // TODO: alloc alignment = 16 (alignedAlloc)
     const verts = try render_world.allocator.alloc(DrawVertex, num_vertices);
     for (0..num_vertices) |i| {
         verts[i].xyz.x = vertices[i * 8 + 0];
@@ -881,7 +2012,7 @@ inline fn createModelSurface(
     }
     surface_triangles.verts = verts.ptr;
 
-    // TODO: alloc alignment = 16
+    // TODO: alloc alignment = 16 (alignedAlloc)
     const indexes = try render_world.allocator.alloc(sys_types.TriIndex, indices.len);
     for (indexes, indices) |*surface_index, index| {
         surface_index.* = index;
@@ -894,16 +2025,39 @@ inline fn createModelSurface(
 pub fn destroyModelSurface(render_world: *RenderWorld, model_surface: *model.ModelSurface) void {
     const geometry = if (model_surface.geometry) |tris| tris else return;
 
-    if (geometry.verts) |verts| {
-        const verts_slice = verts[0..@intCast(geometry.numVerts)];
-        render_world.allocator.free(verts_slice);
-    }
-
-    if (geometry.indexes) |indexes| {
-        const indexes_slice = indexes[0..@intCast(geometry.numIndexes)];
-        render_world.allocator.free(indexes_slice);
-    }
-
-    render_world.allocator.destroy(geometry);
+    destroySurfaceTriangles(render_world.allocator, geometry);
     model_surface.geometry = null;
+}
+
+pub fn destroySurfaceTriangles(allocator: std.mem.Allocator, tri: *model.SurfaceTriangles) void {
+    resetSurfaceTrianglesVertexCaches(tri);
+
+    if (!tri.referencedVerts) {
+        if (tri.verts) |verts| {
+            // R_CreateLightTris points tri->verts at the verts of the ambient surface
+            if (@intFromPtr(tri.ambientSurface) == 0 or verts != tri.ambientSurface.*.verts) {
+                const verts_slice = verts[0..@intCast(tri.numVerts)];
+                allocator.free(verts_slice);
+            }
+        }
+    }
+
+    if (!tri.referencedIndexes) {
+        if (tri.indexes) |indexes| {
+            // if a surface is completely inside a light volume R_CreateLightTris points tri->indexes at the indexes of the ambient surface
+            if (@intFromPtr(tri.ambientSurface) == 0 or indexes != tri.ambientSurface.*.indexes) {
+                const indexes_slice = indexes[0..@intCast(tri.numIndexes)];
+                allocator.free(indexes_slice);
+            }
+        }
+    }
+
+    allocator.destroy(tri);
+}
+
+fn resetSurfaceTrianglesVertexCaches(tri: *model.SurfaceTriangles) void {
+    // we don't support reclaiming static geometry memory
+    // without a level change
+    tri.ambientCache = 0;
+    tri.indexCache = 0;
 }

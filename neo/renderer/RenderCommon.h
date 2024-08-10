@@ -765,11 +765,13 @@ public:
 	emptyCommand_t* 		cmdTail;
 };
 
+#define USE_ZTECH_FRAME_DATA true
 extern	idFrameData*	frameData;
 
 //=======================================================================
 
-void R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly );
+extern "C" void R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly );
+extern "C" void R_SetupSplitFrustums( viewDef_t* viewDef );
 void R_AddDrawPostProcess( viewDef_t* parms );
 
 void R_ReloadGuis_f( const idCmdArgs& args );
@@ -1448,7 +1450,7 @@ void R_FreeEntityDefOverlay( idRenderEntityLocal* def );
 void R_FreeEntityDefFadedDecals( idRenderEntityLocal* def, int time );
 
 // RB: for dmap
-void R_DeriveLightData( idRenderLightLocal* light );
+extern "C" void R_DeriveLightData( idRenderLightLocal* light );
 
 // Called by the editor and dmap to operate on light volumes
 void R_RenderLightFrustum( const renderLight_t& renderLight, idPlane lightFrustum[6] );
@@ -1505,6 +1507,23 @@ void R_ToggleSmpFrame();
 void* R_FrameAlloc( int bytes, frameAllocType_t type = FRAME_ALLOC_UNKNOWN );
 void* R_ClearedFrameAlloc( int bytes, frameAllocType_t type = FRAME_ALLOC_UNKNOWN );
 
+extern "C" {
+	struct ztech_FrameData {
+		byte* 					frameMemory;
+		// the currently building command list commands can be inserted
+		// at the front if needed, as required for dynamically generated textures
+		emptyCommand_t* 		cmdHead;	// may be of other command type based on commandId
+		emptyCommand_t* 		cmdTail;
+	};
+
+	ztech_FrameData *ztech_frameData_get(void);
+	void ztech_frameData_init(void);
+	void ztech_frameData_shutdown(void);
+	void ztech_frameData_toggleSmpFrame(void);
+	void *ztech_frameData_alloc(int const bytes, int const type);
+	void *ztech_frameData_createCommandBuffer(int const bytes);
+}
+
 void* R_StaticAlloc( int bytes, const memTag_t tag = TAG_RENDER_STATIC );		// just malloc with error checking
 void* R_ClearedStaticAlloc( int bytes );	// with memset
 void R_StaticFree( void* data );
@@ -1530,7 +1549,7 @@ ID_INLINE bool R_CullModelBoundsToLight( const idRenderLightLocal* light, const 
 }
 
 void R_AddLights();
-void R_OptimizeViewLightsList();
+extern "C" void R_OptimizeViewLightsList();
 
 /*
 ============================================================
@@ -1571,7 +1590,8 @@ TR_FRONTEND_GUISURF
 */
 
 void R_SurfaceToTextureAxis( const srfTriangles_t* tri, idVec3& origin, idVec3 axis[3] );
-void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs );
+extern "C" void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs );
+extern "C" void R_SortDrawSurfs( drawSurf_t** drawSurfs, const int numDrawSurfs );
 
 /*
 ============================================================

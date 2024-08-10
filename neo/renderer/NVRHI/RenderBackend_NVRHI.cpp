@@ -237,7 +237,10 @@ void idRenderBackend::Init()
 	fhImmediateMode::Init( commandList );
 
 	// allocate the frame data, which may be more if smp is enabled
-	R_InitFrameData();
+	if (USE_ZTECH_FRAME_DATA)
+		ztech_frameData_init();
+	else
+		R_InitFrameData();
 
 	// TODO REMOVE: reset our gamma
 	R_SetColorMappings();

@@ -107,8 +107,13 @@ extern "C" void c_renderModelManager_removeModel(idRenderModel* model) {
 	renderModelManager->RemoveModel(model);
 }
 
-extern "C" void c_renderModelManager_findModel(uint8_t const * const name) {
-	renderModelManager->FindModel((const char*)name);
+extern "C" idRenderModel* c_renderModelManager_findModel(uint8_t const * const name) {
+	return renderModelManager->FindModel((const char*)name);
+}
+
+// TODO: how to guarantee non null?
+extern "C" idRenderModel* c_renderModelManager_defaultModel() {
+	return renderModelManager->DefaultModel();
 }
 
 /*

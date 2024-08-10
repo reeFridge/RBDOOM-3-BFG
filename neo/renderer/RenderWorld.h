@@ -39,9 +39,6 @@ If you have questions concerning this license or the applicable additional terms
 ===============================================================================
 */
 
-extern "C" size_t ztech_renderWorld_numAreas(void*);
-extern "C" size_t ztech_renderWorld_numPortalsInArea(void*, size_t);
-
 #define PROC_FILE_EXT				"proc"
 #define	PROC_FILE_ID				"mapProcFile003"
 
@@ -477,5 +474,34 @@ public:
 	// Text drawing for debug visualization.
 	virtual void			DrawText( const char* text, const idVec3& origin, float scale, const idVec4& color, const idMat3& viewAxis, const int align = 1, const int lifetime = 0, bool depthTest = false ) = 0;
 };
+
+class idInteraction;
+
+extern "C" {
+
+size_t ztech_renderWorld_getEntityDefsCount(void *const);
+idInteraction *ztech_renderWorld_getInteractionEntry(void *const, size_t const, size_t const);
+idInteraction **ztech_renderWorld_getInteractionRow(void *const, size_t const);
+
+int ztech_renderWorld_addEntityDef(void*, const renderEntity_t*);
+void ztech_renderWorld_updateEntityDef(void*, int, const renderEntity_t*);
+void ztech_renderWorld_freeEntityDef(void*, int);
+
+int ztech_renderWorld_addLightDef(void*, const renderLight_t*);
+void ztech_renderWorld_updateLightDef(void*, int, const renderLight_t*);
+void ztech_renderWorld_freeLightDef(void*, int);
+
+exitPortal_t ztech_renderWorld_getPortal(void*, int, int);
+size_t ztech_renderWorld_boundsInAreas(void*, int*, size_t);
+size_t ztech_renderWorld_numAreas(void*);
+size_t ztech_renderWorld_numPortalsInArea(void*, size_t);
+int ztech_renderWorld_pointInArea(void*, const idVec3*);
+bool ztech_renderWorld_areasAreConnected(void*, int, int, portalConnection_t);
+idBounds ztech_renderWorld_areaBounds(void*, int);
+
+void ztech_renderWorld_renderScene(void*, const renderView_t*);
+void ztech_renderer_setPrimaryRenderView(const renderView_t*);
+
+}
 
 #endif /* !__RENDERWORLD_H__ */

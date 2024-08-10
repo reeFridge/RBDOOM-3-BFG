@@ -377,6 +377,7 @@ void idCommonLocal::LoadLoadingGui( const char* mapName, bool& hellMap )
 }
 
 extern "C" bool ztech_RenderWorld_initFromMap(void*, uint8_t const *const);
+extern "C" void ztech_renderWorld_generateAllInteractions(void*);
 
 /*
 ===============
@@ -528,12 +529,15 @@ void idCommonLocal::ExecuteMapChange()
 	Sys_GrabMouseCursor( false );
 
 	// let the renderSystem load all the geometry
-	//if( !renderWorld->InitFromMap( fullMapName ) )
-	//{
-	//	common->Error( "couldn't load %s", fullMapName.c_str() );
-	//}
-	if (!ztech_RenderWorld_initFromMap(ztech_renderWorld, (const uint8_t*)fullMapName.c_str())) {
-		common->Error("couldn't load %s", fullMapName.c_str());
+	if (renderWorld) {
+		if( !renderWorld->InitFromMap( fullMapName ) )
+		{
+			common->Error( "couldn't load %s", fullMapName.c_str() );
+		}
+	} else if (ztech_renderWorld) {
+		if (!ztech_RenderWorld_initFromMap(ztech_renderWorld, (const uint8_t*)fullMapName.c_str())) {
+			common->Error("couldn't load %s", fullMapName.c_str());
+		}
 	}
 
 	// for the synchronous networking we needed to roll the angles over from
@@ -631,7 +635,11 @@ void idCommonLocal::ExecuteMapChange()
 	common->Printf( "----- Generating Interactions -----\n" );
 
 	// let the renderSystem generate interactions now that everything is spawned
-	renderWorld->GenerateAllInteractions();
+	if (renderWorld) {
+		renderWorld->GenerateAllInteractions();
+	} else if (ztech_renderWorld) {
+		ztech_renderWorld_generateAllInteractions(ztech_renderWorld);
+	}
 
 	{
 		int vertexMemUsedKB = vertexCache.staticData.vertexMemUsed.GetValue() / 1024;

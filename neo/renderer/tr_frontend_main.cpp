@@ -153,29 +153,33 @@ All memory is cache-line-cleared for the best performance.
 */
 void* R_FrameAlloc( int bytes, frameAllocType_t type )
 {
+	if (USE_ZTECH_FRAME_DATA) {
+		return ztech_frameData_alloc(bytes, type);
+	} else {
 #if defined( TRACK_FRAME_ALLOCS )
-	frameData->frameMemoryUsed.Add( bytes );
-	frameAllocTypeCount[type].Add( bytes );
+		frameData->frameMemoryUsed.Add( bytes );
+		frameAllocTypeCount[type].Add( bytes );
 #endif
 
-	bytes = ( bytes + FRAME_ALLOC_ALIGNMENT - 1 ) & ~( FRAME_ALLOC_ALIGNMENT - 1 );
+		bytes = ( bytes + FRAME_ALLOC_ALIGNMENT - 1 ) & ~( FRAME_ALLOC_ALIGNMENT - 1 );
 
-	// thread safe add
-	int	end = frameData->frameMemoryAllocated.Add( bytes );
-	if( end > MAX_FRAME_MEMORY )
-	{
-		idLib::Error( "R_FrameAlloc ran out of memory. bytes = %d, end = %d, highWaterAllocated = %d\n", bytes, end, frameData->highWaterAllocated );
+		// thread safe add
+		int	end = frameData->frameMemoryAllocated.Add( bytes );
+		if( end > MAX_FRAME_MEMORY )
+		{
+			idLib::Error( "R_FrameAlloc ran out of memory. bytes = %d, end = %d, highWaterAllocated = %d\n", bytes, end, frameData->highWaterAllocated );
+		}
+
+		byte* ptr = frameData->frameMemory + end - bytes;
+
+		// cache line clear the memory
+		for( int offset = 0; offset < bytes; offset += CACHE_LINE_SIZE )
+		{
+			ZeroCacheLine( ptr, offset );
+		}
+
+		return ptr;
 	}
-
-	byte* ptr = frameData->frameMemory + end - bytes;
-
-	// cache line clear the memory
-	for( int offset = 0; offset < bytes; offset += CACHE_LINE_SIZE )
-	{
-		ZeroCacheLine( ptr, offset );
-	}
-
-	return ptr;
 }
 
 /*
@@ -252,7 +256,7 @@ FONT-END RENDERING
 R_SortDrawSurfs
 =================
 */
-static void R_SortDrawSurfs( drawSurf_t** drawSurfs, const int numDrawSurfs )
+extern "C" void R_SortDrawSurfs( drawSurf_t** drawSurfs, const int numDrawSurfs )
 {
 #if 1
 
@@ -394,7 +398,7 @@ static void R_SortDrawSurfs( drawSurf_t** drawSurfs, const int numDrawSurfs )
 }
 
 // RB begin
-static void R_SetupSplitFrustums( viewDef_t* viewDef )
+extern "C" void R_SetupSplitFrustums( viewDef_t* viewDef )
 {
 	idVec3			planeOrigin;
 
@@ -483,6 +487,18 @@ public:
 		return 0;
 	}
 };
+
+extern "C" void c_setDefaultEnvironmentProbes() {
+	// set safe defaults
+	tr.viewDef->globalProbeBounds.Clear();
+
+	tr.viewDef->irradianceImage = globalImages->defaultUACIrradianceCube;
+	tr.viewDef->radianceImageBlends.Set( 1, 0, 0, 0 );
+	for( int i = 0; i < 3; i++ )
+	{
+		tr.viewDef->radianceImages[i] = globalImages->defaultUACRadianceCube;
+	}
+}
 
 static void R_FindClosestEnvironmentProbes()
 {
@@ -583,6 +599,10 @@ static void R_FindClosestEnvironmentProbes()
 	}
 }
 // RB end
+
+extern "C" void idtech_renderView(viewDef_t* parms) {
+	R_RenderView(parms);
+}
 
 /*
 ================

@@ -75,8 +75,28 @@ extern "C" idBounds c_renderModel_bounds(const idRenderModel* model) {
 	return model->Bounds();
 }
 
+extern "C" idBounds c_renderModel_boundsFromDef(const idRenderModel* model, const renderEntity_t* def) {
+	return model->Bounds(def);
+}
+
+extern "C" bool c_renderModel_modelHasDrawingSurfaces(const idRenderModel* model) {
+	return model->ModelHasDrawingSurfaces();
+}
+
 extern "C" void c_renderModel_clearSurfaces(idRenderModel* model) {
 	((idRenderModelStatic*)model)->surfaces.Clear();
+}
+
+extern "C" bool c_renderModel_isDefaultModel(const idRenderModel* model) {
+	return model->IsDefaultModel();
+}
+
+extern "C" bool c_renderModel_isStaticWorldModel(const idRenderModel* model) {
+	return model->IsStaticWorldModel();
+}
+
+extern "C" int c_renderModel_isDynamicModel(const idRenderModel* model) {
+	return model->IsDynamicModel();
 }
 
 /*

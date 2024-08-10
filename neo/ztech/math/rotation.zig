@@ -88,9 +88,9 @@ pub fn toMat3(self: *Rotation) *const Mat3(f32) {
     const s: f32 = std.math.sin(a);
     const c: f32 = std.math.cos(a);
 
-    const x = self.vec.x * s;
-    const y = self.vec.y * s;
-    const z = self.vec.z * s;
+    const x = self.vec.x() * s;
+    const y = self.vec.y() * s;
+    const z = self.vec.z() * s;
 
     const x2 = x + x;
     const y2 = y + y;
@@ -108,17 +108,23 @@ pub fn toMat3(self: *Rotation) *const Mat3(f32) {
     const wy = c * y2;
     const wz = c * z2;
 
-    self.axis.v[0].x = 1.0 - (yy + zz);
-    self.axis.v[0].y = xy - wz;
-    self.axis.v[0].z = xz + wy;
+    self.axis.v[0].v = .{
+        1.0 - (yy + zz),
+        xy - wz,
+        xz + wy,
+    };
 
-    self.axis.v[1].x = xy + wz;
-    self.axis.v[1].y = 1.0 - (xx + zz);
-    self.axis.v[1].z = yz - wx;
+    self.axis.v[1].v = .{
+        xy + wz,
+        1.0 - (xx + zz),
+        yz - wx,
+    };
 
-    self.axis.v[2].x = xz - wy;
-    self.axis.v[2].y = yz + wx;
-    self.axis.v[2].z = 1.0 - (xx + yy);
+    self.axis.v[2].v = .{
+        xz - wy,
+        yz + wx,
+        1.0 - (xx + yy),
+    };
 
     self.axis_valid = true;
 

@@ -1,137 +1,225 @@
 const std = @import("std");
 const math = @import("math.zig");
 
+pub const CVec2i = extern struct {
+    x: c_int = 0,
+    y: c_int = 0,
+};
+
 const Vec3f = Vec3(f32);
+const Vec6f = Vec6(f32);
+const Vec4f = Vec4(f32);
 
 pub const CVec3 = extern struct {
-    x: f32 = 0.0,
-    y: f32 = 0.0,
-    z: f32 = 0.0,
+    x: f32 = 0,
+    y: f32 = 0,
+    z: f32 = 0,
 
     pub fn fromVec3f(vec: Vec3f) CVec3 {
-        var result: CVec3 = .{};
-        inline for (std.meta.fields(CVec3)) |info| {
-            @field(result, info.name) = @field(vec, info.name);
-        }
-
-        return result;
+        return .{ .x = vec.v[0], .y = vec.v[1], .z = vec.v[2] };
     }
 
-    pub fn toVec3f(self: CVec3) Vec3f {
-        var result: Vec3f = .{};
-        inline for (std.meta.fields(Vec3f)) |info| {
-            @field(result, info.name) = @field(self, info.name);
-        }
+    pub fn toVec3f(cvec: CVec3) Vec3f {
+        return .{ .v = .{ cvec.x, cvec.y, cvec.z } };
+    }
+};
 
-        return result;
+pub const CVec4 = extern struct {
+    x: f32 = 0,
+    y: f32 = 0,
+    z: f32 = 0,
+    w: f32 = 0,
+
+    pub fn fromVec4f(vec: Vec4f) CVec4 {
+        return .{ .x = vec.v[0], .y = vec.v[1], .z = vec.v[2], .w = vec.v[3] };
+    }
+
+    pub fn toVec4f(cvec: CVec4) Vec4f {
+        return .{ .v = .{ cvec.x, cvec.y, cvec.z, cvec.w } };
     }
 };
 
 pub const CVec6 = extern struct {
-    p: [6]f32,
+    p: [6]f32 = [_]f32{0} ** 6,
 
-    pub fn toVec6f(self: CVec6) Vec6(f32) {
-        return .{
-            .v = .{
-                .{ .x = self.p[0], .y = self.p[1], .z = self.p[2] },
-                .{ .x = self.p[3], .y = self.p[4], .z = self.p[5] },
-            },
-        };
+    pub fn toVec6f(cvec: CVec6) Vec6f {
+        return .{ .v = cvec.p };
     }
 
     pub fn fromVec6f(vec: Vec6(f32)) CVec6 {
-        return .{
-            .p = .{
-                vec.v[0].x, vec.v[0].y, vec.v[0].z,
-                vec.v[1].x, vec.v[1].y, vec.v[1].z,
-            },
-        };
+        return .{ .p = vec.v };
     }
 };
 
 pub fn Vec3(comptime T: type) type {
     return struct {
         const Self = @This();
+        const V = @Vector(3, T);
 
-        x: T = std.mem.zeroes(T),
-        y: T = std.mem.zeroes(T),
-        z: T = std.mem.zeroes(T),
+        v: V = @splat(std.mem.zeroes(T)),
+
+        pub fn neg(a: Self) T {
+            return .{ .v = -a.v };
+        }
+
+        pub inline fn x(a: Self) T {
+            return a.v[0];
+        }
+
+        pub inline fn xv(a: Self) V {
+            return @splat(a.x());
+        }
+
+        pub inline fn y(a: Self) T {
+            return a.v[1];
+        }
+
+        pub inline fn yv(a: Self) V {
+            return @splat(a.y());
+        }
+
+        pub inline fn z(a: Self) T {
+            return a.v[2];
+        }
+
+        pub inline fn zv(a: Self) V {
+            return @splat(a.z());
+        }
+
+        pub inline fn eql(a: Self, b: Self) bool {
+            return @reduce(.And, a.v == b.v);
+        }
 
         pub fn fromScalar(s: T) Vec3(T) {
-            return .{ .x = s, .y = s, .z = s };
+            return .{ .v = @splat(s) };
         }
 
-        pub fn slice(self: Self) [3]T {
-            return [3]T{ self.x, self.y, self.z };
-        }
-
-        pub fn sliceMut(self: *Self) [3]*T {
-            return [3]*T{ &self.x, &self.y, &self.z };
-        }
-
-        pub fn length_sqr(a: Self) T {
-            return a.x * a.x + a.y * a.y + a.z * a.z;
+        pub inline fn length_sqr(a: Self) T {
+            return @reduce(.Add, (a.v * a.v));
         }
 
         pub fn normalize(a: Self) Self {
-            const sqr_len = a.x * a.x + a.y * a.y + a.z * a.z;
+            const sqr_len = a.length_sqr();
             const inv_sqr_len = math.invSqrt(sqr_len);
 
             return .{
-                .x = a.x * inv_sqr_len,
-                .y = a.y * inv_sqr_len,
-                .z = a.z * inv_sqr_len,
+                .v = a.v * @as(V, @splat(inv_sqr_len)),
             };
         }
 
         pub fn normalizeLen(a: Self) struct { Self, T } {
-            const sqr_len = a.x * a.x + a.y * a.y + a.z * a.z;
+            const sqr_len = a.length_sqr();
             const inv_sqr_len = math.invSqrt(sqr_len);
 
             return .{
                 .{
-                    .x = a.x * inv_sqr_len,
-                    .y = a.y * inv_sqr_len,
-                    .z = a.z * inv_sqr_len,
+                    .v = a.v * @as(V, @splat(inv_sqr_len)),
                 },
                 sqr_len * inv_sqr_len,
             };
         }
 
         pub fn cross(a: Self, b: Self) Self {
+            const av1 = V{ a.y(), a.z(), a.x() };
+            const av2 = V{ a.z(), a.x(), a.y() };
+            const bv1 = V{ b.y(), b.z(), b.x() };
+            const bv2 = V{ b.z(), b.x(), b.y() };
+
             return .{
-                .x = a.y * b.z - a.z * b.y,
-                .y = a.z * b.x - a.x * b.z,
-                .z = a.x * b.y - a.y * b.x,
+                .v = av1 * bv2 - av2 * bv1,
             };
         }
 
-        pub fn dot(a: Self, b: Self) T {
-            return a.x * b.x + a.y * b.y + a.z * b.z;
+        pub inline fn dot(a: Self, b: Self) T {
+            return @reduce(.Add, (a.v * b.v));
         }
 
         pub fn scale(a: Self, factor: T) Self {
             return .{
-                .x = a.x * factor,
-                .y = a.y * factor,
-                .z = a.z * factor,
+                .v = a.v * @as(V, @splat(factor)),
             };
         }
 
         pub fn add(a: Self, b: Self) Self {
             return .{
-                .x = a.x + b.x,
-                .y = a.y + b.y,
-                .z = a.z + b.z,
+                .v = a.v + b.v,
             };
         }
 
         pub fn subtract(a: Self, b: Self) Self {
             return .{
-                .x = a.x - b.x,
-                .y = a.y - b.y,
-                .z = a.z - b.z,
+                .v = a.v - b.v,
             };
+        }
+
+        pub fn fixDegenerateNormal(a: *Self) bool {
+            if (a.x() == 0.0) {
+                if (a.y() == 0.0) {
+                    if (a.z() > 0.0) {
+                        if (a.z() != 1.0) {
+                            a.v[2] = 1.0;
+                            return true;
+                        }
+                    } else {
+                        if (a.z() != -1.0) {
+                            a.v[2] = -1.0;
+                            return true;
+                        }
+                    }
+                    return false;
+                } else if (a.z() == 0.0) {
+                    if (a.y() > 0.0) {
+                        if (a.y() != 1.0) {
+                            a.v[1] = 1.0;
+                            return true;
+                        }
+                    } else {
+                        if (a.y() != -1.0) {
+                            a.v[1] = -1.0;
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            } else if (a.y() == 0.0) {
+                if (a.z() == 0.0) {
+                    if (a.x() > 0.0) {
+                        if (a.x() != 1.0) {
+                            a.v[0] = 1.0;
+                            return true;
+                        }
+                    } else {
+                        if (a.x() != -1.0) {
+                            a.v[0] = -1.0;
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+            if (@abs(a.x()) == 1.0) {
+                if (a.y() != 0.0 or a.z() != 0.0) {
+                    a.v[2] = 0.0;
+                    a.v[1] = a.z();
+                    return true;
+                }
+                return false;
+            } else if (@abs(a.y()) == 1.0) {
+                if (a.x() != 0.0 or a.z() != 0.0) {
+                    a.v[2] = 0.0;
+                    a.v[0] = a.z();
+                    return true;
+                }
+                return false;
+            } else if (@abs(a.z()) == 1.0) {
+                if (a.x() != 0.0 or a.y() != 0.0) {
+                    a.v[1] = 0.0;
+                    a.v[0] = a.y();
+                    return true;
+                }
+                return false;
+            }
+            return false;
         }
     };
 }
@@ -139,7 +227,17 @@ pub fn Vec3(comptime T: type) type {
 pub fn Vec6(comptime T: type) type {
     return struct {
         const Self = @This();
+        const V = @Vector(6, T);
 
-        v: [2]Vec3(T),
+        v: V = @splat(std.mem.zeroes(T)),
+    };
+}
+
+pub fn Vec4(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const V = @Vector(4, T);
+
+        v: V = @splat(std.mem.zeroes(T)),
     };
 }

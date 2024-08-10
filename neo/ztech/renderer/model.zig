@@ -1,7 +1,9 @@
+const std = @import("std");
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const sys_types = @import("../sys/types.zig");
 const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
+const Material = @import("material.zig").Material;
 
 pub const DominantTri = extern struct {
     v2: sys_types.TriIndex,
@@ -26,35 +28,51 @@ pub const SurfaceTriangles = extern struct {
     numDupVerts: c_int,
     dupVerts: [*c]c_int,
     dominantTris: [*c]DominantTri,
-    ambientSurface: [*c]DominantTri,
-    nextDeferredFree: [*c]DominantTri,
+    ambientSurface: [*c]SurfaceTriangles,
+    nextDeferredFree: [*c]SurfaceTriangles,
     staticModelWithJoints: ?*anyopaque,
     indexCache: VertexCacheHandle,
     ambientCache: VertexCacheHandle,
+
+    pub fn resizeIndexes(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
+        const new_indexes = try allocator.realloc(tris.indexes[0..@intCast(tris.numIndexes)], len);
+        tris.indexes = new_indexes.ptr;
+        tris.numIndexes = @intCast(new_indexes.len);
+    }
 };
 
 pub const ModelSurface = extern struct {
     id: c_int,
-    shader: ?*const anyopaque,
+    shader: ?*const Material,
     geometry: ?*SurfaceTriangles,
 };
 
 const global = @import("../global.zig");
 const RenderWorld = @import("render_world.zig");
+const RenderEntity = @import("render_entity.zig").RenderEntity;
 
-extern fn c_renderModel_initEmpty(*anyopaque, [*:0]const u8) callconv(.C) void;
-extern fn c_renderModel_free(*anyopaque) callconv(.C) void;
-extern fn c_renderModel_addSurface(*anyopaque, ModelSurface) callconv(.C) void;
-extern fn c_renderModel_finishSurfaces(*anyopaque, bool) callconv(.C) void;
-extern fn c_renderModel_numSurfaces(*const anyopaque) callconv(.C) c_int;
-extern fn c_renderModel_surface(*const anyopaque, c_int) callconv(.C) [*c]ModelSurface;
-extern fn c_renderModel_clearSurfaces(*anyopaque) callconv(.C) void;
-extern fn c_renderModel_bounds(*const anyopaque) callconv(.C) CBounds;
+pub const DynamicModelType = struct {
+    pub const DM_STATIC: c_int = 0; // never creates a dynamic model
+    pub const DM_CACHED: c_int = 1; // once created, stays constant until the entity is updated (animating characters)
+    pub const DM_CONTINUOUS: c_int = 2; // must be recreated for every single view (time dependent things like particles)
+};
 
-pub const RenderModel = struct {
-    ptr: *anyopaque,
+pub const RenderModel = opaque {
+    extern fn c_renderModel_initEmpty(*RenderModel, [*:0]const u8) callconv(.C) void;
+    extern fn c_renderModel_free(*RenderModel) callconv(.C) void;
+    extern fn c_renderModel_addSurface(*RenderModel, ModelSurface) callconv(.C) void;
+    extern fn c_renderModel_finishSurfaces(*RenderModel, bool) callconv(.C) void;
+    extern fn c_renderModel_numSurfaces(*const RenderModel) callconv(.C) c_int;
+    extern fn c_renderModel_surface(*const RenderModel, c_int) callconv(.C) [*c]ModelSurface;
+    extern fn c_renderModel_clearSurfaces(*RenderModel) callconv(.C) void;
+    extern fn c_renderModel_bounds(*const RenderModel) callconv(.C) CBounds;
+    extern fn c_renderModel_boundsFromDef(*const RenderModel, *const RenderEntity) callconv(.C) CBounds;
+    extern fn c_renderModel_modelHasDrawingSurfaces(*const RenderModel) callconv(.C) bool;
+    extern fn c_renderModel_isDefaultModel(*const RenderModel) callconv(.C) bool;
+    extern fn c_renderModel_isStaticWorldModel(*const RenderModel) callconv(.C) bool;
+    extern fn c_renderModel_isDynamicModel(*const RenderModel) callconv(.C) c_int;
 
-    pub fn initEmpty(name: []const u8) !RenderModel {
+    pub fn initEmpty(name: []const u8) !*RenderModel {
         const ptr = global.RenderModelManager.allocModel();
         const allocator = global.gpa.allocator();
         const name_sentinel = try allocator.dupeZ(u8, name);
@@ -62,33 +80,60 @@ pub const RenderModel = struct {
 
         c_renderModel_initEmpty(ptr, name_sentinel.ptr);
 
-        return .{
-            .ptr = ptr,
-        };
+        return ptr;
     }
 
     pub fn deinit(model: *RenderModel, render_world: *RenderWorld) void {
-        const num_surfaces: usize = @intCast(c_renderModel_numSurfaces(model.ptr));
+        const num_surfaces: usize = @intCast(c_renderModel_numSurfaces(model));
         for (0..num_surfaces) |i| {
-            const surface = c_renderModel_surface(model.ptr, @intCast(i));
-            if (@intFromPtr(surface) != 0) {
-                render_world.destroyModelSurface(@ptrCast(surface));
-            }
+            if (model.getSurface(i)) |surface_ptr|
+                render_world.destroyModelSurface(surface_ptr);
         }
-        c_renderModel_clearSurfaces(model.ptr);
+        c_renderModel_clearSurfaces(model);
+        c_renderModel_free(model);
+    }
 
-        c_renderModel_free(model.ptr);
+    pub fn getSurface(model: *const RenderModel, index: usize) ?*ModelSurface {
+        const surface_c_ptr = c_renderModel_surface(model, @intCast(index));
+        return if (surface_c_ptr) |ptr|
+            @ptrCast(ptr)
+        else
+            null;
+    }
+
+    pub fn isDynamicModel(model: *const RenderModel) c_int {
+        return c_renderModel_isDynamicModel(model);
+    }
+
+    pub fn numSurfaces(model: *const RenderModel) c_int {
+        return c_renderModel_numSurfaces(model);
     }
 
     pub fn addSurface(model: *RenderModel, surface: ModelSurface) void {
-        c_renderModel_addSurface(model.ptr, surface);
+        c_renderModel_addSurface(model, surface);
     }
 
     pub fn finishSurfaces(model: *RenderModel, use_mikktspace: bool) void {
-        c_renderModel_finishSurfaces(model.ptr, use_mikktspace);
+        c_renderModel_finishSurfaces(model, use_mikktspace);
     }
 
-    pub fn bounds(model: RenderModel) CBounds {
-        return c_renderModel_bounds(model.ptr);
+    pub fn boundsFromDef(model: *const RenderModel, render_entity: *const RenderEntity) CBounds {
+        return c_renderModel_boundsFromDef(model, render_entity);
+    }
+
+    pub fn bounds(model: *const RenderModel) CBounds {
+        return c_renderModel_bounds(model);
+    }
+
+    pub fn hasDrawingSurfaces(model: *const RenderModel) bool {
+        return c_renderModel_modelHasDrawingSurfaces(model);
+    }
+
+    pub fn isDefaultModel(model: *const RenderModel) bool {
+        return c_renderModel_isDefaultModel(model);
+    }
+
+    pub fn isStaticWorldModel(model: *const RenderModel) bool {
+        return c_renderModel_isStaticWorldModel(model);
     }
 };

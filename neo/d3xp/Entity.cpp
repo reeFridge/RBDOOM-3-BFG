@@ -1418,7 +1418,11 @@ void idEntity::FreeModelDef()
 {
 	if( modelDefHandle != -1 )
 	{
-		gameRenderWorld->FreeEntityDef( modelDefHandle );
+		if (gameRenderWorld)
+			gameRenderWorld->FreeEntityDef( modelDefHandle );
+		else if (game_ztechRenderWorld)
+			ztech_renderWorld_freeEntityDef(game_ztechRenderWorld, modelDefHandle);
+
 		modelDefHandle = -1;
 	}
 }
@@ -1769,20 +1773,32 @@ void idEntity::Present()
 	// add to refresh list
 	if( modelDefHandle == -1 )
 	{
-		modelDefHandle = gameRenderWorld->AddEntityDef( &renderEntity );
+		if (gameRenderWorld)
+			modelDefHandle = gameRenderWorld->AddEntityDef(&renderEntity);
+		else if (game_ztechRenderWorld)
+			modelDefHandle = ztech_renderWorld_addEntityDef(game_ztechRenderWorld, &renderEntity);
 	}
 	else
 	{
-		gameRenderWorld->UpdateEntityDef( modelDefHandle, &renderEntity );
+		if (gameRenderWorld)
+			gameRenderWorld->UpdateEntityDef( modelDefHandle, &renderEntity );
+		else if (game_ztechRenderWorld)
+			ztech_renderWorld_updateEntityDef(game_ztechRenderWorld, modelDefHandle, &renderEntity);
 	}
 }
 
 extern "C" int c_addEntityDef(const renderEntity_t* renderEntity) {
-	return gameRenderWorld->AddEntityDef(renderEntity);
+	if (gameRenderWorld)
+		return gameRenderWorld->AddEntityDef(renderEntity);
+	else if (game_ztechRenderWorld)
+		return ztech_renderWorld_addEntityDef(game_ztechRenderWorld, renderEntity);
 }
 
 extern "C" void c_updateEntityDef(int modelDefHandle, const renderEntity_t* renderEntity) {
-	gameRenderWorld->UpdateEntityDef(modelDefHandle, renderEntity);
+	if (gameRenderWorld)
+		gameRenderWorld->UpdateEntityDef(modelDefHandle, renderEntity);
+	else if (game_ztechRenderWorld)
+		ztech_renderWorld_updateEntityDef(game_ztechRenderWorld, modelDefHandle, renderEntity);
 }
 
 /*

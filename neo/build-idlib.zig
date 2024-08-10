@@ -20,6 +20,7 @@ pub fn package(
         .optimize = optimize,
     });
 
+    idlib.defineCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", null);
     idlib.defineCMacro("__IDLIB__", null);
     idlib.defineCMacro("__DOOM_DLL__", null);
     idlib.defineCMacro("USE_NVRHI", null);

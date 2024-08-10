@@ -42,7 +42,7 @@ center_of_mass: Vec3(f32) = .{},
 mass: f32 = 1,
 inverse_mass: f32 = 1,
 bouncyness: f32 = 0.6,
-gravity_vector: Vec3(f32) = .{ .x = 0, .y = 0, .z = -global.gravity },
+gravity_vector: Vec3(f32) = .{ .v = .{ 0, 0, -global.gravity } },
 inertia_tensor: Mat3(f32) = Mat3(f32).identity(),
 inverse_inertia_tensor: Mat3(f32) = Mat3(f32).identity(),
 linear_friction: f32 = 0.6,
@@ -336,14 +336,14 @@ pub fn evaluateContacts(
     const i = &self.current.integration;
 
     const direction = .{
-        .v = .{
+        .v = std.simd.join(
             i.linear_momentum.add(
                 self.gravity_vector
                     .scale(self.current.last_time_step)
                     .scale(self.mass),
-            ).normalize(),
-            i.angular_momentum.normalize(),
-        },
+            ).normalize().v,
+            i.angular_momentum.normalize().v,
+        ),
     };
 
     const CONTACT_EPSILON = 0.25;

@@ -10,12 +10,12 @@ const MAX_DECAL_VERTS: usize = 3 + NUM_DECAL_BOUNDING_PLANES + 3 + 6;
 const MAX_DECAL_INDEXES: usize = (MAX_DECAL_VERTS - 2) * 3;
 
 const CVec3 = @import("../math/vector.zig").CVec3;
-const CPlane = @import("../math/plane.zig").CPlane;
+const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 pub const DecalProjectionParams = extern struct {
-    boundingPlanes: [NUM_DECAL_BOUNDING_PLANES]CPlane,
-    fadePlanes: [2]CPlane,
-    textureAxis: [2]CPlane,
+    boundingPlanes: [NUM_DECAL_BOUNDING_PLANES]Plane,
+    fadePlanes: [2]Plane,
+    textureAxis: [2]Plane,
     projectionOrigin: CVec3,
     projectionBounds: CBounds,
     material: ?*const anyopaque, // idMaterial

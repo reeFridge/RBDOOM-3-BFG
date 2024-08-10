@@ -269,6 +269,10 @@ void R_FreeStaticTriSurfVertexCaches( srfTriangles_t* tri )
 	tri->indexCache = 0;
 }
 
+extern "C" void c_freeStaticTriSurf(srfTriangles_t* tri) {
+	R_FreeStaticTriSurf(tri);
+}
+
 /*
 ==============
 R_FreeStaticTriSurf

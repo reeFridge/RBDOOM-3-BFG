@@ -352,6 +352,10 @@ vertCacheHandle_t idVertexCache::AllocStaticVertex( const void* data, int bytes,
 	return ActuallyAlloc( staticData, data, bytes, CACHE_VERTEX, commandList );
 }
 
+extern "C" vertCacheHandle_t c_vertexCache_allocStaticIndex(const void* data, int bytes, nvrhi::ICommandList* commandList) {
+	return vertexCache.AllocStaticIndex(data, bytes, commandList);
+}
+
 /*
 ==============
 idVertexCache::AllocStaticIndex

@@ -197,7 +197,7 @@ static void R_RenderGuiSurf( idUserInterface* gui, const drawSurf_t* drawSurf )
 R_AddInGameGuis
 ================
 */
-void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs )
+extern "C" void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs )
 {
 	SCOPED_PROFILE_EVENT( "R_AddInGameGuis" );
 

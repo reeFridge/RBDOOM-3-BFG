@@ -21,21 +21,21 @@ pub fn toMat3(self: Angles) Mat3(f32) {
     math.sincos(std.math.degreesToRadians(self.roll), &sr, &cr);
 
     var mat = Mat3(f32).identity();
-    mat.v[0] = .{
-        .x = cp * cy,
-        .y = cp * sy,
-        .z = -sp,
-    };
-    mat.v[1] = .{
-        .x = sr * sp * cy + cr * -sy,
-        .y = sr * sp * sy + cr * cy,
-        .z = sr * cp,
-    };
-    mat.v[2] = .{
-        .x = cr * sp * cy + -sr * -sy,
-        .y = cr * sp * sy + -sr * cy,
-        .z = cr * cp,
-    };
+    mat.v[0] = .{ .v = .{
+        cp * cy,
+        cp * sy,
+        -sp,
+    } };
+    mat.v[1] = .{ .v = .{
+        sr * sp * cy + cr * -sy,
+        sr * sp * sy + cr * cy,
+        sr * cp,
+    } };
+    mat.v[2] = .{ .v = .{
+        cr * sp * cy + -sr * -sy,
+        cr * sp * sy + -sr * cy,
+        cr * cp,
+    } };
 
     return mat;
 }

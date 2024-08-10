@@ -401,6 +401,10 @@ idWinding* idWinding::Clip( const idPlane& plane, const float epsilon, const boo
 	return this;
 }
 
+extern "C" bool c_fixedWinding_clipInPlace(idFixedWinding* winding, const idPlane* plane, float epsilon, bool keepOn) {
+	return winding->ClipInPlace(*plane, epsilon, keepOn);
+}
+
 /*
 =============
 idWinding::ClipInPlace
@@ -1773,6 +1777,10 @@ float idWinding::TriangleArea( const idVec3& a, const idVec3& b, const idVec3& c
 //	idFixedWinding
 //
 //===============================================================
+
+extern "C" idFixedWinding c_fixedWinding_create() {
+	return idFixedWinding();
+}
 
 /*
 =============

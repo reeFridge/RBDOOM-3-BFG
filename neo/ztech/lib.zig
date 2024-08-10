@@ -7,6 +7,7 @@ const CMat3 = @import("math/matrix.zig").CMat3;
 const types = @import("types.zig");
 
 usingnamespace @import("renderer/render_world_interface.zig");
+usingnamespace @import("renderer/frame_data_interface.zig");
 
 export fn ztech_init() callconv(.C) void {
     global.entities = global.Entities.init(global.gpa.allocator());

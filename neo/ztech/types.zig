@@ -310,6 +310,4 @@ pub const Light = struct {
     }
 };
 
-// TODO: idRenderWorldLocal::AddWorldModelEntities()
-
 pub const ExportedTypes = .{ StaticObject, MoveableObject, PlayerSpawn, Player, Light };

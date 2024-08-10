@@ -1,0 +1,1 @@
+pub const Image = opaque {};
