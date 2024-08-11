@@ -1800,8 +1800,8 @@ CREATE MODEL REFS
 =================================================================================
 */
 
-extern "C" void* c_deviceManager_getDevice() {
-	return (void*)deviceManager->GetDevice();
+extern "C" nvrhi::IDevice* c_deviceManager_getDevice() {
+	return deviceManager->GetDevice();
 }
 
 extern "C" void c_device_executeCommandList(nvrhi::IDevice* device, nvrhi::ICommandList* commandList) {

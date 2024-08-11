@@ -1,4 +1,5 @@
 const std = @import("std");
+const nvrhi = @import("nvrhi.zig");
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
@@ -171,7 +172,7 @@ pub const Interaction = extern struct {
         return inter;
     }
 
-    pub fn createStaticInteraction(inter: *Interaction, command_list: *anyopaque, surface_allocator: std.mem.Allocator) error{OutOfMemory}!void {
+    pub fn createStaticInteraction(inter: *Interaction, command_list: *nvrhi.ICommandList, surface_allocator: std.mem.Allocator) error{OutOfMemory}!void {
         const entity_def = inter.entityDef orelse return;
         const light_def = inter.lightDef orelse return;
 

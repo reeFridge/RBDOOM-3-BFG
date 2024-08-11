@@ -179,3 +179,37 @@ pub const ViewDef = extern struct {
     radianceImageBlends: CVec4,
     targetRender: ?*FrameBuffer,
 };
+
+const HalfFloat = c_ushort;
+
+const idStr = extern struct {
+    const STR_ALLOC_BASE: usize = 20;
+
+    len: c_int,
+    data: [*c]u8,
+    allocedAndFlag: c_int,
+    baseBuffer: [STR_ALLOC_BASE]u8,
+};
+
+pub const CalcEnvprobeParams = extern struct {
+    radiance: [6]*u8,
+    freeRadiance: c_int,
+    samples: c_int,
+    outWidth: c_int,
+    outHeight: c_int,
+    printProgress: bool,
+    printWidth: c_int,
+    printHeight: c_int,
+    filename: idStr,
+    outBuffer: *HalfFloat,
+    time: c_int,
+};
+
+pub const CalcLightGridPointParams = extern struct {
+    radiance: [6]*u8,
+    gridCoord: [3]c_int,
+    outWidth: c_int,
+    outHeight: c_int,
+    outBuffer: *HalfFloat,
+    time: c_int,
+};

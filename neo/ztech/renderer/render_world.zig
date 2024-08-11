@@ -370,8 +370,9 @@ fn resizeInteractionTable(render_world: *RenderWorld) error{OutOfMemory}!void {
     render_world.allocator.free(old_table);
 }
 
-extern fn c_deviceManager_getDevice() *anyopaque;
-extern fn c_device_executeCommandList(*anyopaque, *anyopaque) void;
+const nvrhi = @import("nvrhi.zig");
+extern fn c_deviceManager_getDevice() *nvrhi.IDevice;
+extern fn c_device_executeCommandList(*nvrhi.IDevice, *nvrhi.ICommandList) void;
 extern fn c_session_pump() void;
 
 /// Force the generation of all light / surface interactions at the start of a level

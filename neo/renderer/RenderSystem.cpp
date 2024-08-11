@@ -86,8 +86,8 @@ extern "C" void c_renderSystem_closeCommandList(idRenderSystemLocal* renderSyste
 	renderSystem->commandList->close();
 }
 
-extern "C" void* c_renderSystem_commandList(const idRenderSystemLocal* renderSystem) {
-	return (void*)renderSystem->commandList;
+extern "C" nvrhi::ICommandList* c_renderSystem_commandList(const idRenderSystemLocal* renderSystem) {
+	return renderSystem->commandList;
 }
 
 extern "C" int c_renderSystem_getWidth(const idRenderSystemLocal* renderSystem) {

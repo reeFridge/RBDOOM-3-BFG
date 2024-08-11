@@ -9,6 +9,20 @@ pub const CVec2i = extern struct {
 const Vec3f = Vec3(f32);
 const Vec6f = Vec6(f32);
 const Vec4f = Vec4(f32);
+const Vec2f = Vec2(f32);
+
+pub const CVec2 = extern struct {
+    x: f32 = 0,
+    y: f32 = 0,
+
+    pub fn fromVec2f(vec: Vec3f) CVec2 {
+        return .{ .x = vec.v[0], .y = vec.v[1] };
+    }
+
+    pub fn toVec2f(cvec: CVec2) Vec2f {
+        return .{ .v = .{ cvec.x, cvec.y } };
+    }
+};
 
 pub const CVec3 = extern struct {
     x: f32 = 0,
@@ -237,6 +251,15 @@ pub fn Vec4(comptime T: type) type {
     return struct {
         const Self = @This();
         const V = @Vector(4, T);
+
+        v: V = @splat(std.mem.zeroes(T)),
+    };
+}
+
+pub fn Vec2(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const V = @Vector(2, T);
 
         v: V = @splat(std.mem.zeroes(T)),
     };
