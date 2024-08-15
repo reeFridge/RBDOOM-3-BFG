@@ -239,7 +239,7 @@ pub const Interaction = extern struct {
                 )) |light_tris| {
                     // make a static index cache
                     sint.numLightTrisIndexes = light_tris.numIndexes;
-                    sint.lightTrisIndexCache = VertexCache.allocStaticIndex(
+                    sint.lightTrisIndexCache = VertexCache.instance.allocStaticIndex(
                         @ptrCast(light_tris.indexes),
                         @as(usize, @intCast(light_tris.numIndexes)) * @sizeOf(sys_types.TriIndex),
                         command_list,
@@ -423,7 +423,7 @@ const SurfaceCullInfo = struct {
             if (front_bits.isSet(i)) continue;
 
             for (cull_bits, 0..) |*bit, j| {
-                const d = clip_plane.distance(tri.verts[j].xyz.toVec3f());
+                const d = clip_plane.distance(tri.verts.?[j].xyz.toVec3f());
                 bit.setValue(i, d < LIGHT_CLIP_EPSILON);
             }
         }
@@ -502,7 +502,7 @@ fn createInteractionLightSurfaceTriangles(
 
             // the light tris indexes are going to be a subset of the original indexes so we generally
             // allocate too much memory here but we decrease the memory block when the number of indexes is known
-            const indexes = try allocator.alloc(sys_types.TriIndex, @intCast(tri.numIndexes));
+            const indexes = try allocator.alignedAlloc(sys_types.TriIndex, 16, @intCast(tri.numIndexes));
 
             // back face cull the individual triangles
             const i: usize = 0;
@@ -540,16 +540,16 @@ fn createInteractionLightSurfaceTriangles(
         }
     } else {
         const cull_bits = cull_info.cull_bits orelse @panic("cull_bits must be calculated!");
-        const indexes = try allocator.alloc(sys_types.TriIndex, @intCast(tri.numIndexes));
+        const indexes = try allocator.alignedAlloc(sys_types.TriIndex, 16, @intCast(tri.numIndexes));
         var i: usize = 0;
         var face_num: usize = 0;
         while (i < @as(usize, @intCast(tri.numIndexes))) : ({
             i += 3;
             face_num += 1;
         }) {
-            const index1: usize = @intCast(tri.indexes[i + 0]);
-            const index2: usize = @intCast(tri.indexes[i + 1]);
-            const index3: usize = @intCast(tri.indexes[i + 2]);
+            const index1: usize = @intCast(tri.indexes.?[i + 0]);
+            const index2: usize = @intCast(tri.indexes.?[i + 1]);
+            const index3: usize = @intCast(tri.indexes.?[i + 2]);
 
             // if we aren't self shadowing, let back facing triangles get
             // through so the smooth shaded bump maps light all the way around
@@ -582,7 +582,7 @@ fn createInteractionLightSurfaceTriangles(
         var min: @Vector(3, f32) = @splat(std.math.floatMax(f32));
         var max: @Vector(3, f32) = @splat(std.math.floatMin(f32));
         for (indexes) |tri_index| {
-            const src_vec: @Vector(3, f32) = tri.verts[@intCast(tri_index)].xyz.toVec3f().v;
+            const src_vec: @Vector(3, f32) = tri.verts.?[@intCast(tri_index)].xyz.toVec3f().v;
             min = @min(min, src_vec);
             max = @max(max, src_vec);
         }

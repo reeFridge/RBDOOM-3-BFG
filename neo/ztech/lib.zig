@@ -7,6 +7,7 @@ const CMat3 = @import("math/matrix.zig").CMat3;
 const types = @import("types.zig");
 const RenderSystem = @import("renderer/render_system.zig");
 
+usingnamespace @import("renderer/render_system_interface.zig");
 usingnamespace @import("renderer/render_world_interface.zig");
 usingnamespace @import("renderer/frame_data_interface.zig");
 
@@ -14,13 +15,11 @@ export fn ztech_init() callconv(.C) void {
     const global_allocator = global.gpa.allocator();
 
     global.entities = global.Entities.init(global_allocator);
-    RenderSystem.instance.init(global_allocator) catch @panic("RenderSystem init fails!");
 
     std.debug.print("[ztech] init: OK\n", .{});
 }
 
 export fn ztech_deinit() callconv(.C) void {
-    RenderSystem.instance.deinit();
     global.entities.deinit();
 
     if (global.gpa.deinit() == std.heap.Check.leak) @panic("[ztech] allocator leak!");

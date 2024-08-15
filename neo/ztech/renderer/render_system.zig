@@ -3,22 +3,13 @@ const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderWorld = @import("render_world.zig");
 const ViewDef = @import("common.zig").ViewDef;
 const ViewEntity = @import("common.zig").ViewEntity;
-
-const ParallelJobList = opaque {
-    extern fn c_parallelJobList_wait(*ParallelJobList) void;
-
-    pub fn wait(job_list: *ParallelJobList) void {
-        c_parallelJobList_wait(job_list);
-    }
-};
+const ParallelJobList = @import("parallel_job_list.zig").ParallelJobList;
+const VertexCache = @import("vertex_cache.zig");
+const DrawSurface = @import("common.zig").DrawSurface;
 
 const idRenderSystem = opaque {
-    extern fn c_renderSystem_isInitialized(*const idRenderSystem) callconv(.C) bool;
     extern fn c_renderSystem_incLightUpdates(*idRenderSystem) callconv(.C) void;
     extern fn c_renderSystem_clearViewDef(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_openCommandList(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_closeCommandList(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_commandList(*idRenderSystem) callconv(.C) *nvrhi.ICommandList;
     extern fn c_renderSystem_incEntityReferences(*idRenderSystem) callconv(.C) void;
     extern fn c_renderSystem_incLightReferences(*idRenderSystem) callconv(.C) void;
     extern fn c_renderSystem_viewCount(*const idRenderSystem) callconv(.C) c_int;
@@ -36,15 +27,10 @@ const idRenderSystem = opaque {
     extern fn c_renderSystem_setPrimaryView(*idRenderSystem, *ViewDef) callconv(.C) void;
     extern fn c_renderSystem_getView(*idRenderSystem) callconv(.C) *ViewDef;
     extern fn c_renderSystem_setView(*idRenderSystem, *ViewDef) callconv(.C) void;
-    extern fn c_renderSystem_getFrontEndJobList(*idRenderSystem) callconv(.C) *ParallelJobList;
     extern fn c_renderSystem_getIdentitySpace(*idRenderSystem) callconv(.C) *ViewEntity;
 
     pub fn getIdentitySpace(render_system: *idRenderSystem) *ViewEntity {
         return c_renderSystem_getIdentitySpace(render_system);
-    }
-
-    pub fn getFrontEndJobList(render_system: *idRenderSystem) *ParallelJobList {
-        return c_renderSystem_getFrontEndJobList(render_system);
     }
 
     pub fn performResolutionScaling(
@@ -119,28 +105,12 @@ const idRenderSystem = opaque {
         c_renderSystem_incLightReferences(render_system);
     }
 
-    pub fn isInitialized(render_system: *const idRenderSystem) bool {
-        return c_renderSystem_isInitialized(render_system);
-    }
-
     pub fn incLightUpdates(render_system: *idRenderSystem) void {
         c_renderSystem_incLightUpdates(render_system);
     }
 
     pub fn clearViewDef(render_system: *idRenderSystem) void {
         c_renderSystem_clearViewDef(render_system);
-    }
-
-    pub fn openCommandList(render_system: *idRenderSystem) void {
-        c_renderSystem_openCommandList(render_system);
-    }
-
-    pub fn closeCommandList(render_system: *idRenderSystem) void {
-        c_renderSystem_closeCommandList(render_system);
-    }
-
-    pub fn commandList(render_system: *idRenderSystem) *nvrhi.ICommandList {
-        return c_renderSystem_commandList(render_system);
     }
 };
 
@@ -188,7 +158,347 @@ const MAX_RENDER_CROPS: usize = 8;
 
 const RenderSystem = @This();
 
-command_list: nvrhi.CommandListHandle = .{ .ptr_ = null },
+inline fn initCubemapAxis() [6]Mat3(f32) {
+    var axis = std.mem.zeroes([6]Mat3(f32));
+
+    // +X
+    axis[0].v[0].v[0] = 1;
+    axis[0].v[1].v[2] = 1;
+    axis[0].v[2].v[1] = 1;
+
+    // -X
+    axis[1].v[0].v[0] = -1;
+    axis[1].v[1].v[2] = -1;
+    axis[1].v[2].v[1] = 1;
+
+    // +Y
+    axis[2].v[0].v[1] = 1;
+    axis[2].v[1].v[0] = -1;
+    axis[2].v[2].v[2] = -1;
+
+    // -Y
+    axis[3].v[0].v[1] = -1;
+    axis[3].v[1].v[0] = -1;
+    axis[3].v[2].v[2] = 1;
+
+    // +Z
+    axis[4].v[0].v[2] = 1;
+    axis[4].v[1].v[0] = -1;
+    axis[4].v[2].v[1] = 1;
+
+    // -Z
+    axis[5].v[0].v[2] = -1;
+    axis[5].v[1].v[0] = 1;
+    axis[5].v[2].v[1] = 1;
+
+    return axis;
+}
+
+inline fn initIdentityMatrix() [16]f32 {
+    var identity = std.mem.zeroes([16]f32);
+    identity[0 * 4 + 0] = 1.0;
+    identity[1 * 4 + 1] = 1.0;
+    identity[2 * 4 + 2] = 1.0;
+    return identity;
+}
+
+inline fn initAmbientLightVector() Vec4(f32) {
+    return .{ .v = .{
+        0.5,
+        0.5 - 0.385,
+        0.8925,
+        1.0,
+    } };
+}
+
+const sys_types = @import("../sys/types.zig");
+const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
+const Vec3 = @import("../math/vector.zig").Vec3;
+const CVec3 = @import("../math/vector.zig").CVec3;
+
+const TestImageTris = struct {
+    const num_indexes = 6;
+    const num_verts = 4;
+
+    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
+        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+
+        for (verts) |*vert| {
+            vert.* = std.mem.zeroes(DrawVertex);
+        }
+
+        verts[1].xyz.x = 1.0;
+        verts[1].xyz.y = 0.0;
+        verts[1].setTexCoord(1.0, 0.0);
+
+        verts[2].xyz.x = 1.0;
+        verts[2].xyz.y = 1.0;
+        verts[2].setTexCoord(1.0, 1.0);
+
+        verts[3].xyz.x = 0.0;
+        verts[3].xyz.y = 1.0;
+        verts[3].setTexCoord(0.0, 1.0);
+
+        inline for (0..num_verts) |i| {
+            verts[i].color = [1]u8{0xFF} ** 4;
+        }
+
+        return verts;
+    }
+
+    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
+        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+
+        const indexes_: [num_indexes]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
+        for (indexes, indexes_) |*index, temp| {
+            index.* = temp;
+        }
+
+        return indexes;
+    }
+};
+
+const FullScreenTris = struct {
+    const num_indexes = 6;
+    const num_verts = 4;
+
+    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
+        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+
+        for (verts) |*vert| {
+            vert.* = std.mem.zeroes(DrawVertex);
+        }
+
+        verts[0].xyz.x = -1.0;
+        verts[0].xyz.y = 1.0;
+        verts[0].setTexCoord(0.0, 1.0);
+
+        verts[1].xyz.x = 1.0;
+        verts[1].xyz.y = 1.0;
+        verts[1].setTexCoord(1.0, 1.0);
+
+        verts[2].xyz.x = 1.0;
+        verts[2].xyz.y = -1.0;
+        verts[2].setTexCoord(1.0, 0.0);
+
+        verts[3].xyz.x = -1.0;
+        verts[3].xyz.y = -1.0;
+        verts[3].setTexCoord(0.0, 0.0);
+
+        inline for (0..num_verts) |i| {
+            verts[i].color = [1]u8{0xFF} ** 4;
+        }
+
+        return verts;
+    }
+
+    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
+        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+
+        const indexes_: [num_indexes]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
+        for (indexes, indexes_) |*index, temp| {
+            index.* = temp;
+        }
+
+        return indexes;
+    }
+};
+
+const ZeroOneCubeTris = struct {
+    const num_indexes = 36;
+    const num_verts = 8;
+
+    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
+        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+
+        for (verts) |*vert| {
+            vert.* = std.mem.zeroes(DrawVertex);
+        }
+
+        const low: f32 = 0;
+        const high: f32 = 1;
+
+        const center = Vec3(f32){ .v = .{ 0, 0, 0 } };
+        const mx = Vec3(f32){ .v = .{ low, 0, 0 } };
+        const px = Vec3(f32){ .v = .{ high, 0, 0 } };
+        const my = Vec3(f32){ .v = .{ 0, low, 0 } };
+        const py = Vec3(f32){ .v = .{ 0, high, 0 } };
+        const mz = Vec3(f32){ .v = .{ 0, 0, low } };
+        const pz = Vec3(f32){ .v = .{ 0, 0, high } };
+
+        verts[0].xyz = CVec3.fromVec3f(center.add(mx).add(my).add(mz));
+        verts[1].xyz = CVec3.fromVec3f(center.add(px).add(my).add(mz));
+        verts[2].xyz = CVec3.fromVec3f(center.add(px).add(py).add(mz));
+        verts[3].xyz = CVec3.fromVec3f(center.add(mx).add(py).add(mz));
+        verts[4].xyz = CVec3.fromVec3f(center.add(mx).add(my).add(pz));
+        verts[5].xyz = CVec3.fromVec3f(center.add(px).add(my).add(pz));
+        verts[6].xyz = CVec3.fromVec3f(center.add(px).add(py).add(pz));
+        verts[7].xyz = CVec3.fromVec3f(center.add(mx).add(py).add(pz));
+
+        inline for (0..num_verts) |i| {
+            verts[i].color = [1]u8{0xFF} ** 4;
+        }
+
+        return verts;
+    }
+
+    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
+        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+
+        for (indexes) |*index| {
+            index.* = 0;
+        }
+
+        // bottom
+        indexes[0 * 3 + 0] = 2;
+        indexes[0 * 3 + 1] = 3;
+        indexes[0 * 3 + 2] = 0;
+        indexes[1 * 3 + 0] = 1;
+        indexes[1 * 3 + 1] = 2;
+        indexes[1 * 3 + 2] = 0;
+        // back
+        indexes[2 * 3 + 0] = 5;
+        indexes[2 * 3 + 1] = 1;
+        indexes[2 * 3 + 2] = 0;
+        indexes[3 * 3 + 0] = 4;
+        indexes[3 * 3 + 1] = 5;
+        indexes[3 * 3 + 2] = 0;
+        // left
+        indexes[4 * 3 + 0] = 7;
+        indexes[4 * 3 + 1] = 4;
+        indexes[4 * 3 + 2] = 0;
+        indexes[5 * 3 + 0] = 3;
+        indexes[5 * 3 + 1] = 7;
+        indexes[5 * 3 + 2] = 0;
+        // righ
+        indexes[6 * 3 + 0] = 1;
+        indexes[6 * 3 + 1] = 5;
+        indexes[6 * 3 + 2] = 6;
+        indexes[7 * 3 + 0] = 2;
+        indexes[7 * 3 + 1] = 1;
+        indexes[7 * 3 + 2] = 6;
+        // fron
+        indexes[8 * 3 + 0] = 3;
+        indexes[8 * 3 + 1] = 2;
+        indexes[8 * 3 + 2] = 6;
+        indexes[9 * 3 + 0] = 7;
+        indexes[9 * 3 + 1] = 3;
+        indexes[9 * 3 + 2] = 6;
+        // top
+        indexes[10 * 3 + 0] = 4;
+        indexes[10 * 3 + 1] = 7;
+        indexes[10 * 3 + 2] = 6;
+        indexes[11 * 3 + 0] = 5;
+        indexes[11 * 3 + 1] = 4;
+        indexes[11 * 3 + 2] = 6;
+
+        return indexes;
+    }
+};
+
+const ZeroOneSphereTris = struct {
+    const radius: f32 = 1.0;
+    const rings = 20;
+    const sectors = 20;
+    const num_verts = rings * sectors;
+    const num_indexes = ((rings - 1) * sectors) * 6;
+
+    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
+        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+
+        for (indexes) |*index| {
+            index.* = 0;
+        }
+
+        var num_tris: usize = 0;
+        for (0..rings) |r| {
+            for (0..sectors) |s| {
+                if (r < (rings - 1)) {
+                    const cur_row = r * sectors;
+                    const next_row = (r + 1) * sectors;
+                    const next_s = (s + 1) % sectors;
+
+                    indexes[(num_tris * 3) + 2] = @intCast(cur_row + s);
+                    indexes[(num_tris * 3) + 1] = @intCast(next_row + s);
+                    indexes[(num_tris * 3) + 0] = @intCast(next_row + next_s);
+
+                    num_tris += 1;
+
+                    indexes[(num_tris * 3) + 2] = @intCast(cur_row + s);
+                    indexes[(num_tris * 3) + 1] = @intCast(next_row + next_s);
+                    indexes[(num_tris * 3) + 0] = @intCast(cur_row + next_s);
+
+                    num_tris += 1;
+                }
+            }
+        }
+
+        return indexes;
+    }
+
+    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
+        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+
+        for (verts) |*vert| {
+            vert.* = std.mem.zeroes(DrawVertex);
+        }
+
+        const R: f32 = 1.0 / @as(f32, @floatFromInt(rings - 1));
+        const S: f32 = 1.0 / @as(f32, @floatFromInt(sectors - 1));
+
+        var num_verts_: usize = 0;
+        for (0..rings) |r| {
+            for (0..sectors) |s| {
+                const half_pi = 0.5 * std.math.pi;
+                const sf: f32 = @floatFromInt(s);
+                const rf: f32 = @floatFromInt(r);
+                const y = @sin(-half_pi + std.math.pi * rf * R);
+                const x = @cos(2 * std.math.pi * sf * S) * @sin(std.math.pi * rf * R);
+                const z = @sin(2 * std.math.pi * sf * S) * @sin(std.math.pi * rf * R);
+
+                verts[num_verts_].setTexCoord(sf * S, rf * R);
+                verts[num_verts_].xyz = .{
+                    .x = x * radius,
+                    .y = y * radius,
+                    .z = z * radius,
+                };
+                verts[num_verts_].setNormal(x, y, z);
+                verts[num_verts_].color = [1]u8{0xFF} ** 4;
+
+                num_verts_ += 1;
+            }
+        }
+
+        return verts;
+    }
+};
+
+fn initGlobalTris(params: anytype, allocator: std.mem.Allocator) *SurfaceTriangles {
+    var tri = allocator.create(SurfaceTriangles) catch unreachable;
+    tri.* = std.mem.zeroes(SurfaceTriangles);
+    tri.numVerts = params.num_verts;
+    tri.numIndexes = params.num_indexes;
+    tri.indexes = params.makeIndexes(allocator).ptr;
+    tri.verts = params.makeVerts(allocator).ptr;
+
+    return tri;
+}
+
+fn deinitGlobalTris(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    if (tri.indexes) |indexes| {
+        allocator.free(indexes[0..@intCast(tri.numIndexes)]);
+        tri.indexes = null;
+    }
+
+    if (tri.verts) |verts| {
+        allocator.free(verts[0..@intCast(tri.numVerts)]);
+        tri.verts = null;
+    }
+
+    allocator.destroy(tri);
+}
+
+command_list: nvrhi.CommandListHandle = .{},
 registered: bool = false,
 taking_screenshot: bool = false,
 taking_envprobe: bool = false,
@@ -199,7 +509,7 @@ view_count: usize = 0,
 // shader time for all non-world 2D rendering
 frame_shader_time: f32 = 0,
 // used for "ambient bump mapping"
-ambient_light_vector: Vec4(f32) = .{},
+ambient_light_vector: Vec4(f32) = initAmbientLightVector(),
 worlds: std.ArrayList(*RenderWorld) = undefined,
 
 // for console commands
@@ -209,14 +519,14 @@ primary_view: ?*ViewDef = null,
 
 white_material: ?*const Material = null,
 char_set_material: ?*const Material = null,
-img_gui_material: ?*const Material = null,
+imgui_material: ?*const Material = null,
 default_point_light: ?*const Material = null,
 default_projected_light: ?*const Material = null,
-default_material: ?*const Material = null,
+default_material: *const Material = undefined,
 view_def: ?*ViewDef = null,
 perf_counters: PerformanceCounters = std.mem.zeroes(PerformanceCounters),
 // can use if we don't know viewDef->worldSpace is valid
-identity_space: ViewEntity = std.mem.zeroes(ViewEntity),
+identity_space: [16]f32 = initIdentityMatrix(),
 render_crops: [MAX_RENDER_CROPS]ScreenRect = std.mem.zeroes([MAX_RENDER_CROPS]ScreenRect),
 current_render_crop: usize = 0,
 
@@ -226,23 +536,68 @@ current_render_crop: usize = 0,
 gui_recursion_level: usize = 0,
 current_color_native_bytes_order: u32 = 0xFFFFFFFF,
 current_gl_state: u64 = 0,
-gui_model: ?*GuiModel = null,
+gui_model: *GuiModel = undefined,
 fonts: std.ArrayList(*Font) = undefined,
 gamma_table: [256]c_ushort = std.mem.zeroes([256]c_ushort),
-cube_axis: [6]Mat3(f32) = std.mem.zeroes([6]Mat3(f32)),
-unit_square_triangles: ?*SurfaceTriangles = null,
-zero_one_cube_triangles: ?*SurfaceTriangles = null,
-zero_one_sphere_triangles: ?*SurfaceTriangles = null,
-test_image_triangles: ?*SurfaceTriangles = null,
-front_end_job_list: ?*ParallelJobList = null,
-envprobe_job_list: ?*ParallelJobList = null,
+cube_axis: [6]Mat3(f32) = initCubemapAxis(),
+
+unit_square_triangles: *SurfaceTriangles = undefined,
+zero_one_cube_triangles: *SurfaceTriangles = undefined,
+zero_one_sphere_triangles: *SurfaceTriangles = undefined,
+test_image_triangles: *SurfaceTriangles = undefined,
+
+unit_square_surface_: DrawSurface = std.mem.zeroes(DrawSurface),
+zero_one_cube_surface_: DrawSurface = std.mem.zeroes(DrawSurface),
+zero_one_sphere_surface_: DrawSurface = std.mem.zeroes(DrawSurface),
+test_image_surface_: DrawSurface = std.mem.zeroes(DrawSurface),
+
+front_end_job_list: *ParallelJobList = undefined,
+envprobe_job_list: *ParallelJobList = undefined,
 envprobe_jobs: std.ArrayList(*CalcEnvprobeParams) = undefined,
 light_grid_jobs: std.ArrayList(*CalcLightGridPointParams) = undefined,
-backend: RenderBackend = std.mem.zeroes(RenderBackend),
+//backend: RenderBackend = std.mem.zeroes(RenderBackend),
 initialized: bool = false,
-omit_swap_buffers: bool = false,
+// avoid GL_BlockingSwapBuffers (nvrhi::GraphicsAPI::VULKAN by default)
+// TODO: support other GraphicsAPIs
+omit_swap_buffers: bool = true,
 
 pub var instance = RenderSystem{};
+export var backend_ = std.mem.zeroes(RenderBackend);
+
+const DeviceManager = @import("../sys/device_manager.zig");
+const ImageManager = @import("image_manager.zig");
+const FrameData = @import("frame_data.zig");
+const RenderModelManager = @import("render_model_manager.zig");
+const ParallelJobManager = @import("parallel_job_manager.zig");
+const JobListId = @import("parallel_job_list.zig").JobListId;
+const JobListPriority = @import("parallel_job_list.zig").JobListPriority;
+const global = @import("../global.zig");
+
+pub fn initBackend(render_system: *RenderSystem) void {
+    if (render_system.initialized) return;
+
+    backend_.init(); // also inits FrameData
+
+    const device = DeviceManager.instance().getDevice();
+
+    const command_list_ptr = if (render_system.command_list.commandList_ptr()) |ptr|
+        ptr
+    else command_list: {
+        var handle = device.createCommandList();
+        render_system.command_list = handle;
+
+        break :command_list handle.commandList_ptr() orelse @panic("Fails to create command-list!");
+    };
+
+    command_list_ptr.open();
+    ImageManager.instance.reloadImages(true, command_list_ptr);
+    command_list_ptr.close();
+    device.executeCommandList(command_list_ptr);
+}
+
+extern fn c_renderSystem_initColorMappings([*]c_ushort) callconv(.C) void;
+extern fn c_renderSystem_initImgui(?*const Material) callconv(.C) void;
+const Framebuffer = @import("framebuffer.zig");
 
 pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{OutOfMemory}!void {
     render_system.view_count = 1;
@@ -251,24 +606,207 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
     render_system.envprobe_jobs = std.ArrayList(*CalcEnvprobeParams).init(allocator);
     render_system.light_grid_jobs = std.ArrayList(*CalcLightGridPointParams).init(allocator);
 
+    // Must be allocated on the heap!
+    render_system.unit_square_triangles = initGlobalTris(FullScreenTris, allocator);
+    render_system.zero_one_cube_triangles = initGlobalTris(ZeroOneCubeTris, allocator);
+    render_system.zero_one_sphere_triangles = initGlobalTris(ZeroOneSphereTris, allocator);
+    render_system.test_image_triangles = initGlobalTris(TestImageTris, allocator);
+
+    // TODO: UpdateStereo3DMode();
+    // TODO: idCinematic::InitCinematic();
+    try FrameData.init(allocator);
+    var gui_model = GuiModel.heapCreate();
+    gui_model.clear();
+    render_system.gui_model = gui_model;
+
+    ImageManager.instance.init();
+    Framebuffer.init();
+
+    // init materials
+    render_system.default_material = global.DeclManager.findMaterial("_default") orelse
+        @panic("Default Material not found!");
+    render_system.default_point_light = global.DeclManager.findMaterialDefault("lights/defaultPointLight");
+    render_system.default_projected_light = global.DeclManager.findMaterialDefault("lights/defaultProjectedLight");
+    render_system.white_material = global.DeclManager.findMaterial("_white");
+    render_system.char_set_material = global.DeclManager.findMaterial("textures/bigchars");
+    render_system.imgui_material = global.DeclManager.findMaterialDefault("_imguiFont");
+
+    c_renderSystem_initImgui(render_system.imgui_material);
+
+    c_renderSystem_initColorMappings((&render_system.gamma_table).ptr);
+
+    // refers to tr.defaultMaterial
+    // so call it after assign tr.defaultMatrial
+    // in ztech_renderSystem_init
+    // RenderModelManager.instance.init();
+
+    render_system.front_end_job_list = ParallelJobManager.instance.allocJobList(
+        JobListId.JOBLIST_RENDERER_FRONTEND,
+        JobListPriority.JOBLIST_PRIORITY_MEDIUM,
+        2048,
+        0,
+        null,
+    );
+
+    render_system.envprobe_job_list = ParallelJobManager.instance.allocJobList(
+        JobListId.JOBLIST_UTILITY,
+        JobListPriority.JOBLIST_PRIORITY_MEDIUM,
+        2048,
+        0,
+        null,
+    );
+
     render_system.initialized = true;
+
+    _ = render_system.swapCommandBuffers();
 }
 
-pub fn deinit(render_system: *RenderSystem) void {
-    render_system.initialized = false;
-
+pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     render_system.worlds.deinit();
-    render_system.fonts.deinit();
+    render_system.fonts.deinit(); // destroy items
     render_system.envprobe_jobs.deinit();
     render_system.light_grid_jobs.deinit();
+
+    deinitGlobalTris(render_system.unit_square_triangles, allocator);
+    deinitGlobalTris(render_system.zero_one_cube_triangles, allocator);
+    deinitGlobalTris(render_system.zero_one_sphere_triangles, allocator);
+    deinitGlobalTris(render_system.test_image_triangles, allocator);
+
+    ImageManager.instance.purgeAllImages();
+    RenderModelManager.instance.shutdown();
+    ImageManager.instance.shutdown();
+    Framebuffer.shutdown();
+    render_system.gui_model.heapDestroy();
+    FrameData.shutdown(allocator);
+
+    const device = DeviceManager.instance().getDevice();
+    device.waitForIdle();
+
+    VertexCache.instance.shutdown();
+
+    ParallelJobManager.instance.freeJobList(render_system.envprobe_job_list);
+    ParallelJobManager.instance.freeJobList(render_system.front_end_job_list);
+
+    _ = render_system.command_list.commandListHandle_reset();
+
+    backend_.shutdown();
+
+    render_system.* = RenderSystem{};
+}
+
+pub fn swapCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyCommand {
+    render_system.finishRendering();
+
+    return render_system.finishCommandBuffers();
+}
+
+pub fn finishRendering(render_system: *RenderSystem) void {
+    if (!render_system.initialized) return;
+
+    // keep capturing envprobes completely in the background
+    // and only update the screen when we update the progress bar in the console
+    if (!render_system.omit_swap_buffers) {
+        // wait for our fence to hit, which means the swap has actually happened
+        // We must do this before clearing any resources the GPU may be using
+        backend_.GL_BlockingSwapBuffers();
+    }
+
+    backend_.checkCVars();
+    Framebuffer.checkFramebuffers();
+}
+
+extern fn R_InitDrawSurfFromTri(*DrawSurface, *SurfaceTriangles, *nvrhi.ICommandList) callconv(.C) void;
+extern fn Sys_Milliseconds() callconv(.C) c_int;
+
+pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyCommand {
+    if (!render_system.initialized) return null;
+
+    render_system.gui_model.emitFullScreen(null);
+    render_system.gui_model.clear();
+
+    // unmap the buffer objects so they can be used by the GPU
+    VertexCache.instance.beginBackend();
+
+    // save off this command buffer
+    const command_buffer_head = if (FrameData.frame_data) |frame_data|
+        frame_data.cmdHead
+    else
+        null;
+
+    // copy the code-used drawsurfs that were
+    // allocated at the start of the buffer memory to the backEnd referenced locations
+    backend_.unitSquareSurface = render_system.unit_square_surface_;
+    backend_.zeroOneCubeSurface = render_system.zero_one_cube_surface_;
+    backend_.zeroOneSphereSurface = render_system.zero_one_sphere_surface_;
+    backend_.testImageSurface = render_system.test_image_surface_;
+
+    // use the other buffers next frame, because another CPU
+    // may still be rendering into the current buffers
+    FrameData.toggleSmpFrame();
+
+    // possibly change the stereo3D mode
+    // TODO: UpdateStereo3DMode();
+
+    render_system.gui_model.beginFrame();
+
+    // Make sure that geometry used by code is present in the buffer cache.
+    // These use frame buffer cache (not static) because they may be used during
+    // map loads.
+    //
+    // It is important to do this first, so if the buffers overflow during
+    // scene generation, the basic surfaces needed for drawing the buffers will
+    // always be present.
+    {
+        const command_list = render_system.command_list.commandList_ptr() orelse unreachable;
+        R_InitDrawSurfFromTri(
+            &render_system.unit_square_surface_,
+            render_system.unit_square_triangles,
+            command_list,
+        );
+        R_InitDrawSurfFromTri(
+            &render_system.zero_one_cube_surface_,
+            render_system.zero_one_cube_triangles,
+            command_list,
+        );
+        R_InitDrawSurfFromTri(
+            &render_system.zero_one_sphere_surface_,
+            render_system.zero_one_sphere_triangles,
+            command_list,
+        );
+        R_InitDrawSurfFromTri(
+            &render_system.test_image_surface_,
+            render_system.test_image_triangles,
+            command_list,
+        );
+    }
+
+    // Reset render crop to be the full screen
+    render_system.render_crops[0].x1 = 0;
+    render_system.render_crops[0].y1 = 0;
+    render_system.render_crops[0].x2 = @intCast(render_system.getWidth() - 1);
+    render_system.render_crops[0].y2 = @intCast(render_system.getHeight() - 1);
+    render_system.current_render_crop = 0;
+
+    // this is the ONLY place this is modified
+    render_system.frame_count += 1;
+
+    // just in case we did a common->Error while this was set
+    render_system.gui_recursion_level = 0;
+
+    // set the time for shader effects in 2D rendering
+    render_system.frame_shader_time = @as(f32, @floatFromInt(Sys_Milliseconds())) * 0.001;
+
+    var cmd2 = FrameData.createCommand(FrameData.SetBufferCommand);
+    cmd2.commandId = .RC_SET_BUFFER;
+    cmd2.buffer = 0;
+
+    // the old command buffer can now be rendered, while the new one can
+    // be built in parallel
+    return command_buffer_head;
 }
 
 pub fn getIdentitySpace(_: *RenderSystem) *ViewEntity {
     return idtech_instance.getIdentitySpace();
-}
-
-pub fn getFrontEndJobList(_: *RenderSystem) *ParallelJobList {
-    return idtech_instance.getFrontEndJobList();
 }
 
 pub fn performResolutionScaling(
@@ -343,26 +881,10 @@ pub fn incLightReferences(_: *RenderSystem) void {
     idtech_instance.incLightReferences();
 }
 
-pub fn isInitialized(_: *const RenderSystem) bool {
-    return idtech_instance.isInitialized();
-}
-
 pub fn incLightUpdates(_: *RenderSystem) void {
     idtech_instance.incLightUpdates();
 }
 
 pub fn clearViewDef(_: *RenderSystem) void {
     idtech_instance.clearViewDef();
-}
-
-pub fn openCommandList(_: *RenderSystem) void {
-    idtech_instance.openCommandList();
-}
-
-pub fn closeCommandList(_: *RenderSystem) void {
-    idtech_instance.closeCommandList();
-}
-
-pub fn commandList(_: *RenderSystem) *nvrhi.ICommandList {
-    return idtech_instance.commandList();
 }

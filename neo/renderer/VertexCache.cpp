@@ -352,8 +352,20 @@ vertCacheHandle_t idVertexCache::AllocStaticVertex( const void* data, int bytes,
 	return ActuallyAlloc( staticData, data, bytes, CACHE_VERTEX, commandList );
 }
 
-extern "C" vertCacheHandle_t c_vertexCache_allocStaticIndex(const void* data, int bytes, nvrhi::ICommandList* commandList) {
-	return vertexCache.AllocStaticIndex(data, bytes, commandList);
+extern "C" vertCacheHandle_t c_vertexCache_allocStaticIndex(idVertexCache* instance, const void* data, int bytes, nvrhi::ICommandList* commandList) {
+	return instance->AllocStaticIndex(data, bytes, commandList);
+}
+
+extern "C" vertCacheHandle_t c_vertexCache_allocStaticVertex(idVertexCache* instance, const void* data, int bytes, nvrhi::ICommandList* commandList) {
+	return instance->AllocStaticVertex(data, bytes, commandList);
+}
+
+extern "C" void c_vertexCache_shutdown(idVertexCache* instance) {
+	instance->Shutdown();
+}
+
+extern "C" void c_vertexCache_beginBackend(idVertexCache* instance) {
+	instance->BeginBackEnd();
 }
 
 /*

@@ -91,29 +91,36 @@ private:
 	static void				TouchModel_f( const idCmdArgs& args );
 };
 
-
+extern idRenderModelManagerLocal localModelManager;
 idRenderModelManagerLocal	localModelManager;
 idRenderModelManager* 		renderModelManager = &localModelManager;
 
-extern "C" idRenderModel* c_renderModelManager_allocModel() {
-	return renderModelManager->AllocModel();
+extern "C" idRenderModel* c_renderModelManager_allocModel(idRenderModelManager* manager) {
+	return manager->AllocModel();
 }
 
-extern "C" void c_renderModelManager_addModel(idRenderModel* model) {
-	renderModelManager->AddModel(model);
+extern "C" void c_renderModelManager_addModel(idRenderModelManager* manager, idRenderModel* model) {
+	manager->AddModel(model);
 }
 
-extern "C" void c_renderModelManager_removeModel(idRenderModel* model) {
-	renderModelManager->RemoveModel(model);
+extern "C" void c_renderModelManager_removeModel(idRenderModelManager* manager, idRenderModel* model) {
+	manager->RemoveModel(model);
 }
 
-extern "C" idRenderModel* c_renderModelManager_findModel(uint8_t const * const name) {
-	return renderModelManager->FindModel((const char*)name);
+extern "C" idRenderModel* c_renderModelManager_findModel(idRenderModelManager* manager, uint8_t const * const name) {
+	return manager->FindModel((const char*)name);
 }
 
-// TODO: how to guarantee non null?
-extern "C" idRenderModel* c_renderModelManager_defaultModel() {
-	return renderModelManager->DefaultModel();
+extern "C" idRenderModel* c_renderModelManager_defaultModel(idRenderModelManager* manager) {
+	return manager->DefaultModel();
+}
+
+extern "C" void c_renderModelManager_init(idRenderModelManager* manager) {
+	manager->Init();
+}
+
+extern "C" void c_renderModelManager_shutdown(idRenderModelManager* manager) {
+	manager->Shutdown();
 }
 
 /*

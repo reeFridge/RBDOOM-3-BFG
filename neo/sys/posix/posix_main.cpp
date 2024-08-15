@@ -318,7 +318,7 @@ unsigned int sys_timeBase = 0;
      0x7fffffff ms - ~24 days
 		 or is it 48 days? the specs say int, but maybe it's casted from unsigned int?
 */
-int Sys_Milliseconds()
+extern "C" int Sys_Milliseconds()
 {
 	// DG: use clock_gettime on all platforms
 #if 1

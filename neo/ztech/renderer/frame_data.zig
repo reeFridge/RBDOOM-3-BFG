@@ -2,11 +2,7 @@ const std = @import("std");
 const ViewDef = @import("common.zig").ViewDef;
 const Image = @import("image.zig").Image;
 
-const InterlockedInteger = extern struct {
-    value: c_int = 0,
-};
-
-const RenderCommand = enum(u8) {
+pub const RenderCommand = enum(u8) {
     RC_NOP,
     RC_DRAW_VIEW_3D, // may be at a reduced resolution, will be upsampled before 2D GUIs
     RC_DRAW_VIEW_GUI, // not resolution scaled
@@ -16,24 +12,24 @@ const RenderCommand = enum(u8) {
     RC_CRT_POST_PROCESS, // CRT simulation after everything has been rendered on the final swapchain image
 };
 
-const EmptyCommand = extern struct {
+pub const EmptyCommand = extern struct {
     commandId: RenderCommand,
     next: ?*RenderCommand,
 };
 
-const SetBufferCommand = extern struct {
+pub const SetBufferCommand = extern struct {
     commandId: RenderCommand,
     next: ?*RenderCommand,
     buffer: c_int,
 };
 
-const DrawSurfacesCommand = extern struct {
+pub const DrawSurfacesCommand = extern struct {
     commandId: RenderCommand,
     next: ?*RenderCommand,
     viewDef: ?*ViewDef,
 };
 
-const CopyRenderCommand = extern struct {
+pub const CopyRenderCommand = extern struct {
     commandId: RenderCommand,
     next: ?*RenderCommand,
     x: c_int,
@@ -45,13 +41,13 @@ const CopyRenderCommand = extern struct {
     clearColorAfterCopy: bool,
 };
 
-const PostProcessCommand = extern struct {
+pub const PostProcessCommand = extern struct {
     commandId: RenderCommand,
     next: ?*RenderCommand,
     viewDef: ?*ViewDef,
 };
 
-const CrtPostProcessCommand = extern struct {
+pub const CrtPostProcessCommand = extern struct {
     commandId: RenderCommand,
     next: ?*RenderCommand,
     padding: c_int,
@@ -159,6 +155,10 @@ pub fn allocBytes(frame_allocator: std.mem.Allocator, bytes: usize) []u8 {
     }
 
     return slice;
+}
+
+pub inline fn createCommand(CommandType: type) *CommandType {
+    return @ptrCast(@alignCast(createCommandBuffer(@sizeOf(CommandType)).ptr));
 }
 
 pub fn createCommandBuffer(bytes: usize) []u8 {

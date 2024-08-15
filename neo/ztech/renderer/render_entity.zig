@@ -11,6 +11,7 @@ const Material = @import("material.zig").Material;
 const DeclSkin = @import("common.zig").DeclSkin;
 const ViewEntity = @import("common.zig").ViewEntity;
 const RenderSystem = @import("render_system.zig");
+const RenderModelManager = @import("render_model_manager.zig");
 
 pub const MAX_ENTITY_SHADER_PARMS: usize = 12;
 pub const MAX_RENDERENTITY_GUI: usize = 3;
@@ -182,7 +183,7 @@ pub const RenderEntityLocal = extern struct {
         const model_ptr = if (entity.parms.hModel) |ptr|
             ptr
         else
-            try global.RenderModelManager.defaultModel();
+            try RenderModelManager.instance.defaultModel();
 
         entity.parms.hModel = model_ptr;
 

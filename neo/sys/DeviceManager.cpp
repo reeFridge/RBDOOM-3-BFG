@@ -121,3 +121,7 @@ void DefaultMessageCallback::message( nvrhi::MessageSeverity severity, const cha
 			break;
 	}
 }
+
+extern "C" nvrhi::IDevice* c_deviceManager_getDevice(DeviceManager* instance) {
+	return instance->GetDevice();
+}

@@ -10,10 +10,9 @@ pub const OverlayProjectionParams = extern struct {
     startTime: c_int,
 };
 
-const HalfFloat = c_ushort;
 pub const OverlayVertex = extern struct {
     vertexNum: c_int,
-    st: [2]HalfFloat,
+    st: [2]f16,
 };
 
 const TriIndex = c_ushort;

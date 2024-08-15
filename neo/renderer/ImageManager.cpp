@@ -42,6 +42,7 @@ If you have questions concerning this license or the applicable additional terms
 
 // do this with a pointer, in case we want to make the actual manager
 // a private virtual subclass
+extern idImageManager imageManager;
 idImageManager	imageManager;
 idImageManager* globalImages = &imageManager;
 
@@ -1096,4 +1097,20 @@ void idImageManager::LoadDeferredImages( nvrhi::ICommandList* _commandList )
 #endif
 
 	globalImages->imagesToLoad.Clear();
+}
+
+extern "C" void c_imageManager_reloadImages(idImageManager* manager, bool all, nvrhi::ICommandList* commandList) {
+	manager->ReloadImages(all, commandList);
+}
+
+extern "C" void c_imageManager_init(idImageManager* manager) {
+	manager->Init();
+}
+
+extern "C" void c_imageManager_shutdown(idImageManager* manager) {
+	manager->Shutdown();
+}
+
+extern "C" void c_imageManager_purgeAllImages(idImageManager* manager) {
+	manager->PurgeAllImages();
 }

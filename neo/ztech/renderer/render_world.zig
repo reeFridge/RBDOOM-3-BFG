@@ -20,6 +20,7 @@ const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderSystem = @import("render_system.zig");
 const fs = @import("../fs.zig");
 const Image = @import("image.zig").Image;
+const RenderModelManager = @import("render_model_manager.zig");
 
 pub const RenderView = extern struct {
     viewID: c_int,
@@ -370,15 +371,13 @@ fn resizeInteractionTable(render_world: *RenderWorld) error{OutOfMemory}!void {
     render_world.allocator.free(old_table);
 }
 
-const nvrhi = @import("nvrhi.zig");
-extern fn c_deviceManager_getDevice() *nvrhi.IDevice;
-extern fn c_device_executeCommandList(*nvrhi.IDevice, *nvrhi.ICommandList) void;
-extern fn c_session_pump() void;
+const DeviceManager = @import("../sys/device_manager.zig");
+const Session = @import("../sys/session.zig");
 
 /// Force the generation of all light / surface interactions at the start of a level
 /// If this isn't called, they will all be dynamically generated
 pub fn generateAllInteractions(render_world: *RenderWorld) !void {
-    if (!RenderSystem.instance.isInitialized()) return;
+    if (!RenderSystem.instance.initialized) return;
     render_world.generate_all_interactions_called = false;
 
     // let the interaction creation code know that it shouldn't
@@ -393,18 +392,18 @@ pub fn generateAllInteractions(render_world: *RenderWorld) !void {
     for (interaction_table) |*elem| elem.* = null;
     render_world.interaction_table = interaction_table;
 
-    RenderSystem.instance.openCommandList();
+    const command_list_ptr = RenderSystem.instance.command_list.commandList_ptr() orelse @panic("CommandListHandle is not initialized!");
+
+    command_list_ptr.open();
     defer {
-        RenderSystem.instance.closeCommandList();
-        c_device_executeCommandList(
-            c_deviceManager_getDevice(),
-            RenderSystem.instance.commandList(),
-        );
+        command_list_ptr.close();
+        DeviceManager.instance().getDevice()
+            .executeCommandList(command_list_ptr);
     }
 
     for (render_world.light_defs.items) |opt_light_def| {
         const light_def = opt_light_def orelse continue;
-        defer c_session_pump();
+        defer Session.instance.pump();
 
         var opt_light_ref = light_def.references;
         while (opt_light_ref) |light_ref| : (opt_light_ref = light_ref.ownerNext) {
@@ -426,7 +425,7 @@ pub fn generateAllInteractions(render_world: *RenderWorld) !void {
 
                 var new_inter = try Interaction.allocAndLink(entity_def, light_def);
                 try new_inter.createStaticInteraction(
-                    RenderSystem.instance.commandList(),
+                    command_list_ptr,
                     render_world.allocator,
                 );
             }
@@ -443,13 +442,10 @@ const ViewLight = @import("common.zig").ViewLight;
 const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 const DrawSurface = @import("common.zig").DrawSurface;
 
-extern fn idtech_renderView(*ViewDef) callconv(.C) void;
 extern fn R_SetupViewMatrix(*ViewDef) callconv(.C) void;
 extern fn R_SetupProjectionMatrix(*ViewDef, bool) callconv(.C) void;
 extern fn R_SetupUnprojection(*ViewDef) callconv(.C) void;
 extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
-extern fn R_AddLights() callconv(.C) void;
-extern fn R_AddModels() callconv(.C) void;
 extern fn R_AddInGameGuis([*]*DrawSurface, c_int) callconv(.C) void;
 extern fn R_OptimizeViewLightsList() callconv(.C) void;
 extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
@@ -457,11 +453,11 @@ extern fn R_AddDrawViewCmd(*ViewDef, bool) callconv(.C) void;
 extern fn c_setDefaultEnvironmentProbes() callconv(.C) void;
 
 pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
-    if (!RenderSystem.instance.isInitialized()) return;
+    if (!RenderSystem.instance.initialized) return;
 
     // close any gui drawing
-    //tr.guiModel->EmitFullScreen();
-    //tr.guiModel->Clear();
+    RenderSystem.instance.gui_model.emitFullScreen(null);
+    RenderSystem.instance.gui_model.clear();
 
     const r_skip_front_end = false;
 
@@ -499,7 +495,6 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
     RenderSystem.instance.setPrimaryRenderView(render_view);
     RenderSystem.instance.setPrimaryView(view_def);
 
-    //idtech_renderView(view_def);
     const old_view_def = RenderSystem.instance.getView();
     RenderSystem.instance.setView(view_def);
     defer RenderSystem.instance.setView(old_view_def);
@@ -518,7 +513,6 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
     view_def.unjitteredProjectionRenderMatrix = unjittered_projection_matrix.transpose();
     view_def.worldSpace.unjitteredMVP = view_def.unjitteredProjectionRenderMatrix.multiply(view_render_matrix);
 
-    // TODO: assign it to view_def.frustums[PRIMARY_PLANE]
     var frustum_planes = RenderMatrix.getFrustumPlanes(
         view_def.worldSpace.mvp,
         false,
@@ -538,7 +532,7 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
 
     render_world.findViewLightsAndEntities(&view_def.frustums[FRUSTUM_PRIMARY]);
 
-    RenderSystem.instance.getFrontEndJobList().wait();
+    RenderSystem.instance.front_end_job_list.wait();
 
     render_world.addLights();
     render_world.addModels();
@@ -560,6 +554,7 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
     // TODO: R_GenerateSubViews()
 
     RenderSystem.instance.uncrop();
+    RenderSystem.instance.gui_model.clear();
 }
 
 extern fn c_addSingleLight(*anyopaque, *ViewLight) callconv(.C) void;
@@ -1411,7 +1406,7 @@ pub fn freeWorld(render_world: *RenderWorld) void {
     }
 
     for (render_world.local_models.items) |item| {
-        global.RenderModelManager.removeModel(item);
+        RenderModelManager.instance.removeModel(item);
         item.deinit(render_world);
     }
     render_world.local_models.clearAndFree();
@@ -1581,7 +1576,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             if (std.mem.eql(u8, token.slice(), "model")) {
                 const render_model = try render_world.parseModel(&lexer);
                 // add it to the model manager list
-                global.RenderModelManager.addModel(render_model);
+                RenderModelManager.instance.addModel(render_model);
 
                 // save it in the list to free when clearing this map
                 try render_world.local_models.append(render_model);
@@ -1689,7 +1684,7 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         def.world = @ptrCast(render_world);
 
         const model_name = try std.fmt.allocPrintZ(string_allocator, "_area{d}", .{area_index});
-        const model_ptr = try global.RenderModelManager.findModel(model_name);
+        const model_ptr = try RenderModelManager.instance.findModel(model_name);
         def.parms.hModel = model_ptr;
 
         if (model_ptr.isDefaultModel() or !model_ptr.isStaticWorldModel())
@@ -1916,7 +1911,7 @@ inline fn createModelSurface(
     surface_triangles.numVerts = @intCast(num_vertices);
     surface_triangles.numIndexes = @intCast(indices.len);
 
-    const opt_material_ptr = try global.DeclManager.findMaterial(meterial_name);
+    const opt_material_ptr = global.DeclManager.findMaterial(meterial_name);
     if (opt_material_ptr) |material_ptr| material_ptr.addReference();
 
     const surface: model.ModelSurface = .{
@@ -2008,8 +2003,7 @@ inline fn createModelSurface(
         }
     }
 
-    // TODO: alloc alignment = 16 (alignedAlloc)
-    const verts = try render_world.allocator.alloc(DrawVertex, num_vertices);
+    const verts = try render_world.allocator.alignedAlloc(DrawVertex, 16, num_vertices);
     for (0..num_vertices) |i| {
         verts[i].xyz.x = vertices[i * 8 + 0];
         verts[i].xyz.y = vertices[i * 8 + 1];
@@ -2019,8 +2013,7 @@ inline fn createModelSurface(
     }
     surface_triangles.verts = verts.ptr;
 
-    // TODO: alloc alignment = 16 (alignedAlloc)
-    const indexes = try render_world.allocator.alloc(sys_types.TriIndex, indices.len);
+    const indexes = try render_world.allocator.alignedAlloc(sys_types.TriIndex, 16, indices.len);
     for (indexes, indices) |*surface_index, index| {
         surface_index.* = index;
     }

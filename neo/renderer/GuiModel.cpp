@@ -533,3 +533,23 @@ idDrawVert* idGuiModel::AllocTris( int vertCount, const triIndex_t* tempIndexes,
 
 	return vertexPointer + startVert;
 }
+
+extern "C" idGuiModel* c_guiModel_heapCreate() {
+	return new idGuiModel();
+}
+
+extern "C" void c_guiModel_heapDestroy(idGuiModel* guiModel) {
+	delete guiModel;
+}
+
+extern "C" void c_guiModel_clear(idGuiModel* guiModel) {
+	guiModel->Clear();
+}
+
+extern "C" void c_guiModel_beginFrame(idGuiModel* guiModel) {
+	guiModel->BeginFrame();
+}
+
+extern "C" void c_guiModel_emitFullScreen(idGuiModel* guiModel, Framebuffer* renderTarget) {
+	guiModel->EmitFullScreen(renderTarget);
+}

@@ -4,6 +4,7 @@ const sys_types = @import("../sys/types.zig");
 const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 const Material = @import("material.zig").Material;
+const RenderModelManager = @import("render_model_manager.zig");
 
 pub const DominantTri = extern struct {
     v2: sys_types.TriIndex,
@@ -19,9 +20,9 @@ pub const SurfaceTriangles = extern struct {
     referencedVerts: bool,
     referencedIndexes: bool,
     numVerts: c_int,
-    verts: [*c]DrawVertex,
+    verts: ?[*]align(16) DrawVertex,
     numIndexes: c_int,
-    indexes: [*c]sys_types.TriIndex,
+    indexes: ?[*]align(16) sys_types.TriIndex,
     silIndexes: [*c]sys_types.TriIndex,
     numMirroredVerts: c_int,
     mirroredVerts: [*c]c_int,
@@ -79,7 +80,7 @@ pub const RenderModel = opaque {
     extern fn c_renderModel_isDynamicModel(*const RenderModel) callconv(.C) c_int;
 
     pub fn initEmpty(name: []const u8) !*RenderModel {
-        const ptr = global.RenderModelManager.allocModel();
+        const ptr = RenderModelManager.instance.allocModel();
         const allocator = global.gpa.allocator();
         const name_sentinel = try allocator.dupeZ(u8, name);
         defer allocator.free(name_sentinel);

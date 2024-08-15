@@ -1310,8 +1310,24 @@ private:
 	idStaticList< idParallelJobList*, MAX_JOBLISTS >	jobLists;
 };
 
+extern idParallelJobManagerLocal parallelJobManagerLocal;
 idParallelJobManagerLocal parallelJobManagerLocal;
 idParallelJobManager* parallelJobManager = &parallelJobManagerLocal;
+
+extern "C" idParallelJobList* c_parallelJobManager_allocJobList(
+	idParallelJobManager* manager,
+	jobListId_t id,
+	jobListPriority_t priority,
+	unsigned int maxJobs,
+	unsigned int maxSyncs,
+	const idColor* color
+) {
+	return manager->AllocJobList(id, priority, maxJobs, maxSyncs, color);
+}
+
+extern "C" void c_parallelJobManager_freeJobList(idParallelJobManager* manager, idParallelJobList* list) {
+	manager->FreeJobList(list);
+}
 
 /*
 ========================

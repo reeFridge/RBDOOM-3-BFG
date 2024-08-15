@@ -14,7 +14,7 @@ const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 const Material = @import("material.zig").Material;
 const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
-const FrameBuffer = @import("frame_buffer.zig").FrameBuffer;
+const Framebuffer = @import("framebuffer.zig").Framebuffer;
 
 // areas have references to hold all the lights and entities in them
 pub const AreaReference = extern struct {
@@ -177,10 +177,8 @@ pub const ViewDef = extern struct {
     irradianceImage: ?*Image,
     radianceImages: [3]*Image,
     radianceImageBlends: CVec4,
-    targetRender: ?*FrameBuffer,
+    targetRender: ?*Framebuffer,
 };
-
-const HalfFloat = c_ushort;
 
 const idStr = extern struct {
     const STR_ALLOC_BASE: usize = 20;
@@ -201,7 +199,7 @@ pub const CalcEnvprobeParams = extern struct {
     printWidth: c_int,
     printHeight: c_int,
     filename: idStr,
-    outBuffer: *HalfFloat,
+    outBuffer: [*]f16,
     time: c_int,
 };
 
@@ -210,6 +208,6 @@ pub const CalcLightGridPointParams = extern struct {
     gridCoord: [3]c_int,
     outWidth: c_int,
     outHeight: c_int,
-    outBuffer: *HalfFloat,
+    outBuffer: [*]f16,
     time: c_int,
 };

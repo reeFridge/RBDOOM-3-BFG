@@ -133,6 +133,7 @@ private:
 	idLobbyToSessionCBLocal*	 lobbyToSessionCB;
 };
 
+extern idSessionLocalWin sessionLocalWin;
 idSessionLocalWin sessionLocalWin;
 idSession* session = &sessionLocalWin;
 

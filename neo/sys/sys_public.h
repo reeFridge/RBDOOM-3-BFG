@@ -517,7 +517,7 @@ void			Sys_Sleep( int msec );
 
 // Sys_Milliseconds should only be used for profiling purposes,
 // any game related timing information should come from event timestamps
-int				Sys_Milliseconds();
+extern "C" int				Sys_Milliseconds();
 uint64			Sys_Microseconds();
 
 // for accurate performance testing

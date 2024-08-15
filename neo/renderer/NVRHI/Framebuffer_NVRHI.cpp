@@ -86,6 +86,18 @@ void Framebuffer::Init()
 	ResizeFramebuffers();
 }
 
+extern "C" void c_framebuffer_init() {
+	Framebuffer::Init();
+}
+
+extern "C" void c_framebuffer_checkFramebuffers() {
+	Framebuffer::CheckFramebuffers();
+}
+
+extern "C" void c_framebuffer_shutdown() {
+	Framebuffer::Shutdown();
+}
+
 void Framebuffer::CheckFramebuffers()
 {
 	//int screenWidth = renderSystem->GetWidth();

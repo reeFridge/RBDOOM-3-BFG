@@ -38,7 +38,7 @@ const ViewEntity = @import("common.zig").ViewEntity;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const CVec2 = @import("../math/vector.zig").CVec2;
-const FrameBuffer = @import("frame_buffer.zig").FrameBuffer;
+const Framebuffer = @import("framebuffer.zig").Framebuffer;
 const nvrhi = @import("nvrhi.zig");
 const Pass = @import("render_pass.zig");
 
@@ -180,8 +180,8 @@ pub const RenderBackend = extern struct {
         idStaticList(nvrhi.BindingSetDesc, nvrhi.c_MaxBindingLayouts),
         BindingLayoutType.NUM_BINDING_LAYOUTS,
     ),
-    currentFrameBuffer: *FrameBuffer,
-    lastFrameBuffer: *FrameBuffer,
+    currentFramebuffer: *Framebuffer,
+    lastFramebuffer: *Framebuffer,
     commandList: nvrhi.CommandListHandle,
     commonPasses: Pass.CommonRenderPasses,
     ssaoPass: ?*Pass.SsaoPass,
@@ -195,4 +195,22 @@ pub const RenderBackend = extern struct {
     vertexShader: nvrhi.ShaderHandle,
     pixelShader: nvrhi.ShaderHandle,
     prevBindingLayoutType: c_int,
+
+    extern fn c_renderBackend_shutdown(*RenderBackend) callconv(.C) void;
+    extern fn c_renderBackend_init(*RenderBackend) callconv(.C) void;
+    extern fn c_renderBackend_checkCVars(*RenderBackend) callconv(.C) void;
+
+    pub fn shutdown(backend: *RenderBackend) void {
+        c_renderBackend_shutdown(backend);
+    }
+
+    pub fn init(backend: *RenderBackend) void {
+        c_renderBackend_init(backend);
+    }
+
+    pub fn GL_BlockingSwapBuffers(_: *RenderBackend) void {}
+
+    pub fn checkCVars(backend: *RenderBackend) void {
+        c_renderBackend_checkCVars(backend);
+    }
 };

@@ -1997,6 +1997,11 @@ void R_InitDrawSurfFromTri( drawSurf_t& ds, srfTriangles_t& tri, nvrhi::ICommand
 	ds.jointCache = 0;
 }
 
+extern "C" void R_InitDrawSurfFromTri( drawSurf_t* ds, srfTriangles_t* tri, nvrhi::ICommandList* commandList )
+{
+	R_InitDrawSurfFromTri(*ds, *tri, commandList);
+}
+
 /*
 ===================
 R_CreateStaticBuffersForTri

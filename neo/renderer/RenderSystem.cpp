@@ -38,13 +38,18 @@ If you have questions concerning this license or the applicable additional terms
 #include <sys/DeviceManager.h>
 extern DeviceManager* deviceManager;
 
+#define USE_ZTECH_RENDER_BACKEND
+#ifndef USE_ZTECH_RENDER_BACKEND
+idRenderBackend backend_;
+#endif
 
+#ifdef USE_ZTECH_RENDER_SYSTEM
+ztechRenderSystemLocal	tr;
+#else
 idRenderSystemLocal	tr;
-idRenderSystem* renderSystem = &tr;
+#endif
 
-extern "C" bool c_renderSystem_isInitialized(const idRenderSystemLocal* renderSystem) {
-	return renderSystem->IsInitialized();
-}
+idRenderSystem* renderSystem = &tr;
 
 extern "C" void c_renderSystem_incLightUpdates(idRenderSystemLocal* renderSystem) {
 	renderSystem->pc.c_lightUpdates++;
@@ -76,18 +81,6 @@ extern "C" int c_renderSystem_viewCount(const idRenderSystemLocal* renderSystem)
 
 extern "C" void c_renderSystem_clearViewDef(idRenderSystemLocal* renderSystem) {
 	renderSystem->viewDef = NULL;
-}
-
-extern "C" void c_renderSystem_openCommandList(idRenderSystemLocal* renderSystem) {
-	renderSystem->commandList->open();
-}
-
-extern "C" void c_renderSystem_closeCommandList(idRenderSystemLocal* renderSystem) {
-	renderSystem->commandList->close();
-}
-
-extern "C" nvrhi::ICommandList* c_renderSystem_commandList(const idRenderSystemLocal* renderSystem) {
-	return renderSystem->commandList;
 }
 
 extern "C" int c_renderSystem_getWidth(const idRenderSystemLocal* renderSystem) {
@@ -136,10 +129,6 @@ extern "C" viewEntity_t* c_renderSystem_getIdentitySpace(idRenderSystemLocal* re
 
 extern "C" void c_renderSystem_setView(idRenderSystemLocal* renderSystem, viewDef_t* view) {
 	renderSystem->viewDef = view;
-}
-
-extern "C" idParallelJobList* c_renderSystem_getFrontEndJobList(idRenderSystemLocal* renderSystem) {
-	return renderSystem->frontEndJobList;
 }
 
 extern "C" void c_parallelJobList_wait(idParallelJobList* jobList) {
@@ -341,6 +330,9 @@ idRenderSystemLocal::idRenderSystemLocal() :
 	bInitialized( false ),
 	omitSwapBuffers( false )
 {
+#ifdef USE_ZTECH_RENDER_BACKEND
+	new(&backend_) idRenderBackend();
+#endif
 	Clear();
 }
 

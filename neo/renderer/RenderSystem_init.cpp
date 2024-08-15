@@ -1456,6 +1456,23 @@ void R_TransformSkyboxToEnv_f( const idCmdArgs& args )
 
 //============================================================================
 
+extern "C" void c_renderSystem_initColorMappings(unsigned short* gammaTable) {
+	float b = r_brightness.GetFloat();
+	float invg = 1.0f / r_gamma.GetFloat();
+
+	float j = 0.0f;
+	for( int i = 0; i < 256; i++, j += b )
+	{
+		int inf = idMath::Ftoi( 0xffff * pow( j / 255.0f, invg ) + 0.5f );
+		gammaTable[i] = idMath::ClampInt( 0, 0xFFFF, inf );
+	}
+// SRS - Generalized Vulkan SDL platform
+#if defined( VULKAN_USE_PLATFORM_SDL )
+	VKimp_SetGamma( tr.gammaTable, tr.gammaTable, tr.gammaTable );
+#else
+	GLimp_SetGamma( tr.gammaTable, tr.gammaTable, tr.gammaTable );
+#endif
+}
 
 /*
 ===============
@@ -1596,6 +1613,11 @@ void R_VidRestart_f( const idCmdArgs& args )
 
 	// set the mode without re-initializing the context
 	R_SetNewMode( false );
+}
+
+extern "C" void c_renderSystem_initImgui(const idMaterial* imGuiMaterial) {
+	ImGuiIO& io = ImGui::GetIO();
+	io.Fonts->TexID = ( void* )( intptr_t )imGuiMaterial;
 }
 
 /*
@@ -2053,6 +2075,122 @@ srfTriangles_t* R_MakeTestImageTriangles()
 	return tri;
 }
 
+ztechRenderSystemLocal::ztechRenderSystemLocal()
+{
+	idRenderSystemLocal();
+}
+
+ztechRenderSystemLocal::~ztechRenderSystemLocal()
+{
+	idRenderSystemLocal::~idRenderSystemLocal();
+}
+
+extern "C" void ztech_renderSystem_init(
+	int*,
+	idVec4*,
+	idGuiModel**,
+	unsigned short*,
+	float*,
+	idMat3*,
+	idParallelJobList**,
+	idParallelJobList**,
+	srfTriangles_t**,
+	srfTriangles_t**,
+	srfTriangles_t**,
+	srfTriangles_t**,
+	const idMaterial**,
+	const idMaterial**,
+	const idMaterial**,
+	const idMaterial**,
+	const idMaterial**,
+	const idMaterial**,
+	bool*,
+	idGuiModel**
+);
+
+extern "C" void ztech_renderSystem_deinit(nvrhi::ICommandList**);
+
+void ztechRenderSystemLocal::Init()
+{
+	ztech_renderSystem_init(
+			&viewCount,
+			&ambientLightVector,
+			&guiModel,
+			gammaTable,
+			identitySpace.modelMatrix,
+			cubeAxis,
+			&frontEndJobList,
+			&envprobeJobList,
+			&unitSquareTriangles,
+			&zeroOneCubeTriangles,
+			&zeroOneSphereTriangles,
+			&testImageTriangles,
+			&defaultMaterial,
+			&defaultPointLight,
+			&defaultProjectedLight,
+			&whiteMaterial,
+			&charSetMaterial,
+			&imgGuiMaterial,
+			&omitSwapBuffers,
+			&tr_guiModel
+			);
+}
+
+void ztechRenderSystemLocal::Shutdown()
+{
+	fonts.DeleteContents();
+
+	// SRS - if testVideo is currently playing, make sure cinematic is deleted before ShutdownCinematic()
+	if( tr.testVideo )
+	{
+		delete tr.testVideo;
+		tr.testVideo = NULL;
+	}
+
+	idCinematic::ShutdownCinematic();
+
+	ztech_renderSystem_deinit(&commandList);
+
+	Clear();
+
+	bInitialized = false;
+}
+
+void ztechRenderSystemLocal::Clear() {
+	registered = false;
+	frameCount = 0;
+	viewCount = 0;
+	frameShaderTime = 0.0f;
+	ambientLightVector.Zero();
+	worlds.Clear();
+	primaryWorld = NULL;
+	memset( &primaryRenderView, 0, sizeof( primaryRenderView ) );
+	primaryView = NULL;
+	defaultMaterial = NULL;
+	testImage = NULL;
+	ambientCubeImage = NULL;
+	viewDef = NULL;
+	memset( &pc, 0, sizeof( pc ) );
+	memset( &identitySpace, 0, sizeof( identitySpace ) );
+	memset( renderCrops, 0, sizeof( renderCrops ) );
+	currentRenderCrop = 0;
+	currentColorNativeBytesOrder = 0xFFFFFFFF;
+	currentGLState = 0;
+	guiRecursionLevel = 0;
+	guiModel = NULL;
+	memset( gammaTable, 0, sizeof( gammaTable ) );
+	memset( &cubeAxis, 0, sizeof( cubeAxis ) ); // RB
+	takingScreenshot = false;
+	takingEnvprobe = false;
+
+	frontEndJobList = NULL;
+
+	// RB
+	envprobeJobList = NULL;
+	envprobeJobs.Clear();
+	lightGridJobs.Clear();
+}
+
 /*
 ===============
 idRenderSystemLocal::Init
@@ -2395,6 +2533,12 @@ void idRenderSystemLocal::InitBackend()
 		commandList->close();
 		deviceManager->GetDevice()->executeCommandList( commandList );
 	}
+}
+
+extern "C" void ztech_renderSystem_initBackend(nvrhi::ICommandList**);
+
+void ztechRenderSystemLocal::InitBackend() {
+	ztech_renderSystem_initBackend(&commandList);
 }
 
 /*

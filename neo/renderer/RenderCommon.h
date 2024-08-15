@@ -853,6 +853,8 @@ static const int MAX_RENDER_CROPS = 8;
 
 #include "RenderBackend.h"
 
+extern idRenderBackend backend_;
+
 /*
 ** Most renderer globals are defined here.
 ** backend functions should never modify any of these fields,
@@ -1048,14 +1050,31 @@ public:
 	idList<calcEnvprobeParms_t*>		envprobeJobs;
 	idList<calcLightGridPointParms_t*>	lightGridJobs;
 
-	idRenderBackend			backend;
+	idRenderBackend&			backend = backend_;
 
-private:
+public:
 	bool					bInitialized;
 	bool					omitSwapBuffers;
 };
 
+class ztechRenderSystemLocal : public idRenderSystemLocal
+{
+public:
+	ztechRenderSystemLocal();
+	~ztechRenderSystemLocal();
+
+	virtual void Init();
+	virtual void Shutdown();
+	virtual void Clear();
+	virtual void InitBackend();
+};
+
+#define USE_ZTECH_RENDER_SYSTEM
+#ifdef USE_ZTECH_RENDER_SYSTEM
+extern ztechRenderSystemLocal tr;
+#else
 extern idRenderSystemLocal	tr;
+#endif
 extern glconfig_t			glConfig;		// outside of TR since it shouldn't be cleared during ref re-init
 
 //

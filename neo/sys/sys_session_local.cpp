@@ -4873,3 +4873,7 @@ void lobbyUserID_t::Serialize( idSerializer& ser )
 	localUserHandle.Serialize( ser );
 	ser.Serialize( lobbyType );
 }
+
+extern "C" void c_session_pump(idSession* instance) {
+	instance->Pump();
+}
