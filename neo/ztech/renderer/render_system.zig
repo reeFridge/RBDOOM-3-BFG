@@ -6,40 +6,45 @@ const ViewEntity = @import("common.zig").ViewEntity;
 const ParallelJobList = @import("parallel_job_list.zig").ParallelJobList;
 const VertexCache = @import("vertex_cache.zig");
 const DrawSurface = @import("common.zig").DrawSurface;
+const ResolutionScale = @import("resolution_scale.zig");
+
+pub const VENDOR_NVIDIA: c_int = 0;
+pub const VENDOR_AMD: c_int = 1;
+pub const VENDOR_INTEL: c_int = 2;
+pub const VENDOR_APPLE: c_int = 3;
+pub const graphicsVendor_t = c_int;
+
+pub const STEREO3D_OFF: c_int = 0;
+pub const STEREO3D_SIDE_BY_SIDE_COMPRESSED: c_int = 1;
+pub const STEREO3D_TOP_AND_BOTTOM_COMPRESSED: c_int = 2;
+pub const STEREO3D_SIDE_BY_SIDE: c_int = 3;
+pub const STEREO3D_INTERLACED: c_int = 4;
+pub const STEREO3D_QUAD_BUFFER: c_int = 5;
+pub const STEREO3D_HDMI_720: c_int = 6;
+pub const stereo3DMode_t = c_int;
+
+pub const glconfig_t = extern struct {
+    vendor: graphicsVendor_t,
+    uniformBufferOffsetAlignment: c_int,
+    timerQueryAvailable: bool,
+    stereo3Dmode: stereo3DMode_t,
+    nativeScreenWidth: c_int,
+    nativeScreenHeight: c_int,
+    displayFrequency: c_int,
+    isFullscreen: c_int,
+    isStereoPixelFormat: bool,
+    stereoPixelFormatAvailable: bool,
+    multisamples: c_int,
+    physicalScreenWidthInCentimeters: f32,
+    pixelAspect: f32,
+};
+
+pub const glConfig = @extern(*glconfig_t, .{ .name = "glConfig" });
 
 const idRenderSystem = opaque {
-    extern fn c_renderSystem_incLightUpdates(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_clearViewDef(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_incEntityReferences(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_incLightReferences(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_viewCount(*const idRenderSystem) callconv(.C) c_int;
-    extern fn c_renderSystem_incViewCount(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_incEntityUpdates(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_frameCount(*const idRenderSystem) callconv(.C) c_int;
-    extern fn c_renderSystem_uncrop(*idRenderSystem) callconv(.C) void;
-    extern fn c_renderSystem_cropRenderSize(*idRenderSystem, c_int, c_int) callconv(.C) void;
-    extern fn c_renderSystem_getCroppedViewport(*idRenderSystem, *ScreenRect) callconv(.C) void;
-    extern fn c_renderSystem_performResolutionScaling(*idRenderSystem, *c_int, *c_int) callconv(.C) void;
-    extern fn c_renderSystem_getWidth(*const idRenderSystem) callconv(.C) c_int;
-    extern fn c_renderSystem_getHeight(*const idRenderSystem) callconv(.C) c_int;
     extern fn c_renderSystem_setPrimaryRenderView(*idRenderSystem, RenderView) callconv(.C) void;
     extern fn c_renderSystem_setPrimaryWorld(*idRenderSystem, *anyopaque) callconv(.C) void;
     extern fn c_renderSystem_setPrimaryView(*idRenderSystem, *ViewDef) callconv(.C) void;
-    extern fn c_renderSystem_getView(*idRenderSystem) callconv(.C) *ViewDef;
-    extern fn c_renderSystem_setView(*idRenderSystem, *ViewDef) callconv(.C) void;
-    extern fn c_renderSystem_getIdentitySpace(*idRenderSystem) callconv(.C) *ViewEntity;
-
-    pub fn getIdentitySpace(render_system: *idRenderSystem) *ViewEntity {
-        return c_renderSystem_getIdentitySpace(render_system);
-    }
-
-    pub fn performResolutionScaling(
-        render_system: *idRenderSystem,
-        width: *c_int,
-        height: *c_int,
-    ) void {
-        c_renderSystem_performResolutionScaling(render_system, width, height);
-    }
 
     pub fn setPrimaryWorld(render_system: *idRenderSystem, render_world: *RenderWorld) void {
         c_renderSystem_setPrimaryWorld(render_system, @ptrCast(render_world));
@@ -51,66 +56,6 @@ const idRenderSystem = opaque {
 
     pub fn setPrimaryView(render_system: *idRenderSystem, view_def: *ViewDef) void {
         c_renderSystem_setPrimaryView(render_system, view_def);
-    }
-
-    pub fn setView(render_system: *idRenderSystem, view_def: *ViewDef) void {
-        c_renderSystem_setView(render_system, view_def);
-    }
-
-    pub fn getView(render_system: *idRenderSystem) *ViewDef {
-        return c_renderSystem_getView(render_system);
-    }
-
-    pub fn uncrop(render_system: *idRenderSystem) void {
-        c_renderSystem_uncrop(render_system);
-    }
-
-    pub fn getCroppedViewport(render_system: *idRenderSystem, viewport: *ScreenRect) void {
-        c_renderSystem_getCroppedViewport(render_system, viewport);
-    }
-
-    pub fn cropRenderSize(render_system: *idRenderSystem, width: c_int, height: c_int) void {
-        c_renderSystem_cropRenderSize(render_system, width, height);
-    }
-
-    pub fn getWidth(render_system: *const idRenderSystem) c_int {
-        return c_renderSystem_getWidth(render_system);
-    }
-
-    pub fn getHeight(render_system: *const idRenderSystem) c_int {
-        return c_renderSystem_getHeight(render_system);
-    }
-
-    pub fn incViewCount(render_system: *idRenderSystem) void {
-        return c_renderSystem_incViewCount(render_system);
-    }
-
-    pub fn viewCount(render_system: *const idRenderSystem) c_int {
-        return c_renderSystem_viewCount(render_system);
-    }
-
-    pub fn incEntityUpdates(render_system: *idRenderSystem) void {
-        c_renderSystem_incEntityUpdates(render_system);
-    }
-
-    pub fn frameCount(render_system: *const idRenderSystem) c_int {
-        return c_renderSystem_frameCount(render_system);
-    }
-
-    pub fn incEntityReferences(render_system: *idRenderSystem) void {
-        c_renderSystem_incEntityReferences(render_system);
-    }
-
-    pub fn incLightReferences(render_system: *idRenderSystem) void {
-        c_renderSystem_incLightReferences(render_system);
-    }
-
-    pub fn incLightUpdates(render_system: *idRenderSystem) void {
-        c_renderSystem_incLightUpdates(render_system);
-    }
-
-    pub fn clearViewDef(render_system: *idRenderSystem) void {
-        c_renderSystem_clearViewDef(render_system);
     }
 };
 
@@ -557,9 +502,7 @@ envprobe_jobs: std.ArrayList(*CalcEnvprobeParams) = undefined,
 light_grid_jobs: std.ArrayList(*CalcLightGridPointParams) = undefined,
 //backend: RenderBackend = std.mem.zeroes(RenderBackend),
 initialized: bool = false,
-// avoid GL_BlockingSwapBuffers (nvrhi::GraphicsAPI::VULKAN by default)
-// TODO: support other GraphicsAPIs
-omit_swap_buffers: bool = true,
+omit_swap_buffers: bool = false,
 
 pub var instance = RenderSystem{};
 export var backend_ = std.mem.zeroes(RenderBackend);
@@ -658,6 +601,8 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
 
     render_system.initialized = true;
 
+    // For VULKAN only!
+    render_system.omit_swap_buffers = true;
     _ = render_system.swapCommandBuffers();
 }
 
@@ -805,16 +750,110 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
     return command_buffer_head;
 }
 
-pub fn getIdentitySpace(_: *RenderSystem) *ViewEntity {
-    return idtech_instance.getIdentitySpace();
+pub fn renderCommandBuffers(_: *RenderSystem, cmd_head: ?*FrameData.EmptyCommand) void {
+    var opt_cmd = cmd_head;
+    while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
+        if (cmd.commandId == .RC_DRAW_VIEW_3D or cmd.commandId == .RC_DRAW_VIEW_GUI)
+            break;
+    } else return;
+
+    // r_skipBackEnd allows the entire time of the back end
+    // to be removed from performance measurements, although
+    // nothing will be drawn to the screen.  If the prints
+    // are going to a file, or r_skipBackEnd is later disabled,
+    // usefull data can be received.
+
+    // r_skipRender is usually more usefull, because it will still
+    // draw 2D graphics
+    const r_skip_backend = false;
+    if (!r_skip_backend) backend_.executeBackendCommands(cmd_head);
+
+    ResolutionScale.instance.initForMap();
 }
 
 pub fn performResolutionScaling(
-    _: *RenderSystem,
+    render_system: *const RenderSystem,
     width: *c_int,
     height: *c_int,
 ) void {
-    idtech_instance.performResolutionScaling(width, height);
+    var x_scale: f32 = 1;
+    var y_scale: f32 = 1;
+
+    ResolutionScale.instance.getCurrentResolutionScale(&x_scale, &y_scale);
+
+    const fwidth: f32 = @floatFromInt(render_system.getWidth());
+    const fheight: f32 = @floatFromInt(render_system.getHeight());
+
+    width.* = @intFromFloat(fwidth * x_scale);
+    height.* = @intFromFloat(fheight * y_scale);
+}
+
+pub fn uncrop(render_system: *RenderSystem) void {
+    if (!render_system.initialized) return;
+
+    if (render_system.current_render_crop < 1)
+        unreachable;
+
+    render_system.gui_model.emitFullScreen(null);
+    render_system.gui_model.clear();
+
+    render_system.current_render_crop -= 1;
+}
+
+pub fn getCroppedViewport(render_system: *const RenderSystem, viewport: *ScreenRect) void {
+    viewport.* = render_system.render_crops[render_system.current_render_crop];
+}
+
+pub fn cropRenderSize(render_system: *RenderSystem, width: c_int, height: c_int) void {
+    if (!render_system.initialized) return;
+
+    render_system.gui_model.emitFullScreen(null);
+    render_system.gui_model.clear();
+
+    if (width < 1 or height < 1)
+        unreachable;
+
+    const prev = &render_system.render_crops[render_system.current_render_crop];
+    render_system.current_render_crop += 1;
+    var current = &render_system.render_crops[render_system.current_render_crop];
+    current.x1 = prev.x1;
+    current.x2 = prev.x1 + @as(c_short, @intCast(width)) - 1;
+    current.y1 = prev.y2 - @as(c_short, @intCast(height)) + 1;
+    current.y2 = prev.y2;
+}
+
+pub fn frameCount(render_system: *const RenderSystem) usize {
+    return render_system.frame_count;
+}
+
+pub fn getWidth(_: *const RenderSystem) c_int {
+    if (glConfig.stereo3Dmode == STEREO3D_SIDE_BY_SIDE or
+        glConfig.stereo3Dmode == STEREO3D_SIDE_BY_SIDE_COMPRESSED)
+    {
+        return glConfig.nativeScreenWidth >> @intCast(1);
+    }
+
+    return glConfig.nativeScreenWidth;
+}
+
+pub fn getHeight(_: *const RenderSystem) c_int {
+    if (glConfig.stereo3Dmode == STEREO3D_HDMI_720) {
+        return 720;
+    }
+
+    const stereoRender_warp = false;
+    if (glConfig.stereo3Dmode == STEREO3D_SIDE_BY_SIDE and stereoRender_warp) {
+        // for the Rift, render a square aspect view that will be symetric for the optics
+        return glConfig.nativeScreenWidth >> @intCast(1);
+    }
+
+    if (glConfig.stereo3Dmode == STEREO3D_INTERLACED or
+        glConfig.stereo3Dmode == STEREO3D_TOP_AND_BOTTOM_COMPRESSED)
+    {
+        return glConfig.nativeScreenHeight >> @intCast(1);
+    }
+
+    return glConfig.nativeScreenHeight;
 }
 
 pub fn setPrimaryWorld(_: *RenderSystem, render_world: *RenderWorld) void {
@@ -829,62 +868,22 @@ pub fn setPrimaryView(_: *RenderSystem, view_def: *ViewDef) void {
     idtech_instance.setPrimaryView(view_def);
 }
 
-pub fn setView(_: *RenderSystem, view_def: *ViewDef) void {
-    idtech_instance.setView(view_def);
+pub fn setView(render_system: *RenderSystem, view_def: ?*ViewDef) void {
+    render_system.view_def = view_def;
 }
 
-pub fn getView(_: *RenderSystem) *ViewDef {
-    return idtech_instance.getView();
+pub fn getView(render_system: *RenderSystem) ?*ViewDef {
+    return render_system.view_def;
 }
 
-pub fn uncrop(_: *RenderSystem) void {
-    idtech_instance.uncrop();
+pub fn incViewCount(render_system: *RenderSystem) void {
+    render_system.view_count += 1;
 }
 
-pub fn getCroppedViewport(_: *RenderSystem, viewport: *ScreenRect) void {
-    idtech_instance.getCroppedViewport(viewport);
+pub fn viewCount(render_system: *const RenderSystem) usize {
+    return render_system.view_count;
 }
 
-pub fn cropRenderSize(_: *RenderSystem, width: c_int, height: c_int) void {
-    idtech_instance.cropRenderSize(width, height);
-}
-
-pub fn getWidth(_: *const RenderSystem) c_int {
-    return idtech_instance.getWidth();
-}
-
-pub fn getHeight(_: *const RenderSystem) c_int {
-    return idtech_instance.getHeight();
-}
-
-pub fn incViewCount(_: *RenderSystem) void {
-    return idtech_instance.incViewCount();
-}
-
-pub fn viewCount(_: *const RenderSystem) c_int {
-    return idtech_instance.viewCount();
-}
-
-pub fn incEntityUpdates(_: *RenderSystem) void {
-    idtech_instance.incEntityUpdates();
-}
-
-pub fn frameCount(_: *const RenderSystem) c_int {
-    return idtech_instance.frameCount();
-}
-
-pub fn incEntityReferences(_: *RenderSystem) void {
-    idtech_instance.incEntityReferences();
-}
-
-pub fn incLightReferences(_: *RenderSystem) void {
-    idtech_instance.incLightReferences();
-}
-
-pub fn incLightUpdates(_: *RenderSystem) void {
-    idtech_instance.incLightUpdates();
-}
-
-pub fn clearViewDef(_: *RenderSystem) void {
-    idtech_instance.clearViewDef();
+pub fn clearViewDef(render_system: *RenderSystem) void {
+    render_system.view_def = null;
 }

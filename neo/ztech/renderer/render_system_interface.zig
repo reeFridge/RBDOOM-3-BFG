@@ -8,7 +8,33 @@ const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const Material = @import("material.zig").Material;
 const RenderModelManager = @import("render_model_manager.zig");
 const Framebuffer = @import("framebuffer.zig");
+const FrameData = @import("frame_data.zig");
 const nvrhi = @import("nvrhi.zig");
+const ScreenRect = @import("screen_rect.zig").ScreenRect;
+
+export fn ztech_renderSystem_renderCommandBuffers(cmd_head: ?*FrameData.EmptyCommand) callconv(.C) void {
+    RenderSystem.instance.renderCommandBuffers(cmd_head);
+}
+
+export fn ztech_renderSystem_setReadyToPresent() callconv(.C) void {
+    RenderSystem.instance.omit_swap_buffers = false;
+}
+
+export fn ztech_renderSystem_invalidateSwapBuffers() callconv(.C) void {
+    RenderSystem.instance.omit_swap_buffers = true;
+}
+
+export fn ztech_renderSystem_swapCommandBuffers() callconv(.C) ?*FrameData.EmptyCommand {
+    return RenderSystem.instance.swapCommandBuffers();
+}
+
+export fn ztech_renderSystem_finishRendering() callconv(.C) void {
+    RenderSystem.instance.finishRendering();
+}
+
+export fn ztech_renderSystem_finishCommandBuffers() callconv(.C) ?*FrameData.EmptyCommand {
+    return RenderSystem.instance.finishCommandBuffers();
+}
 
 export fn ztech_renderSystem_initBackend(
     command_list_ptr: *?*nvrhi.ICommandList,
@@ -38,10 +64,80 @@ export fn ztech_renderSystem_init(
     white_material: *?*const Material,
     char_set_material: *?*const Material,
     imgui_material: *?*const Material,
-    omit_swap_buffers: *bool,
     tr_gui_model_ptr: **GuiModel,
 ) callconv(.C) void {
     RenderSystem.instance.init(global.gpa.allocator()) catch unreachable;
+
+    ztech_renderSystem_init_syncState(
+        view_count,
+        ambient_light_vector,
+        gui_model_ptr,
+        gamma_table,
+        identity_matrix,
+        cube_axis,
+        front_end_job_list,
+        envprobe_job_list,
+        unit_square_triangles,
+        zero_one_cube_triangles,
+        zero_one_sphere_triangles,
+        test_image_triangles,
+        default_material,
+        default_point_light,
+        default_projected_light,
+        white_material,
+        char_set_material,
+        imgui_material,
+        tr_gui_model_ptr,
+    );
+
+    RenderModelManager.instance.init();
+}
+
+export fn ztech_renderSystem_deinit(
+    command_list_ptr: *?*nvrhi.ICommandList,
+) callconv(.C) void {
+    RenderSystem.instance.deinit(global.gpa.allocator());
+
+    command_list_ptr.* = null;
+}
+
+export fn ztech_renderSystem_finishCommandBuffers_syncState(
+    render_crop: *ScreenRect,
+    current_render_crop: *c_int,
+    frame_count: *c_int,
+    gui_recursion_level: *c_int,
+    frame_shader_time: *f32,
+) callconv(.C) void {
+    const instance = &RenderSystem.instance;
+
+    render_crop.* = instance.render_crops[0];
+    current_render_crop.* = @intCast(instance.current_render_crop);
+    frame_count.* = @intCast(instance.frame_count);
+    gui_recursion_level.* = @intCast(instance.gui_recursion_level);
+    frame_shader_time.* = instance.frame_shader_time;
+}
+
+export fn ztech_renderSystem_init_syncState(
+    view_count: *c_int,
+    ambient_light_vector: *CVec4,
+    gui_model_ptr: **GuiModel,
+    gamma_table: [*]c_ushort,
+    identity_matrix: [*]f32,
+    cube_axis: [*]CMat3,
+    front_end_job_list: **ParallelJobList,
+    envprobe_job_list: **ParallelJobList,
+    unit_square_triangles: **SurfaceTriangles,
+    zero_one_cube_triangles: **SurfaceTriangles,
+    zero_one_sphere_triangles: **SurfaceTriangles,
+    test_image_triangles: **SurfaceTriangles,
+    default_material: *?*const Material,
+    default_point_light: *?*const Material,
+    default_projected_light: *?*const Material,
+    white_material: *?*const Material,
+    char_set_material: *?*const Material,
+    imgui_material: *?*const Material,
+    tr_gui_model_ptr: **GuiModel,
+) callconv(.C) void {
     const instance = &RenderSystem.instance;
 
     view_count.* = @intCast(instance.view_count);
@@ -75,16 +171,4 @@ export fn ztech_renderSystem_init(
     white_material.* = instance.white_material;
     char_set_material.* = instance.char_set_material;
     imgui_material.* = instance.imgui_material;
-
-    omit_swap_buffers.* = instance.omit_swap_buffers;
-
-    RenderModelManager.instance.init();
-}
-
-export fn ztech_renderSystem_deinit(
-    command_list_ptr: *?*nvrhi.ICommandList,
-) callconv(.C) void {
-    RenderSystem.instance.deinit(global.gpa.allocator());
-
-    command_list_ptr.* = null;
 }

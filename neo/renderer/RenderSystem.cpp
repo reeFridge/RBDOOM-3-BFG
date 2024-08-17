@@ -51,62 +51,6 @@ idRenderSystemLocal	tr;
 
 idRenderSystem* renderSystem = &tr;
 
-extern "C" void c_renderSystem_incLightUpdates(idRenderSystemLocal* renderSystem) {
-	renderSystem->pc.c_lightUpdates++;
-}
-
-extern "C" void c_renderSystem_incEntityReferences(idRenderSystemLocal* renderSystem) {
-	renderSystem->pc.c_entityReferences++;
-}
-
-extern "C" void c_renderSystem_incLightReferences(idRenderSystemLocal* renderSystem) {
-	renderSystem->pc.c_lightReferences++;
-}
-
-extern "C" void c_renderSystem_incEntityUpdates(idRenderSystemLocal* renderSystem) {
-	renderSystem->pc.c_entityUpdates++;
-}
-
-extern "C" void c_renderSystem_incViewCount(idRenderSystemLocal* renderSystem) {
-	renderSystem->viewCount++;
-}
-
-extern "C" int c_renderSystem_frameCount(const idRenderSystemLocal* renderSystem) {
-	return renderSystem->frameCount;
-}
-
-extern "C" int c_renderSystem_viewCount(const idRenderSystemLocal* renderSystem) {
-	return renderSystem->viewCount;
-}
-
-extern "C" void c_renderSystem_clearViewDef(idRenderSystemLocal* renderSystem) {
-	renderSystem->viewDef = NULL;
-}
-
-extern "C" int c_renderSystem_getWidth(const idRenderSystemLocal* renderSystem) {
-	return renderSystem->GetWidth();
-}
-
-extern "C" int c_renderSystem_getHeight(const idRenderSystemLocal* renderSystem) {
-	return renderSystem->GetHeight();
-}
-
-extern "C" void c_renderSystem_performResolutionScaling(idRenderSystemLocal* renderSystem, int* width, int* height) {
-	renderSystem->PerformResolutionScaling(*width, *height);
-}
-
-extern "C" void c_renderSystem_cropRenderSize(idRenderSystemLocal* renderSystem, int width, int height) {
-	renderSystem->CropRenderSize(width, height);
-}
-
-extern "C" void c_renderSystem_getCroppedViewport(idRenderSystemLocal* renderSystem, idScreenRect* viewport) {
-	renderSystem->GetCroppedViewport(viewport);
-}
-
-extern "C" void c_renderSystem_uncrop(idRenderSystemLocal* renderSystem) {
-	renderSystem->UnCrop();
-}
-
 extern "C" void c_renderSystem_setPrimaryRenderView(idRenderSystemLocal* renderSystem, renderView_t renderView) {
 	renderSystem->primaryRenderView = renderView;
 }
@@ -117,18 +61,6 @@ extern "C" void c_renderSystem_setPrimaryWorld(idRenderSystemLocal* renderSystem
 
 extern "C" void c_renderSystem_setPrimaryView(idRenderSystemLocal* renderSystem, viewDef_t* viewDef) {
 	renderSystem->primaryView = viewDef;
-}
-
-extern "C" viewDef_t* c_renderSystem_getView(idRenderSystemLocal* renderSystem) {
-	return renderSystem->viewDef;
-}
-
-extern "C" viewEntity_t* c_renderSystem_getIdentitySpace(idRenderSystemLocal* renderSystem) {
-	return &renderSystem->identitySpace;
-}
-
-extern "C" void c_renderSystem_setView(idRenderSystemLocal* renderSystem, viewDef_t* view) {
-	renderSystem->viewDef = view;
 }
 
 extern "C" void c_parallelJobList_wait(idParallelJobList* jobList) {
@@ -193,6 +125,11 @@ void idRenderSystemLocal::PrintPerformanceCounters()
 
 	memset( &pc, 0, sizeof( pc ) );
 	memset( &backend.pc, 0, sizeof( backend.pc ) );
+}
+
+extern "C" void ztech_renderSystem_renderCommandBuffers(const emptyCommand_t* const);
+void ztechRenderSystemLocal::RenderCommandBuffers( const emptyCommand_t* const cmdHead ) {
+	ztech_renderSystem_renderCommandBuffers(cmdHead);
 }
 
 /*
@@ -714,6 +651,67 @@ const emptyCommand_t* idRenderSystemLocal::SwapCommandBuffers(
 	SwapCommandBuffers_FinishRendering( frontEndMicroSec, backEndMicroSec, shadowMicroSec, gpuMicroSec, bc, pc );
 
 	return SwapCommandBuffers_FinishCommandBuffers();
+}
+
+extern "C" void ztech_renderSystem_setReadyToPresent();
+void ztechRenderSystemLocal::SetReadyToPresent() {
+	ztech_renderSystem_setReadyToPresent();
+}
+
+extern "C" void ztech_renderSystem_invalidateSwapBuffers();
+void ztechRenderSystemLocal::InvalidateSwapBuffers() {
+	ztech_renderSystem_invalidateSwapBuffers();
+}
+
+extern "C" emptyCommand_t* ztech_renderSystem_swapCommandBuffers();
+extern "C" void ztech_renderSystem_finishRendering();
+extern "C" emptyCommand_t* ztech_renderSystem_finishCommandBuffers();
+extern "C" void ztech_renderSystem_finishCommandBuffers_syncState(
+		idScreenRect*,
+		int*,
+		int*,
+		int*,
+		float*
+		);
+
+const emptyCommand_t* ztechRenderSystemLocal::SwapCommandBuffers_FinishCommandBuffers() {
+	emptyCommand_t* cmd = ztech_renderSystem_finishCommandBuffers();
+
+	ztech_renderSystem_finishCommandBuffers_syncState(
+			&renderCrops[0],
+			&currentRenderCrop,
+			&frameCount,
+			&guiRecursionLevel,
+			&frameShaderTime
+			);
+
+	return cmd;
+}
+
+const emptyCommand_t* ztechRenderSystemLocal::SwapCommandBuffers(
+	uint64* frontEndMicroSec,
+	uint64* backEndMicroSec,
+	uint64* shadowMicroSec,
+	uint64* gpuMicroSec,
+	backEndCounters_t* bc,
+	performanceCounters_t* pc
+)
+{
+	ztech_renderSystem_finishRendering();
+
+	return SwapCommandBuffers_FinishCommandBuffers();
+}
+
+void ztechRenderSystemLocal::SwapCommandBuffers_FinishRendering(
+	uint64* frontEndMicroSec,
+	uint64* backEndMicroSec,
+	uint64* shadowMicroSec,
+	uint64* gpuMicroSec,
+	backEndCounters_t* bc,
+	performanceCounters_t* pc
+)
+{
+	ztech_renderSystem_finishRendering();
 }
 
 /*

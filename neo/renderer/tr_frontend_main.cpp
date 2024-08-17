@@ -413,7 +413,7 @@ extern "C" void R_SetupSplitFrustums( viewDef_t* viewDef )
 
 	for( int i = 0; i < 6; i++ )
 	{
-		tr.viewDef->frustumSplitDistances[i] = idMath::INFINITUM;
+		viewDef->frustumSplitDistances[i] = idMath::INFINITUM;
 	}
 
 	for( int i = 1; i <= ( r_shadowMapSplits.GetInteger() + 1 ) && i < MAX_FRUSTUMS; i++ )
@@ -429,32 +429,32 @@ extern "C" void R_SetupSplitFrustums( viewDef_t* viewDef )
 
 		if( i <= r_shadowMapSplits.GetInteger() )
 		{
-			tr.viewDef->frustumSplitDistances[i - 1] = zFar;
+			viewDef->frustumSplitDistances[i - 1] = zFar;
 		}
 
 		float projectionMatrix[16];
-		R_SetupProjectionMatrix2( tr.viewDef, zNear, zFar, projectionMatrix );
+		R_SetupProjectionMatrix2( viewDef, zNear, zFar, projectionMatrix );
 
 		// setup render matrices for faster culling
 		idRenderMatrix projectionRenderMatrix;
 		idRenderMatrix::Transpose( *( idRenderMatrix* )projectionMatrix, projectionRenderMatrix );
 		idRenderMatrix viewRenderMatrix;
-		idRenderMatrix::Transpose( *( idRenderMatrix* )tr.viewDef->worldSpace.modelViewMatrix, viewRenderMatrix );
-		idRenderMatrix::Multiply( projectionRenderMatrix, viewRenderMatrix, tr.viewDef->frustumMVPs[i] );
+		idRenderMatrix::Transpose( *( idRenderMatrix* )viewDef->worldSpace.modelViewMatrix, viewRenderMatrix );
+		idRenderMatrix::Multiply( projectionRenderMatrix, viewRenderMatrix, viewDef->frustumMVPs[i] );
 
 		// the planes of the view frustum are needed for portal visibility culling
-		idRenderMatrix::GetFrustumPlanes( tr.viewDef->frustums[i], tr.viewDef->frustumMVPs[i], false, true );
+		idRenderMatrix::GetFrustumPlanes( viewDef->frustums[i], viewDef->frustumMVPs[i], false, true );
 
 		// the DOOM 3 frustum planes point outside the frustum
 		for( int j = 0; j < 6; j++ )
 		{
-			tr.viewDef->frustums[i][j] = - tr.viewDef->frustums[i][j];
+			viewDef->frustums[i][j] = - viewDef->frustums[i][j];
 		}
 
 		// remove the Z-near to avoid portals from being near clipped
 		if( i == FRUSTUM_CASCADE1 )
 		{
-			tr.viewDef->frustums[i][4][3] -= r_znear.GetFloat();
+			viewDef->frustums[i][4][3] -= r_znear.GetFloat();
 		}
 	}
 }
@@ -488,15 +488,15 @@ public:
 	}
 };
 
-extern "C" void c_setDefaultEnvironmentProbes() {
+extern "C" void c_setDefaultEnvironmentProbes(viewDef_t* viewDef) {
 	// set safe defaults
-	tr.viewDef->globalProbeBounds.Clear();
+	viewDef->globalProbeBounds.Clear();
 
-	tr.viewDef->irradianceImage = globalImages->defaultUACIrradianceCube;
-	tr.viewDef->radianceImageBlends.Set( 1, 0, 0, 0 );
+	viewDef->irradianceImage = globalImages->defaultUACIrradianceCube;
+	viewDef->radianceImageBlends.Set( 1, 0, 0, 0 );
 	for( int i = 0; i < 3; i++ )
 	{
-		tr.viewDef->radianceImages[i] = globalImages->defaultUACRadianceCube;
+		viewDef->radianceImages[i] = globalImages->defaultUACRadianceCube;
 	}
 }
 
@@ -600,10 +600,6 @@ static void R_FindClosestEnvironmentProbes()
 }
 // RB end
 
-extern "C" void idtech_renderView(viewDef_t* parms) {
-	R_RenderView(parms);
-}
-
 /*
 ================
 R_RenderView
@@ -676,7 +672,7 @@ void R_RenderView( viewDef_t* parms )
 	R_AddInGameGuis( tr.viewDef->drawSurfs, tr.viewDef->numDrawSurfs );
 
 	// any viewLight that didn't have visible surfaces can have it's shadows removed
-	R_OptimizeViewLightsList();
+	R_OptimizeViewLightsList(tr.viewDef);
 
 	// sort all the ambient surfaces for translucency ordering
 	R_SortDrawSurfs( tr.viewDef->drawSurfs, tr.viewDef->numDrawSurfs );

@@ -63,7 +63,7 @@ pub const ViewEntity = extern struct {
     modelViewMatrix: [16]f32,
     mvp: RenderMatrix,
     unjitteredMVP: RenderMatrix,
-    drawSurfs: [*c]DrawSurface,
+    drawSurfs: ?*DrawSurface,
     useLightGrid: bool,
     lightGridAtlasImage: ?*Image,
     lightGridAtlasSingleProbeSize: c_int,
@@ -89,8 +89,8 @@ pub const ViewLight = extern struct {
     lightDef: ?*RenderLightLocal,
     scissorRect: ScreenRect,
     removeFromList: bool,
-    shadowOnlyViewEntities: [*c]ShadowOnlyEntity,
-    entityInteractionState: [*c]InteractionState, // [numEntities]
+    shadowOnlyViewEntities: ?*ShadowOnlyEntity,
+    entityInteractionState: ?[*]InteractionState, // [numEntities]
     globalLightOrigin: CVec3,
     lightProject: [4]Plane,
     fogPlane: Plane,
@@ -180,7 +180,7 @@ pub const ViewDef = extern struct {
     targetRender: ?*Framebuffer,
 };
 
-const idStr = extern struct {
+pub const idStr = extern struct {
     const STR_ALLOC_BASE: usize = 20;
 
     len: c_int,

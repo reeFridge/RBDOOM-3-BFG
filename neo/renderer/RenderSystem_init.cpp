@@ -2104,7 +2104,6 @@ extern "C" void ztech_renderSystem_init(
 	const idMaterial**,
 	const idMaterial**,
 	const idMaterial**,
-	bool*,
 	idGuiModel**
 );
 
@@ -2131,7 +2130,6 @@ void ztechRenderSystemLocal::Init()
 			&whiteMaterial,
 			&charSetMaterial,
 			&imgGuiMaterial,
-			&omitSwapBuffers,
 			&tr_guiModel
 			);
 }

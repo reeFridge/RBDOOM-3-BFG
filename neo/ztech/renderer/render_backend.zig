@@ -41,6 +41,7 @@ const CVec2 = @import("../math/vector.zig").CVec2;
 const Framebuffer = @import("framebuffer.zig").Framebuffer;
 const nvrhi = @import("nvrhi.zig");
 const Pass = @import("render_pass.zig");
+const FrameData = @import("frame_data.zig");
 
 fn idList(T: type) type {
     return extern struct {
@@ -199,6 +200,8 @@ pub const RenderBackend = extern struct {
     extern fn c_renderBackend_shutdown(*RenderBackend) callconv(.C) void;
     extern fn c_renderBackend_init(*RenderBackend) callconv(.C) void;
     extern fn c_renderBackend_checkCVars(*RenderBackend) callconv(.C) void;
+    extern fn c_renderBackend_GLBlockingSwapBuffers(*RenderBackend) callconv(.C) void;
+    extern fn c_renderBackend_executeBackendCommands(*RenderBackend, ?*FrameData.EmptyCommand) callconv(.C) void;
 
     pub fn shutdown(backend: *RenderBackend) void {
         c_renderBackend_shutdown(backend);
@@ -208,9 +211,15 @@ pub const RenderBackend = extern struct {
         c_renderBackend_init(backend);
     }
 
-    pub fn GL_BlockingSwapBuffers(_: *RenderBackend) void {}
+    pub fn GL_BlockingSwapBuffers(backend: *RenderBackend) void {
+        c_renderBackend_GLBlockingSwapBuffers(backend);
+    }
 
     pub fn checkCVars(backend: *RenderBackend) void {
         c_renderBackend_checkCVars(backend);
+    }
+
+    pub fn executeBackendCommands(backend: *RenderBackend, cmd_head: ?*FrameData.EmptyCommand) void {
+        c_renderBackend_executeBackendCommands(backend, cmd_head);
     }
 };

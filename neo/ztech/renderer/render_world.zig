@@ -237,8 +237,6 @@ pub fn updateLightDef(
     light_index: usize,
     render_light: RenderLight,
 ) !void {
-    RenderSystem.instance.incLightUpdates();
-
     // TODO: light_index > MAX_LIGHT_DEFS_INDEX(10000)
 
     // create new slots if needed
@@ -297,7 +295,7 @@ pub fn updateLightDef(
     };
 
     light.parms = render_light;
-    light.lastModifiedFrameNum = RenderSystem.instance.frameCount();
+    light.lastModifiedFrameNum = @intCast(RenderSystem.instance.frameCount());
 
     // new for BFG edition: force noShadows on spectrum lights so teleport spawns
     // don't cause such a slowdown.  Hell writing shouldn't be shadowed anyway...
@@ -447,10 +445,10 @@ extern fn R_SetupProjectionMatrix(*ViewDef, bool) callconv(.C) void;
 extern fn R_SetupUnprojection(*ViewDef) callconv(.C) void;
 extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
 extern fn R_AddInGameGuis([*]*DrawSurface, c_int) callconv(.C) void;
-extern fn R_OptimizeViewLightsList() callconv(.C) void;
+extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
 extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
 extern fn R_AddDrawViewCmd(*ViewDef, bool) callconv(.C) void;
-extern fn c_setDefaultEnvironmentProbes() callconv(.C) void;
+extern fn c_setDefaultEnvironmentProbes(*ViewDef) callconv(.C) void;
 
 pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
     if (!RenderSystem.instance.initialized) return;
@@ -541,14 +539,14 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
         R_AddInGameGuis(draw_surfs, view_def.numDrawSurfs);
     }
 
-    R_OptimizeViewLightsList();
+    R_OptimizeViewLightsList(view_def);
 
     if (view_def.drawSurfs) |draw_surfs| {
         R_SortDrawSurfs(draw_surfs, view_def.numDrawSurfs);
     }
 
     // TODO: R_FindClosestEnvironmentProbes();
-    c_setDefaultEnvironmentProbes();
+    c_setDefaultEnvironmentProbes(view_def);
     R_AddDrawViewCmd(view_def, false);
 
     // TODO: R_GenerateSubViews()
@@ -557,39 +555,62 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
     RenderSystem.instance.gui_model.clear();
 }
 
-extern fn c_addSingleLight(*anyopaque, *ViewLight) callconv(.C) void;
-extern fn c_cullLightsMarkedAsRemoved() callconv(.C) void;
+extern fn c_addSingleLight(*anyopaque, *ViewLight, *ViewDef) callconv(.C) void;
 
 fn addLights(render_world: *RenderWorld) void {
-    const view_def = RenderSystem.instance.getView();
+    const view_def = RenderSystem.instance.getView() orelse return;
     var opt_view_light = view_def.viewLights;
     while (opt_view_light) |view_light| : (opt_view_light = view_light.next) {
-        c_addSingleLight(@ptrCast(render_world), view_light);
+        c_addSingleLight(@ptrCast(render_world), view_light, view_def);
     }
 
-    c_cullLightsMarkedAsRemoved();
+    cullLightsMarkedAsRemoved(view_def);
 }
 
-extern fn c_addSingleModel(*anyopaque, *ViewEntity) callconv(.C) void;
-extern fn c_moveDrawSurfsToView() callconv(.C) void;
+extern fn c_addSingleModel(*anyopaque, *ViewEntity, *ViewDef) callconv(.C) void;
 extern fn R_SortViewEntities(?*ViewEntity) callconv(.C) ?*ViewEntity;
 
 fn addModels(render_world: *RenderWorld) void {
-    const view_def = RenderSystem.instance.getView();
+    const view_def = RenderSystem.instance.getView() orelse return;
     view_def.viewEntitys = R_SortViewEntities(view_def.viewEntitys);
 
     var opt_view_entity = view_def.viewEntitys;
     while (opt_view_entity) |view_entity| : (opt_view_entity = view_entity.next) {
-        c_addSingleModel(@ptrCast(render_world), view_entity);
+        c_addSingleModel(@ptrCast(render_world), view_entity, view_def);
     }
 
-    c_moveDrawSurfsToView();
+    moveDrawSurfsToView(view_def);
+}
+
+extern fn R_LinkDrawSurfToView(*DrawSurface, *ViewDef) callconv(.C) void;
+inline fn moveDrawSurfsToView(def: *ViewDef) void {
+    // clear the ambient surface list
+    def.numDrawSurfs = 0;
+    // will be set to INITIAL_DRAWSURFS on R_LinkDrawSurfToView
+    def.maxDrawSurfs = 0;
+
+    var opt_v_entity = def.viewEntitys;
+    while (opt_v_entity) |v_entity| : (opt_v_entity = v_entity.next) {
+        var opt_draw_surf = v_entity.drawSurfs;
+        while (opt_draw_surf) |draw_surf| {
+            // save it before assign
+            opt_draw_surf = draw_surf.nextOnLight;
+            if (draw_surf.linkChain) |link_chain| {
+                draw_surf.nextOnLight = link_chain.*;
+                link_chain.* = draw_surf;
+            } else {
+                R_LinkDrawSurfToView(draw_surf, def);
+            }
+        }
+
+        v_entity.drawSurfs = null;
+    }
 }
 
 pub fn findViewLightsAndEntities(render_world: *RenderWorld, frustum_planes: []Plane) void {
+    const view_def = RenderSystem.instance.getView() orelse return;
     RenderSystem.instance.incViewCount();
 
-    const view_def = RenderSystem.instance.getView();
     view_def.viewLights = null;
     view_def.viewEntitys = null;
     view_def.viewEnvprobes = null;
@@ -650,6 +671,7 @@ fn flowViewThroughPortals(
     planes: []Plane,
 ) void {
     std.debug.assert(planes.len <= MAX_PORTAL_PLANES);
+    const view_def = RenderSystem.instance.getView() orelse return;
 
     var ps = std.mem.zeroes(PortalStack);
     ps.next = null;
@@ -660,7 +682,6 @@ fn flowViewThroughPortals(
     }
 
     ps.numPortalPlanes = @intCast(planes.len);
-    const view_def = RenderSystem.instance.getView();
     ps.rect = view_def.scissor;
 
     if (view_def.areaNum < 0) {
@@ -673,7 +694,7 @@ fn flowViewThroughPortals(
     }
 }
 
-extern fn c_screenRectFromWinding(*const CWinding, *const ViewEntity) callconv(.C) ScreenRect;
+extern fn c_screenRectFromWinding(*const CWinding, [*]const f32) callconv(.C) ScreenRect;
 
 fn floodViewThroughArea_r(
     render_world: *RenderWorld,
@@ -727,7 +748,10 @@ fn floodViewThroughArea_r(
         var new_ps = std.mem.zeroes(PortalStack);
         new_ps.next = ps;
         new_ps.p = portal;
-        new_ps.rect = c_screenRectFromWinding(@ptrCast(&w), RenderSystem.instance.getIdentitySpace());
+        new_ps.rect = c_screenRectFromWinding(
+            @ptrCast(&w),
+            (&RenderSystem.instance.identity_space).ptr,
+        );
         new_ps.rect.intersect(ps.rect);
 
         const add_planes: usize = if (w.numPoints > MAX_PORTAL_PLANES)
@@ -770,7 +794,7 @@ fn addAreaToView(
     area_num: usize,
     ps: *const PortalStack,
 ) void {
-    render_world.portal_areas.?[area_num].viewCount = RenderSystem.instance.viewCount();
+    render_world.portal_areas.?[area_num].viewCount = @intCast(RenderSystem.instance.viewCount());
 
     render_world.addAreaViewEntities(area_num, ps);
     render_world.addAreaViewLights(area_num, ps);
@@ -798,8 +822,35 @@ fn addAreaViewEntities(
     }
 }
 
+inline fn cullLightsMarkedAsRemoved(def: *ViewDef) void {
+    //cull lights from the list if they turned out to not be needed
+    var ptr = &def.viewLights;
+    while (ptr.*) |v_light| {
+        if (v_light.removeFromList) {
+            // this probably doesn't matter with current code
+            if (v_light.lightDef) |light_def| light_def.viewCount = -1;
+            ptr.* = v_light.next;
+            continue;
+        }
+
+        ptr = &v_light.next;
+
+        var opt_shadow_ent = v_light.shadowOnlyViewEntities;
+        while (opt_shadow_ent) |shadow_ent| : (opt_shadow_ent = shadow_ent.next) {
+            if (shadow_ent.edef) |entity_def| {
+                _ = setEntityDefViewEntity(entity_def);
+            }
+        }
+
+        const r_show_light_scissors = false;
+        if (r_show_light_scissors) {
+            // TODO: R_ShowColoredScreenRect(v_light.scissorRect, v_light.lightDef.index);
+        }
+    }
+}
+
 fn setEntityDefViewEntity(def: *RenderEntityLocal) *ViewEntity {
-    const view_count = RenderSystem.instance.viewCount();
+    const view_count: c_int = @intCast(RenderSystem.instance.viewCount());
     if (def.viewCount == view_count)
         return def.viewEntity.?;
 
@@ -807,7 +858,7 @@ fn setEntityDefViewEntity(def: *RenderEntityLocal) *ViewEntity {
     var v_model = FrameData.frameCreate(ViewEntity);
     v_model.entityDef = def;
     v_model.scissorRect.clear();
-    const view_def = RenderSystem.instance.getView();
+    const view_def = RenderSystem.instance.getView() orelse unreachable;
     v_model.next = view_def.viewEntitys;
     view_def.viewEntitys = v_model;
     def.viewEntity = v_model;
@@ -837,7 +888,7 @@ fn addAreaViewLights(
 }
 
 fn setLightDefViewLight(light: *RenderLightLocal) *ViewLight {
-    const view_count = RenderSystem.instance.viewCount();
+    const view_count: c_int = @intCast(RenderSystem.instance.viewCount());
     if (light.viewCount == view_count)
         return light.viewLight.?;
 
@@ -846,7 +897,7 @@ fn setLightDefViewLight(light: *RenderLightLocal) *ViewLight {
     v_light.lightDef = light;
     v_light.scissorRect.clear();
 
-    const view_def = RenderSystem.instance.getView();
+    const view_def = RenderSystem.instance.getView() orelse unreachable;
     v_light.next = view_def.viewLights;
     view_def.viewLights = v_light;
 
@@ -872,7 +923,7 @@ fn addAreaViewEnvprobes(
 }
 
 fn setEnvprobeDefViewEnvprobe(probe: *RenderEnvprobeLocal) *ViewEnvprobe {
-    const view_count = RenderSystem.instance.viewCount();
+    const view_count: c_int = @intCast(RenderSystem.instance.viewCount());
     if (probe.viewCount == view_count)
         return probe.viewEnvprobe.?;
 
@@ -886,7 +937,7 @@ fn setEnvprobeDefViewEnvprobe(probe: *RenderEnvprobeLocal) *ViewEnvprobe {
     v_probe.irradianceImage = probe.irradianceImage;
     v_probe.radianceImage = probe.radianceImage;
 
-    const view_def = RenderSystem.instance.getView();
+    const view_def = RenderSystem.instance.getView() orelse unreachable;
     v_probe.next = view_def.viewEnvprobes;
     view_def.viewEnvprobes = v_probe;
     probe.viewEnvprobe = v_probe;
@@ -929,8 +980,6 @@ pub fn updateEntityDef(
     entity_index: usize,
     render_entity: RenderEntity,
 ) !void {
-    RenderSystem.instance.incEntityUpdates();
-
     if (render_entity.hModel == null and render_entity.callback == null)
         return error.NoModel;
 
@@ -987,7 +1036,7 @@ pub fn updateEntityDef(
     };
 
     def.parms = render_entity;
-    def.lastModifiedFrameNum = RenderSystem.instance.frameCount();
+    def.lastModifiedFrameNum = @intCast(RenderSystem.instance.frameCount());
 
     // optionally immediately issue any callbacks
     const r_use_entity_callbacks = true; // TODO: CVar system
@@ -1052,7 +1101,7 @@ fn pushFrustumIntoTree_r(
         // already added a reference here
         if (area.viewCount == RenderSystem.instance.viewCount()) return;
 
-        area.viewCount = RenderSystem.instance.viewCount();
+        area.viewCount = @intCast(RenderSystem.instance.viewCount());
 
         if (def) |render_entity|
             try render_world.addEntityRefToArea(render_entity, area);
@@ -1730,7 +1779,6 @@ pub fn addLightRefToArea(
     ref.area = area;
     ref.ownerNext = def.references;
     def.references = ref;
-    RenderSystem.instance.incLightReferences();
 
     area.lightRefs.areaNext.?.areaPrev = ref;
     ref.areaNext = area.lightRefs.areaNext;
@@ -1753,8 +1801,6 @@ pub fn addEntityRefToArea(
 
     var ref = try render_world.area_reference_allocator.create();
     ref.* = AreaReference{};
-
-    RenderSystem.instance.incEntityReferences();
 
     ref.entity = def;
 

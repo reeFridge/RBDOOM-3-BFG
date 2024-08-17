@@ -1067,6 +1067,14 @@ public:
 	virtual void Shutdown();
 	virtual void Clear();
 	virtual void InitBackend();
+
+	virtual const emptyCommand_t* 	SwapCommandBuffers( uint64* frontEndMicroSec, uint64* backEndMicroSec, uint64* shadowMicroSec, uint64* gpuMicroSec, backEndCounters_t* bc, performanceCounters_t* pc );
+	virtual void					SwapCommandBuffers_FinishRendering( uint64* frontEndMicroSec, uint64* backEndMicroSec, uint64* shadowMicroSec, uint64* gpuMicroSec, backEndCounters_t* bc, performanceCounters_t* pc );
+	virtual const emptyCommand_t* 	SwapCommandBuffers_FinishCommandBuffers();
+	virtual void RenderCommandBuffers( const emptyCommand_t* const cmdHead );
+
+	void SetReadyToPresent();
+	void InvalidateSwapBuffers();
 };
 
 #define USE_ZTECH_RENDER_SYSTEM
@@ -1568,7 +1576,7 @@ ID_INLINE bool R_CullModelBoundsToLight( const idRenderLightLocal* light, const 
 }
 
 void R_AddLights();
-extern "C" void R_OptimizeViewLightsList();
+extern "C" void R_OptimizeViewLightsList(viewDef_t*);
 
 /*
 ============================================================
@@ -1584,7 +1592,7 @@ void R_ClearEntityDefDynamicModel( idRenderEntityLocal* def );
 
 void R_SetupDrawSurfShader( drawSurf_t* drawSurf, const idMaterial* shader, const renderEntity_t* renderEntity );
 void R_SetupDrawSurfJoints( drawSurf_t* drawSurf, const srfTriangles_t* tri, const idMaterial* shader, nvrhi::ICommandList* commandList = nullptr );
-void R_LinkDrawSurfToView( drawSurf_t* drawSurf, viewDef_t* viewDef );
+extern "C" void R_LinkDrawSurfToView( drawSurf_t* drawSurf, viewDef_t* viewDef );
 
 void R_AddModels();
 

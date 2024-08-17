@@ -347,15 +347,12 @@ void R_SetupDrawSurfJoints( drawSurf_t* drawSurf, const srfTriangles_t* tri, con
 	drawSurf->jointCache = model->jointsInvertedBuffer;
 }
 
-extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity) {
+extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity, viewDef_t* viewDef) {
 	// we will add all interaction surfs here, to be chained to the lights in later serial code
 	vEntity->drawSurfs = NULL;
 
 	// RB
 	vEntity->useLightGrid = false;
-
-	// globals we really should pass in...
-	const viewDef_t* viewDef = tr.viewDef;
 
 	idRenderEntityLocal* entityDef = vEntity->entityDef;
 	const renderEntity_t* renderEntity = &entityDef->parms;
@@ -1790,7 +1787,7 @@ R_LinkDrawSurfToView
 Als called directly by GuiModel
 =================
 */
-void R_LinkDrawSurfToView( drawSurf_t* drawSurf, viewDef_t* viewDef )
+extern "C" void R_LinkDrawSurfToView( drawSurf_t* drawSurf, viewDef_t* viewDef )
 {
 	// if it doesn't fit, resize the list
 	if( viewDef->numDrawSurfs == viewDef->maxDrawSurfs )
@@ -1814,41 +1811,6 @@ void R_LinkDrawSurfToView( drawSurf_t* drawSurf, viewDef_t* viewDef )
 
 	viewDef->drawSurfs[viewDef->numDrawSurfs] = drawSurf;
 	viewDef->numDrawSurfs++;
-}
-
-extern "C" void c_moveDrawSurfsToView() {
-	//-------------------------------------------------
-	// Move the draw surfs to the view.
-	//-------------------------------------------------
-
-	tr.viewDef->numDrawSurfs = 0;	// clear the ambient surface list
-	tr.viewDef->maxDrawSurfs = 0;	// will be set to INITIAL_DRAWSURFS on R_LinkDrawSurfToView
-
-	for( viewEntity_t* vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next )
-	{
-		// RB
-		if( vEntity->drawSurfs != NULL )
-		{
-			tr.pc.c_visibleViewEntities++;
-		}
-
-		for( drawSurf_t* ds = vEntity->drawSurfs; ds != NULL; )
-		{
-			drawSurf_t* next = ds->nextOnLight;
-			if( ds->linkChain == NULL )
-			{
-				R_LinkDrawSurfToView( ds, tr.viewDef );
-			}
-			else
-			{
-				ds->nextOnLight = *ds->linkChain;
-				*ds->linkChain = ds;
-			}
-			ds = next;
-		}
-
-		vEntity->drawSurfs = NULL;
-	}
 }
 
 /*

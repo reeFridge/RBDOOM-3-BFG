@@ -51,6 +51,22 @@ idCVar rs_raiseFraction( "rs_raiseFraction", "0.06", CVAR_FLOAT, "Raise the reso
 idCVar rs_raiseFrames( "rs_raiseFrames", "5", CVAR_INTEGER, "Require this many frames below rs_raiseMilliseconds" );
 idCVar rs_display( "rs_display", "0", CVAR_INTEGER, "0 - percentages, 1 - pixels per frame" );
 
+extern "C" void c_resolutionScale_initForMap(idResolutionScale* instance) {
+	instance->InitForMap(NULL);
+}
+
+extern "C" void c_resolutionScale_getCurrentResolutionScale(idResolutionScale* instance, float* x, float* y) {
+	instance->GetCurrentResolutionScale(*x, *y);
+}
+
+extern "C" void c_resolutionScale_setCurrentGPUFrameTime(idResolutionScale* instance, int time) {
+	instance->SetCurrentGPUFrameTime(time);
+}
+
+extern "C" void c_resolutionScale_getConsoleText(idResolutionScale* instance, idStr* str) {
+	instance->GetConsoleText(*str);
+}
+
 
 /*
 ========================

@@ -83,13 +83,10 @@ bool idRenderEntityLocal::IsDirectlyVisible() const
 	return true;
 }
 
-extern "C" void c_addSingleLight(void* render_world_ptr, viewLight_t* vLight) {
+extern "C" void c_addSingleLight(void* render_world_ptr, viewLight_t* vLight, const viewDef_t* viewDef) {
 	// until proven otherwise
 	vLight->removeFromList = true;
 	vLight->shadowOnlyViewEntities = NULL;
-
-	// globals we really should pass in...
-	const viewDef_t* viewDef = tr.viewDef;
 
 	const idRenderLightLocal* light = vLight->lightDef;
 	const idMaterial* lightShader = light->lightShader;
@@ -117,7 +114,7 @@ extern "C" void c_addSingleLight(void* render_world_ptr, viewLight_t* vLight) {
 	// evaluate the light shader registers
 	float* lightRegs = ( float* )R_FrameAlloc( lightShader->GetNumRegisters() * sizeof( float ), FRAME_ALLOC_SHADER_REGISTER );
 	lightShader->EvaluateRegisters( lightRegs, light->parms.shaderParms, viewDef->renderView.shaderParms,
-									tr.viewDef->renderView.time[0] * 0.001f, light->parms.referenceSound );
+									viewDef->renderView.time[0] * 0.001f, light->parms.referenceSound );
 
 	// if this is a purely additive light and no stage in the light shader evaluates
 	// to a positive light value, we can completely skip the light
@@ -928,42 +925,6 @@ static void R_AddSingleLight( viewLight_t* vLight )
 
 REGISTER_PARALLEL_JOB( R_AddSingleLight, "R_AddSingleLight" );
 
-extern "C" void c_cullLightsMarkedAsRemoved() {
-	//-------------------------------------------------
-	// cull lights from the list if they turned out to not be needed
-	//-------------------------------------------------
-
-	tr.pc.c_viewLights = 0;
-	viewLight_t** ptr = &tr.viewDef->viewLights;
-	while( *ptr != NULL )
-	{
-		viewLight_t* vLight = *ptr;
-
-		if( vLight->removeFromList )
-		{
-			vLight->lightDef->viewCount = -1;	// this probably doesn't matter with current code
-			*ptr = vLight->next;
-			continue;
-		}
-
-		ptr = &vLight->next;
-
-		// serial work
-		tr.pc.c_viewLights++;
-
-		for( shadowOnlyEntity_t* shadEnt = vLight->shadowOnlyViewEntities; shadEnt != NULL; shadEnt = shadEnt->next )
-		{
-			// this will add it to the viewEntities list, but with an empty scissor rect
-			R_SetEntityDefViewEntity( shadEnt->edef );
-		}
-
-		if( r_showLightScissors.GetBool() )
-		{
-			R_ShowColoredScreenRect( vLight->scissorRect, vLight->lightDef->index );
-		}
-	}
-}
-
 /*
 =================
 R_AddLights
@@ -1034,11 +995,11 @@ void R_AddLights()
 R_OptimizeViewLightsList
 =====================
 */
-extern "C" void R_OptimizeViewLightsList()
+extern "C" void R_OptimizeViewLightsList(viewDef_t* viewDef)
 {
 	// go through each visible light
 	int numViewLights = 0;
-	for( viewLight_t* vLight = tr.viewDef->viewLights; vLight != NULL; vLight = vLight->next )
+	for( viewLight_t* vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next )
 	{
 		numViewLights++;
 		// If the light didn't have any lit surfaces visible, there is no need to
@@ -1055,7 +1016,7 @@ extern "C" void R_OptimizeViewLightsList()
 		// shrink the light scissor rect to only intersect the surfaces that will actually be drawn.
 		// This doesn't seem to actually help, perhaps because the surface scissor
 		// rects aren't actually the surface, but only the portal clippings.
-		for( viewLight_t* vLight = tr.viewDef->viewLights; vLight; vLight = vLight->next )
+		for( viewLight_t* vLight = viewDef->viewLights; vLight; vLight = vLight->next )
 		{
 			drawSurf_t* surf;
 			idScreenRect surfRect;
@@ -1107,7 +1068,7 @@ extern "C" void R_OptimizeViewLightsList()
 	};
 	sortLight_t* sortLights = ( sortLight_t* )_alloca( sizeof( sortLight_t ) * numViewLights );
 	int	numSortLightsFilled = 0;
-	for( viewLight_t* vLight = tr.viewDef->viewLights; vLight != NULL; vLight = vLight->next )
+	for( viewLight_t* vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next )
 	{
 		sortLights[ numSortLightsFilled ].vLight = vLight;
 		sortLights[ numSortLightsFilled ].screenArea = vLight->scissorRect.GetArea();
@@ -1117,10 +1078,10 @@ extern "C" void R_OptimizeViewLightsList()
 	qsort( sortLights, numSortLightsFilled, sizeof( sortLights[0] ), sortLight_t::sort );
 
 	// rebuild the linked list in order
-	tr.viewDef->viewLights = NULL;
+	viewDef->viewLights = NULL;
 	for( int i = 0; i < numSortLightsFilled; i++ )
 	{
-		sortLights[i].vLight->next = tr.viewDef->viewLights;
-		tr.viewDef->viewLights = sortLights[i].vLight;
+		sortLights[i].vLight->next = viewDef->viewLights;
+		viewDef->viewLights = sortLights[i].vLight;
 	}
 }

@@ -1874,6 +1874,10 @@ void idRenderBackend::GL_EndFrame()
 	taaPass->AdvanceFrame();
 }
 
+extern "C" void c_renderBackend_GLBlockingSwapBuffers(idRenderBackend* backend) {
+	backend->GL_BlockingSwapBuffers();
+}
+
 /*
 =============
 GL_BlockingSwapBuffers
@@ -2400,4 +2404,8 @@ extern "C" void c_renderBackend_init(idRenderBackend* instance) {
 
 extern "C" void c_renderBackend_checkCVars(idRenderBackend* instance) {
 	instance->CheckCVars();
+}
+
+extern "C" void c_renderBackend_executeBackendCommands(idRenderBackend* instance, emptyCommand_t* cmdHead) {
+	instance->ExecuteBackEndCommands(cmdHead);
 }
