@@ -489,10 +489,6 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
 
     view_def.isMirror = cross.dot(render_view.viewaxis.mat[0].toVec3f()) <= 0;
 
-    RenderSystem.instance.setPrimaryWorld(render_world);
-    RenderSystem.instance.setPrimaryRenderView(render_view);
-    RenderSystem.instance.setPrimaryView(view_def);
-
     const old_view_def = RenderSystem.instance.getView();
     RenderSystem.instance.setView(view_def);
     defer RenderSystem.instance.setView(old_view_def);

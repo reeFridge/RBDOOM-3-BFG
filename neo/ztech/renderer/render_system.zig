@@ -41,53 +41,7 @@ pub const glconfig_t = extern struct {
 
 pub const glConfig = @extern(*glconfig_t, .{ .name = "glConfig" });
 
-const idRenderSystem = opaque {
-    extern fn c_renderSystem_setPrimaryRenderView(*idRenderSystem, RenderView) callconv(.C) void;
-    extern fn c_renderSystem_setPrimaryWorld(*idRenderSystem, *anyopaque) callconv(.C) void;
-    extern fn c_renderSystem_setPrimaryView(*idRenderSystem, *ViewDef) callconv(.C) void;
-
-    pub fn setPrimaryWorld(render_system: *idRenderSystem, render_world: *RenderWorld) void {
-        c_renderSystem_setPrimaryWorld(render_system, @ptrCast(render_world));
-    }
-
-    pub fn setPrimaryRenderView(render_system: *idRenderSystem, render_view: RenderView) void {
-        c_renderSystem_setPrimaryRenderView(render_system, render_view);
-    }
-
-    pub fn setPrimaryView(render_system: *idRenderSystem, view_def: *ViewDef) void {
-        c_renderSystem_setPrimaryView(render_system, view_def);
-    }
-};
-
-const idtech_instance = @extern(*idRenderSystem, .{ .name = "tr" });
-
 const nvrhi = @import("nvrhi.zig");
-
-const PerformanceCounters = struct {
-    c_box_cull_in: c_int,
-    c_box_cull_out: c_int,
-    c_createInteractions: c_int, // number of calls to idInteraction::CreateInteraction
-    c_createShadowVolumes: c_int,
-    c_generateMd5: c_int,
-    c_entityDefCallbacks: c_int,
-    c_alloc: c_int, // counts for R_StaticAllc/R_StaticFree
-    c_free: c_int,
-    c_visibleViewEntities: c_int,
-    c_shadowViewEntities: c_int,
-    c_viewLights: c_int,
-    c_numViews: c_int, // number of total views rendered
-    c_deformedSurfaces: c_int, // idMD5Mesh::GenerateSurface
-    c_deformedVerts: c_int, // idMD5Mesh::GenerateSurface
-    c_deformedIndexes: c_int, // idMD5Mesh::GenerateSurface
-    c_tangentIndexes: c_int, // R_DeriveTangents()
-    c_entityUpdates: c_int,
-    c_lightUpdates: c_int,
-    c_envprobeUpdates: c_int,
-    c_entityReferences: c_int,
-    c_lightReferences: c_int,
-    c_guiSurfs: c_int,
-    frontEndMicroSec: c_ulonglong, // sum of time in all RE_RenderScene's in a frame
-};
 
 const Vec4 = @import("../math/vector.zig").Vec4;
 const Mat3 = @import("../math/matrix.zig").Mat3;
@@ -469,7 +423,6 @@ default_point_light: ?*const Material = null,
 default_projected_light: ?*const Material = null,
 default_material: *const Material = undefined,
 view_def: ?*ViewDef = null,
-perf_counters: PerformanceCounters = std.mem.zeroes(PerformanceCounters),
 // can use if we don't know viewDef->worldSpace is valid
 identity_space: [16]f32 = initIdentityMatrix(),
 render_crops: [MAX_RENDER_CROPS]ScreenRect = std.mem.zeroes([MAX_RENDER_CROPS]ScreenRect),
@@ -854,18 +807,6 @@ pub fn getHeight(_: *const RenderSystem) c_int {
     }
 
     return glConfig.nativeScreenHeight;
-}
-
-pub fn setPrimaryWorld(_: *RenderSystem, render_world: *RenderWorld) void {
-    idtech_instance.setPrimaryWorld(render_world);
-}
-
-pub fn setPrimaryRenderView(_: *RenderSystem, render_view: RenderView) void {
-    idtech_instance.setPrimaryRenderView(render_view);
-}
-
-pub fn setPrimaryView(_: *RenderSystem, view_def: *ViewDef) void {
-    idtech_instance.setPrimaryView(view_def);
 }
 
 pub fn setView(render_system: *RenderSystem, view_def: ?*ViewDef) void {

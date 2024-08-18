@@ -51,22 +51,6 @@ idRenderSystemLocal	tr;
 
 idRenderSystem* renderSystem = &tr;
 
-extern "C" void c_renderSystem_setPrimaryRenderView(idRenderSystemLocal* renderSystem, renderView_t renderView) {
-	renderSystem->primaryRenderView = renderView;
-}
-
-extern "C" void c_renderSystem_setPrimaryWorld(idRenderSystemLocal* renderSystem, void* renderWorld) {
-	renderSystem->primaryWorld = (idRenderWorldLocal*)renderWorld;
-}
-
-extern "C" void c_renderSystem_setPrimaryView(idRenderSystemLocal* renderSystem, viewDef_t* viewDef) {
-	renderSystem->primaryView = viewDef;
-}
-
-extern "C" void c_parallelJobList_wait(idParallelJobList* jobList) {
-	jobList->Wait();
-}
-
 /*
 =====================
 R_PerformanceCounters

@@ -45,10 +45,6 @@ export fn ztech_renderWorld_boundsInAreas(
     return render_world.boundsInAreas(bounds.toBounds(), areas[0..max_areas]);
 }
 
-export fn ztech_renderer_setPrimaryRenderView(view: *const RenderView) callconv(.C) void {
-    RenderSystem.instance.setPrimaryRenderView(view.*);
-}
-
 export fn ztech_renderWorld_renderScene(rw: *RenderWorldPtr, view: *const RenderView) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 

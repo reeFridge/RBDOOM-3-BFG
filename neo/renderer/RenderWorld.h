@@ -500,7 +500,6 @@ bool ztech_renderWorld_areasAreConnected(void*, int, int, portalConnection_t);
 idBounds ztech_renderWorld_areaBounds(void*, int);
 
 void ztech_renderWorld_renderScene(void*, const renderView_t*);
-void ztech_renderer_setPrimaryRenderView(const renderView_t*);
 
 }
 

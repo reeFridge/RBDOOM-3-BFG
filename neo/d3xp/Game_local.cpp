@@ -2764,8 +2764,6 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 				if (ztech_getPlayerRenderView(&view)) {
 					if (gameRenderWorld)
 						gameRenderWorld->SetRenderView(view);
-					else if (game_ztechRenderWorld)
-						ztech_renderer_setPrimaryRenderView(view);
 				}
 			}
 
