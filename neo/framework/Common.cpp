@@ -897,8 +897,13 @@ void idCommonLocal::RenderSplash()
 	renderSystem->SetColor4( 1, 1, 1, 1 );
 	renderSystem->DrawStretchPic( barWidth, barHeight, renderSystem->GetVirtualWidth() - barWidth * 2.0f, renderSystem->GetVirtualHeight() - barHeight * 2.0f, 0, 0, 1, 1, splashScreen );
 
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	const emptyCommand_t* cmd = ztech_renderSystem_swapCommandBuffers();
+	ztech_renderSystem_renderCommandBuffers(cmd);
+#else
 	const emptyCommand_t* cmd = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu, &stats_backend, &stats_frontend );
 	renderSystem->RenderCommandBuffers( cmd );
+#endif
 
 	// RB: this is the same as Doom 3 renderSystem->EndFrame()
 	//renderSystem->SwapCommandBuffers_FinishRendering( &time_frontend, &time_backend, &time_shadows, &time_gpu );

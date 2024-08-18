@@ -12,8 +12,53 @@ const FrameData = @import("frame_data.zig");
 const nvrhi = @import("nvrhi.zig");
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 
+// TODO:
+// * DrawStretchPic - Font rendering depends on it!
+
+export fn ztech_renderSystem_drawStretchPicture(
+    top_left: *const CVec4,
+    top_right: *const CVec4,
+    bottom_right: *const CVec4,
+    bottom_left: *const CVec4,
+    opt_material: ?*const Material,
+    z: f32,
+) callconv(.C) void {
+    RenderSystem.instance.drawStretchPicture(
+        top_left.toVec4f(),
+        top_right.toVec4f(),
+        bottom_right.toVec4f(),
+        bottom_left.toVec4f(),
+        opt_material,
+        z,
+    );
+}
+
+export fn ztech_renderSystem_setColor(color: CVec4) callconv(.C) void {
+    RenderSystem.instance.setColor(color.toVec4f());
+}
+
 export fn ztech_renderSystem_renderCommandBuffers(cmd_head: ?*FrameData.EmptyCommand) callconv(.C) void {
     RenderSystem.instance.renderCommandBuffers(cmd_head);
+}
+
+export fn ztech_renderSystem_isInitialized() callconv(.C) bool {
+    return RenderSystem.instance.initialized;
+}
+
+export fn ztech_renderSystem_setBackendInitialized() callconv(.C) void {
+    RenderSystem.instance.backend_initialized = true;
+}
+
+export fn ztech_renderSystem_getWidth() callconv(.C) c_int {
+    return RenderSystem.instance.getWidth();
+}
+
+export fn ztech_renderSystem_getHeight() callconv(.C) c_int {
+    return RenderSystem.instance.getWidth();
+}
+
+export fn ztech_renderSystem_isBackendInitialized() callconv(.C) bool {
+    return RenderSystem.instance.backend_initialized;
 }
 
 export fn ztech_renderSystem_setReadyToPresent() callconv(.C) void {
@@ -32,6 +77,10 @@ export fn ztech_renderSystem_finishRendering() callconv(.C) void {
     RenderSystem.instance.finishRendering();
 }
 
+export fn ztech_renderSystem_getShaderTime() callconv(.C) f32 {
+    return RenderSystem.instance.frame_shader_time;
+}
+
 export fn ztech_renderSystem_finishCommandBuffers() callconv(.C) ?*FrameData.EmptyCommand {
     return RenderSystem.instance.finishCommandBuffers();
 }
@@ -47,17 +96,9 @@ export fn ztech_renderSystem_initBackend(
 
 export fn ztech_renderSystem_init(
     view_count: *c_int,
-    ambient_light_vector: *CVec4,
     gui_model_ptr: **GuiModel,
-    gamma_table: [*]c_ushort,
-    identity_matrix: [*]f32,
-    cube_axis: [*]CMat3,
     front_end_job_list: **ParallelJobList,
     envprobe_job_list: **ParallelJobList,
-    unit_square_triangles: **SurfaceTriangles,
-    zero_one_cube_triangles: **SurfaceTriangles,
-    zero_one_sphere_triangles: **SurfaceTriangles,
-    test_image_triangles: **SurfaceTriangles,
     default_material: *?*const Material,
     default_point_light: *?*const Material,
     default_projected_light: *?*const Material,
@@ -70,17 +111,9 @@ export fn ztech_renderSystem_init(
 
     ztech_renderSystem_init_syncState(
         view_count,
-        ambient_light_vector,
         gui_model_ptr,
-        gamma_table,
-        identity_matrix,
-        cube_axis,
         front_end_job_list,
         envprobe_job_list,
-        unit_square_triangles,
-        zero_one_cube_triangles,
-        zero_one_sphere_triangles,
-        test_image_triangles,
         default_material,
         default_point_light,
         default_projected_light,
@@ -98,38 +131,22 @@ export fn ztech_renderSystem_deinit(
 ) callconv(.C) void {
     RenderSystem.instance.deinit(global.gpa.allocator());
 
-    command_list_ptr.* = null;
+    command_list_ptr.* = null; // avoid double free
 }
 
-export fn ztech_renderSystem_finishCommandBuffers_syncState(
-    render_crop: *ScreenRect,
-    current_render_crop: *c_int,
-    frame_count: *c_int,
-    gui_recursion_level: *c_int,
-    frame_shader_time: *f32,
-) callconv(.C) void {
-    const instance = &RenderSystem.instance;
+export fn ztech_renderSystem_getCroppedViewport(out: *ScreenRect) callconv(.C) void {
+    out.* = RenderSystem.instance.getCroppedViewport();
+}
 
-    render_crop.* = instance.render_crops[0];
-    current_render_crop.* = @intCast(instance.current_render_crop);
-    frame_count.* = @intCast(instance.frame_count);
-    gui_recursion_level.* = @intCast(instance.gui_recursion_level);
-    frame_shader_time.* = instance.frame_shader_time;
+export fn ztech_renderSystem_getFrameCount() callconv(.C) c_int {
+    return @intCast(RenderSystem.instance.frame_count);
 }
 
 export fn ztech_renderSystem_init_syncState(
     view_count: *c_int,
-    ambient_light_vector: *CVec4,
     gui_model_ptr: **GuiModel,
-    gamma_table: [*]c_ushort,
-    identity_matrix: [*]f32,
-    cube_axis: [*]CMat3,
     front_end_job_list: **ParallelJobList,
     envprobe_job_list: **ParallelJobList,
-    unit_square_triangles: **SurfaceTriangles,
-    zero_one_cube_triangles: **SurfaceTriangles,
-    zero_one_sphere_triangles: **SurfaceTriangles,
-    test_image_triangles: **SurfaceTriangles,
     default_material: *?*const Material,
     default_point_light: *?*const Material,
     default_projected_light: *?*const Material,
@@ -141,29 +158,11 @@ export fn ztech_renderSystem_init_syncState(
     const instance = &RenderSystem.instance;
 
     view_count.* = @intCast(instance.view_count);
-    ambient_light_vector.* = CVec4.fromVec4f(instance.ambient_light_vector);
     gui_model_ptr.* = instance.gui_model;
     tr_gui_model_ptr.* = instance.gui_model;
 
-    for (gamma_table[0..256], 0..) |*item, i| {
-        item.* = instance.gamma_table[i];
-    }
-
-    for (identity_matrix[0..16], 0..) |*item, i| {
-        item.* = instance.identity_space[i];
-    }
-
-    for (cube_axis[0..6], 0..) |*item, i| {
-        item.* = CMat3.fromMat3f(instance.cube_axis[i]);
-    }
-
     front_end_job_list.* = instance.front_end_job_list;
     envprobe_job_list.* = instance.envprobe_job_list;
-
-    unit_square_triangles.* = instance.unit_square_triangles;
-    zero_one_cube_triangles.* = instance.zero_one_cube_triangles;
-    zero_one_sphere_triangles.* = instance.zero_one_sphere_triangles;
-    test_image_triangles.* = instance.test_image_triangles;
 
     default_material.* = instance.default_material;
     default_point_light.* = instance.default_point_light;

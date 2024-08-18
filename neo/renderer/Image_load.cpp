@@ -424,7 +424,11 @@ void idImage::GenerateCubeImage( const byte* pic[6], int size, textureFilter_t f
 	// an image match from a shader before the render starts would miss
 	// the generated texture
 #if !defined( DMAP )
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	if( !ztech_renderSystem_isBackendInitialized() )
+#else
 	if( !tr.IsInitialized() )
+#endif
 	{
 		return;
 	}

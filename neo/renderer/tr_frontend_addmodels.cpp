@@ -183,9 +183,14 @@ If the model isn't dynamic, it returns the original.
 Returns the cached dynamic model if present, otherwise creates it.
 ===================
 */
+extern "C" int ztech_renderSystem_getFrameCount(void);
 idRenderModel* R_EntityDefDynamicModel( idRenderEntityLocal* def )
 {
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	if( def->dynamicModelFrameCount == ztech_renderSystem_getFrameCount() )
+#else
 	if( def->dynamicModelFrameCount == tr.frameCount )
+#endif
 	{
 		return def->dynamicModel;
 	}

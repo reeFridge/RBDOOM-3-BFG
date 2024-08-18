@@ -66,7 +66,11 @@ void DeviceManager::BackBufferResizing()
 
 void DeviceManager::BackBufferResized()
 {
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	if( ztech_renderSystem_isInitialized() )
+#else
 	if( tr.IsInitialized() )
+#endif
 	{
 		Framebuffer::ResizeFramebuffers();
 	}

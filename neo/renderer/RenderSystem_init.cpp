@@ -2085,30 +2085,6 @@ ztechRenderSystemLocal::~ztechRenderSystemLocal()
 	idRenderSystemLocal::~idRenderSystemLocal();
 }
 
-extern "C" void ztech_renderSystem_init(
-	int*,
-	idVec4*,
-	idGuiModel**,
-	unsigned short*,
-	float*,
-	idMat3*,
-	idParallelJobList**,
-	idParallelJobList**,
-	srfTriangles_t**,
-	srfTriangles_t**,
-	srfTriangles_t**,
-	srfTriangles_t**,
-	const idMaterial**,
-	const idMaterial**,
-	const idMaterial**,
-	const idMaterial**,
-	const idMaterial**,
-	const idMaterial**,
-	idGuiModel**
-);
-
-extern "C" void ztech_renderSystem_deinit(nvrhi::ICommandList**);
-
 void ztechRenderSystemLocal::Init()
 {
 	ztech_renderSystem_init(
@@ -2532,8 +2508,6 @@ void idRenderSystemLocal::InitBackend()
 		deviceManager->GetDevice()->executeCommandList( commandList );
 	}
 }
-
-extern "C" void ztech_renderSystem_initBackend(nvrhi::ICommandList**);
 
 void ztechRenderSystemLocal::InitBackend() {
 	ztech_renderSystem_initBackend(&commandList);

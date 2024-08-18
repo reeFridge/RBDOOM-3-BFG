@@ -213,6 +213,8 @@ void idGuiModel::EmitToCurrentView( float modelMatrix[16], bool depthHack )
 float GetScreenSeparationForGuis();
 // DG end
 
+extern "C" void ztech_renderSystem_getCroppedViewport(idScreenRect*);
+extern "C" float ztech_renderSystem_getShaderTime();
 /*
 ================
 idGuiModel::EmitFullScreen
@@ -242,7 +244,11 @@ void idGuiModel::EmitFullScreen( Framebuffer* renderTarget )
 	}
 	else
 	{
+#ifdef USE_ZTECH_RENDER_SYSTEM
+		ztech_renderSystem_getCroppedViewport(&viewDef->viewport);
+#else
 		tr.GetCroppedViewport( &viewDef->viewport );
+#endif
 	}
 
 	bool stereoEnabled = ( renderSystem->GetStereo3DMode() != STEREO3D_OFF );
@@ -319,7 +325,11 @@ void idGuiModel::EmitFullScreen( Framebuffer* renderTarget )
 
 #if 1
 	// RB: give renderView the current time to calculate 2D shader effects
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	int shaderTime = ztech_renderSystem_getShaderTime() * 1000;
+#else
 	int shaderTime = tr.frameShaderTime * 1000; //Sys_Milliseconds();
+#endif
 	viewDef->renderView.time[0] = shaderTime;
 	viewDef->renderView.time[1] = shaderTime;
 	// RB end
@@ -552,4 +562,8 @@ extern "C" void c_guiModel_beginFrame(idGuiModel* guiModel) {
 
 extern "C" void c_guiModel_emitFullScreen(idGuiModel* guiModel, Framebuffer* renderTarget) {
 	guiModel->EmitFullScreen(renderTarget);
+}
+
+extern "C" idDrawVert* c_guiModel_allocTris(idGuiModel* guiModel, int numVerts, const triIndex_t* indexes, int numIndexes, const idMaterial* material, const uint64 glState, const stereoDepthType_t stereoType ) {
+	return guiModel->AllocTris(numVerts, indexes, numIndexes, material, glState, stereoType);
 }

@@ -462,7 +462,11 @@ void idImage::AllocImage()
 	// have filled in the parms.  We must have the values set, or
 	// an image match from a shader before OpenGL starts would miss
 	// the generated texture
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	if( !ztech_renderSystem_isBackendInitialized() )
+#else
 	if( !tr.IsInitialized() )
+#endif
 	{
 		return;
 	}

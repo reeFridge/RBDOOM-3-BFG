@@ -156,7 +156,11 @@ void idRenderBackend::Init()
 {
 	common->Printf( "----- R_InitOpenGL -----\n" );
 
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	if( ztech_renderSystem_isBackendInitialized() )
+#else
 	if( tr.IsInitialized() )
+#endif
 	{
 		common->FatalError( "R_InitOpenGL called while active" );
 	}
@@ -214,7 +218,11 @@ void idRenderBackend::Init()
 
 	tileMap.Init( r_shadowMapAtlasSize.GetInteger(), MAX_TILE_RES, NUM_QUAD_TREE_LEVELS );
 
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	ztech_renderSystem_setBackendInitialized();
+#else
 	tr.SetInitialized();
+#endif
 
 	if( !commandList )
 	{
@@ -272,7 +280,7 @@ void idRenderBackend::Shutdown()
 	// SRS - Clean up NVRHI resources before Sys_Quit(), otherwise non-zero exit code (destructors too late)
 
 	// Clear all cached pipeline data
-	tr.backend.ClearCaches();
+	ClearCaches();
 	pipelineCache.Shutdown();
 
 	// Delete all renderpass resources
@@ -1857,7 +1865,11 @@ void idRenderBackend::GL_EndFrame()
 
 	if( deviceManager->GetGraphicsAPI() == nvrhi::GraphicsAPI::VULKAN )
 	{
+#ifdef USE_ZTECH_RENDER_SYSTEM
+		ztech_renderSystem_setReadyToPresent();
+#else
 		tr.SetReadyToPresent();
+#endif
 	}
 
 	renderLog.CloseMainBlock( MRB_GPU_TIME );
@@ -1906,7 +1918,11 @@ void idRenderBackend::GL_BlockingSwapBuffers()
 
 	if( deviceManager->GetGraphicsAPI() == nvrhi::GraphicsAPI::VULKAN )
 	{
+#ifdef USE_ZTECH_RENDER_SYSTEM
+		ztech_renderSystem_invalidateSwapBuffers();
+#else
 		tr.InvalidateSwapBuffers();
+#endif
 	}
 }
 
@@ -2228,7 +2244,11 @@ void idRenderBackend::SetBuffer( const void* data )
 
 	currentScissor.Clear();
 	currentScissor.AddPoint( 0, 0 );
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	currentScissor.AddPoint( ztech_renderSystem_getWidth(), ztech_renderSystem_getHeight() );
+#else
 	currentScissor.AddPoint( tr.GetWidth(), tr.GetHeight() );
+#endif
 
 	// clear screen for debugging
 	// automatically enable this with several other debug tools
@@ -2321,7 +2341,10 @@ void idRenderBackend::ImGui_RenderDrawLists( ImDrawData* draw_data )
 		return;
 	}
 
+#ifdef USE_ZTECH_RENDER_SYSTEM
+#else
 	tr.guiModel->EmitImGui( draw_data );
+#endif
 }
 
 /*

@@ -23,6 +23,12 @@ pub const STEREO3D_QUAD_BUFFER: c_int = 5;
 pub const STEREO3D_HDMI_720: c_int = 6;
 pub const stereo3DMode_t = c_int;
 
+pub const STEREO_DEPTH_TYPE_NONE: c_int = 0;
+pub const STEREO_DEPTH_TYPE_NEAR: c_int = 1;
+pub const STEREO_DEPTH_TYPE_MID: c_int = 2;
+pub const STEREO_DEPTH_TYPE_FAR: c_int = 3;
+pub const sereoDepthType_t = c_int;
+
 pub const glconfig_t = extern struct {
     vendor: graphicsVendor_t,
     uniformBufferOffsetAlignment: c_int,
@@ -455,6 +461,7 @@ envprobe_jobs: std.ArrayList(*CalcEnvprobeParams) = undefined,
 light_grid_jobs: std.ArrayList(*CalcLightGridPointParams) = undefined,
 //backend: RenderBackend = std.mem.zeroes(RenderBackend),
 initialized: bool = false,
+backend_initialized: bool = false,
 omit_swap_buffers: bool = false,
 
 pub var instance = RenderSystem{};
@@ -471,8 +478,9 @@ const global = @import("../global.zig");
 
 pub fn initBackend(render_system: *RenderSystem) void {
     if (render_system.initialized) return;
-
-    backend_.init(); // also inits FrameData
+    // also inits FrameData
+    // and calls to ztech_renderSystem_setBackendInitialized()
+    backend_.init();
 
     const device = DeviceManager.instance().getDevice();
 
@@ -753,8 +761,8 @@ pub fn uncrop(render_system: *RenderSystem) void {
     render_system.current_render_crop -= 1;
 }
 
-pub fn getCroppedViewport(render_system: *const RenderSystem, viewport: *ScreenRect) void {
-    viewport.* = render_system.render_crops[render_system.current_render_crop];
+pub fn getCroppedViewport(render_system: *const RenderSystem) ScreenRect {
+    return render_system.render_crops[render_system.current_render_crop];
 }
 
 pub fn cropRenderSize(render_system: *RenderSystem, width: c_int, height: c_int) void {
@@ -827,4 +835,85 @@ pub fn viewCount(render_system: *const RenderSystem) usize {
 
 pub fn clearViewDef(render_system: *RenderSystem) void {
     render_system.view_def = null;
+}
+
+const quad_pic_indexes: [6]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
+pub fn drawStretchPicture(
+    render_system: *RenderSystem,
+    top_left: Vec4(f32),
+    top_right: Vec4(f32),
+    bottom_right: Vec4(f32),
+    bottom_left: Vec4(f32),
+    opt_material: ?*const Material,
+    z: f32,
+) void {
+    if (!render_system.initialized) return;
+    const material = opt_material orelse return;
+    const verts = render_system.gui_model.allocTris(
+        4,
+        &quad_pic_indexes,
+        material,
+        render_system.current_gl_state,
+        STEREO_DEPTH_TYPE_NONE,
+    ) orelse return;
+
+    var local_verts: [4]DrawVertex align(16) = std.mem.zeroes([4]DrawVertex);
+
+    local_verts[0].clear();
+    local_verts[0].xyz.x = top_left.x();
+    local_verts[0].xyz.y = top_left.y();
+    local_verts[0].xyz.z = z;
+    local_verts[0].setTexCoord(top_left.z(), top_left.w());
+    local_verts[0].setNativeOrderColor(render_system.current_color_native_bytes_order);
+    local_verts[0].clearColor2();
+
+    local_verts[1].clear();
+    local_verts[1].xyz.x = top_right.x();
+    local_verts[1].xyz.y = top_right.y();
+    local_verts[1].xyz.z = z;
+    local_verts[1].setTexCoord(top_right.z(), top_right.w());
+    local_verts[1].setNativeOrderColor(render_system.current_color_native_bytes_order);
+    local_verts[1].clearColor2();
+
+    local_verts[2].clear();
+    local_verts[2].xyz.x = bottom_right.x();
+    local_verts[2].xyz.y = bottom_right.y();
+    local_verts[2].xyz.z = z;
+    local_verts[2].setTexCoord(bottom_right.z(), bottom_right.w());
+    local_verts[2].setNativeOrderColor(render_system.current_color_native_bytes_order);
+    local_verts[2].clearColor2();
+
+    local_verts[3].clear();
+    local_verts[3].xyz.x = bottom_left.x();
+    local_verts[3].xyz.y = bottom_left.y();
+    local_verts[3].xyz.z = z;
+    local_verts[3].setTexCoord(bottom_left.z(), bottom_left.w());
+    local_verts[3].setNativeOrderColor(render_system.current_color_native_bytes_order);
+    local_verts[3].clearColor2();
+
+    std.debug.assert(std.mem.isAligned(@intFromPtr(verts.ptr), 16));
+    std.debug.assert(std.mem.isAligned(@intFromPtr((&local_verts).ptr), 16));
+    @memcpy(verts, &local_verts);
+}
+
+const math = @import("../math/math.zig");
+// little endian pack
+fn packColorLittle(color: Vec4(f32)) u32 {
+    const bytes: [4]u8 = .{
+        math.ftob(color.x() * 255),
+        math.ftob(color.y() * 255),
+        math.ftob(color.z() * 255),
+        math.ftob(color.w() * 255),
+    };
+
+    var out: u32 = 0;
+    inline for (bytes, 0..) |byte, i| {
+        out |= @as(u32, byte) << @intCast((i * 8));
+    }
+
+    return out;
+}
+
+pub fn setColor(render_system: *RenderSystem, rgba: Vec4(f32)) void {
+    render_system.current_color_native_bytes_order = std.mem.toNative(u32, packColorLittle(rgba), .little);
 }

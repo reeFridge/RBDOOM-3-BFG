@@ -463,10 +463,15 @@ void idCommonLocal::UpdateScreen( bool captureToImage, bool releaseMouse )
 
 	// this should exit right after vsync, with the GPU idle and ready to draw
 	frameTiming.startRenderTime = Sys_Microseconds();   // SRS - Added frame timing for out-of-sequence updates (e.g. used in timedemo "twice" mode)
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	const emptyCommand_t* cmd = ztech_renderSystem_swapCommandBuffers();
+	ztech_renderSystem_renderCommandBuffers(cmd);
+#else
 	const emptyCommand_t* cmd = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu, &stats_backend, &stats_frontend );
 
 	// get the GPU busy with new commands
 	renderSystem->RenderCommandBuffers( cmd );
+#endif
 	frameTiming.finishRenderTime = Sys_Microseconds();  // SRS - Added frame timing for out-of-sequence updates (e.g. used in timedemo "twice" mode)
 
 	insideUpdateScreen = false;
@@ -639,13 +644,21 @@ void idCommonLocal::Frame()
 		// foresthale 2014-05-12: also check com_editors as many of them are not particularly thread-safe (editLights for example)
 		if( com_smp.GetBool() && com_editors == 0 )
 		{
+#ifdef USE_ZTECH_RENDER_SYSTEM
+			renderCommands = ztech_renderSystem_swapCommandBuffers();
+#else
 			renderCommands = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu, &stats_backend, &stats_frontend );
+#endif
 		}
 		else
 		{
 			// the GPU will stay idle through command generation for minimal
 			// input latency
+#ifdef USE_ZTECH_RENDER_SYSTEM
+			ztech_renderSystem_finishRendering();
+#else
 			renderSystem->SwapCommandBuffers_FinishRendering( &time_frontend, &time_backend, &time_shadows, &time_gpu, &stats_backend, &stats_frontend );
+#endif
 		}
 		frameTiming.finishSyncTime = Sys_Microseconds();
 
@@ -869,14 +882,22 @@ void idCommonLocal::Frame()
 		{
 			// in non-smp mode, run the commands we just generated, instead of
 			// frame-delayed ones from a background thread
+#ifdef USE_ZTECH_RENDER_SYSTEM
+			renderCommands = ztech_renderSystem_finishCommandBuffers();
+#else
 			renderCommands = renderSystem->SwapCommandBuffers_FinishCommandBuffers();
+#endif
 		}
 
 		//----------------------------------------
 		// Run the render back end, getting the GPU busy with new commands
 		// ASAP to minimize the pipeline bubble.
 		//----------------------------------------
+#ifdef USE_ZTECH_RENDER_SYSTEM
+		ztech_renderSystem_renderCommandBuffers(renderCommands);
+#else
 		renderSystem->RenderCommandBuffers( renderCommands );
+#endif
 		if( com_sleepRender.GetInteger() > 0 )
 		{
 			// debug tool to test frame adaption

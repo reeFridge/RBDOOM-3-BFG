@@ -111,11 +111,6 @@ void idRenderSystemLocal::PrintPerformanceCounters()
 	memset( &backend.pc, 0, sizeof( backend.pc ) );
 }
 
-extern "C" void ztech_renderSystem_renderCommandBuffers(const emptyCommand_t* const);
-void ztechRenderSystemLocal::RenderCommandBuffers( const emptyCommand_t* const cmdHead ) {
-	ztech_renderSystem_renderCommandBuffers(cmdHead);
-}
-
 /*
 ====================
 RenderCommandBuffers
@@ -271,9 +266,11 @@ idRenderSystemLocal::~idRenderSystemLocal()
 idRenderSystemLocal::SetColor
 =============
 */
+extern "C" void ztech_renderSystem_setColor(idVec4);
 void idRenderSystemLocal::SetColor( const idVec4& rgba )
 {
-	currentColorNativeBytesOrder = LittleLong( PackColor( rgba ) );
+	//currentColorNativeBytesOrder = LittleLong( PackColor( rgba ) );
+	ztech_renderSystem_setColor(rgba);
 }
 
 /*
@@ -322,13 +319,16 @@ void idRenderSystemLocal::DrawStretchPic( float x, float y, float w, float h, fl
 idRenderSystemLocal::DrawStretchPic
 =============
 */
+extern "C" void ztech_renderSystem_drawStretchPicture(const idVec4*, const idVec4*, const idVec4*, const idVec4*, const idMaterial*, float z);
 static triIndex_t quadPicIndexes[6] = { 3, 0, 2, 2, 0, 1 };
 void idRenderSystemLocal::DrawStretchPic( const idVec4& topLeft, const idVec4& topRight, const idVec4& bottomRight, const idVec4& bottomLeft, const idMaterial* material, float z )
 {
-	if( !IsInitialized() )
-	{
-		return;
-	}
+	ztech_renderSystem_drawStretchPicture(&topLeft, &topRight, &bottomRight, &bottomLeft, material, z);
+	return;
+	//if( !IsInitialized() )
+	//{
+	//	return;
+	//}
 	if( material == NULL )
 	{
 		return;
@@ -635,67 +635,6 @@ const emptyCommand_t* idRenderSystemLocal::SwapCommandBuffers(
 	SwapCommandBuffers_FinishRendering( frontEndMicroSec, backEndMicroSec, shadowMicroSec, gpuMicroSec, bc, pc );
 
 	return SwapCommandBuffers_FinishCommandBuffers();
-}
-
-extern "C" void ztech_renderSystem_setReadyToPresent();
-void ztechRenderSystemLocal::SetReadyToPresent() {
-	ztech_renderSystem_setReadyToPresent();
-}
-
-extern "C" void ztech_renderSystem_invalidateSwapBuffers();
-void ztechRenderSystemLocal::InvalidateSwapBuffers() {
-	ztech_renderSystem_invalidateSwapBuffers();
-}
-
-extern "C" emptyCommand_t* ztech_renderSystem_swapCommandBuffers();
-extern "C" void ztech_renderSystem_finishRendering();
-extern "C" emptyCommand_t* ztech_renderSystem_finishCommandBuffers();
-extern "C" void ztech_renderSystem_finishCommandBuffers_syncState(
-		idScreenRect*,
-		int*,
-		int*,
-		int*,
-		float*
-		);
-
-const emptyCommand_t* ztechRenderSystemLocal::SwapCommandBuffers_FinishCommandBuffers() {
-	emptyCommand_t* cmd = ztech_renderSystem_finishCommandBuffers();
-
-	ztech_renderSystem_finishCommandBuffers_syncState(
-			&renderCrops[0],
-			&currentRenderCrop,
-			&frameCount,
-			&guiRecursionLevel,
-			&frameShaderTime
-			);
-
-	return cmd;
-}
-
-const emptyCommand_t* ztechRenderSystemLocal::SwapCommandBuffers(
-	uint64* frontEndMicroSec,
-	uint64* backEndMicroSec,
-	uint64* shadowMicroSec,
-	uint64* gpuMicroSec,
-	backEndCounters_t* bc,
-	performanceCounters_t* pc
-)
-{
-	ztech_renderSystem_finishRendering();
-
-	return SwapCommandBuffers_FinishCommandBuffers();
-}
-
-void ztechRenderSystemLocal::SwapCommandBuffers_FinishRendering(
-	uint64* frontEndMicroSec,
-	uint64* backEndMicroSec,
-	uint64* shadowMicroSec,
-	uint64* gpuMicroSec,
-	backEndCounters_t* bc,
-	performanceCounters_t* pc
-)
-{
-	ztech_renderSystem_finishRendering();
 }
 
 /*

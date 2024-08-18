@@ -1067,19 +1067,42 @@ public:
 	virtual void Shutdown();
 	virtual void Clear();
 	virtual void InitBackend();
-
-	virtual const emptyCommand_t* 	SwapCommandBuffers( uint64* frontEndMicroSec, uint64* backEndMicroSec, uint64* shadowMicroSec, uint64* gpuMicroSec, backEndCounters_t* bc, performanceCounters_t* pc );
-	virtual void					SwapCommandBuffers_FinishRendering( uint64* frontEndMicroSec, uint64* backEndMicroSec, uint64* shadowMicroSec, uint64* gpuMicroSec, backEndCounters_t* bc, performanceCounters_t* pc );
-	virtual const emptyCommand_t* 	SwapCommandBuffers_FinishCommandBuffers();
-	virtual void RenderCommandBuffers( const emptyCommand_t* const cmdHead );
-
-	void SetReadyToPresent();
-	void InvalidateSwapBuffers();
 };
 
 #define USE_ZTECH_RENDER_SYSTEM
 #ifdef USE_ZTECH_RENDER_SYSTEM
 extern ztechRenderSystemLocal tr;
+
+extern "C" {
+	void ztech_renderSystem_setBackendInitialized(void);
+	int ztech_renderSystem_getWidth(void);
+	int ztech_renderSystem_getHeight(void);
+	bool ztech_renderSystem_isBackendInitialized(void);
+	bool ztech_renderSystem_isInitialized(void);
+	void ztech_renderSystem_setReadyToPresent(void);
+	void ztech_renderSystem_invalidateSwapBuffers(void);
+	emptyCommand_t* ztech_renderSystem_swapCommandBuffers();
+	void ztech_renderSystem_finishRendering();
+	emptyCommand_t* ztech_renderSystem_finishCommandBuffers();
+	void ztech_renderSystem_renderCommandBuffers(const emptyCommand_t* const);
+	void ztech_renderSystem_init(
+			int*,
+			idGuiModel**,
+			idParallelJobList**,
+			idParallelJobList**,
+			const idMaterial**,
+			const idMaterial**,
+			const idMaterial**,
+			const idMaterial**,
+			const idMaterial**,
+			const idMaterial**,
+			idGuiModel**
+			);
+
+	void ztech_renderSystem_deinit(nvrhi::ICommandList**);
+	void ztech_renderSystem_initBackend(nvrhi::ICommandList**);
+}
+
 #else
 extern idRenderSystemLocal	tr;
 #endif

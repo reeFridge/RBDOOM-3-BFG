@@ -253,6 +253,22 @@ pub fn Vec4(comptime T: type) type {
         const V = @Vector(4, T);
 
         v: V = @splat(std.mem.zeroes(T)),
+
+        pub inline fn x(a: Self) T {
+            return a.v[0];
+        }
+
+        pub inline fn y(a: Self) T {
+            return a.v[1];
+        }
+
+        pub inline fn z(a: Self) T {
+            return a.v[2];
+        }
+
+        pub inline fn w(a: Self) T {
+            return a.v[3];
+        }
     };
 }
 

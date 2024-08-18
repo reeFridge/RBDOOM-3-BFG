@@ -470,7 +470,7 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
 
     RenderSystem.instance.performResolutionScaling(&window_width, &window_height);
     RenderSystem.instance.cropRenderSize(window_width, window_height);
-    RenderSystem.instance.getCroppedViewport(&view_def.viewport);
+    view_def.viewport = RenderSystem.instance.getCroppedViewport();
 
     view_def.scissor.x1 = 0;
     view_def.scissor.y1 = 0;
