@@ -1329,6 +1329,10 @@ extern "C" void c_parallelJobManager_freeJobList(idParallelJobManager* manager, 
 	manager->FreeJobList(list);
 }
 
+extern "C" void c_parallelJobList_wait(idParallelJobList* jobList) {
+	jobList->Wait();
+}
+
 /*
 ========================
 SubmitJobList
