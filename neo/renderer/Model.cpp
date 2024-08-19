@@ -320,7 +320,11 @@ void idRenderModelStatic::MakeDefaultModel()
 #if defined( DMAP )
 	surf.shader = declManager->FindMaterial( "_default", false );
 #else
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	surf.shader = declManager->FindMaterial( "_default", false );
+#else
 	surf.shader = tr.defaultMaterial;
+#endif
 #endif
 	surf.geometry = tri;
 

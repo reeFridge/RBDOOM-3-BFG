@@ -503,6 +503,38 @@ extern fn c_renderSystem_initColorMappings([*]c_ushort) callconv(.C) void;
 extern fn c_renderSystem_initImgui(?*const Material) callconv(.C) void;
 const Framebuffer = @import("framebuffer.zig");
 
+pub fn createRenderWorld(render_system: *RenderSystem, allocator: std.mem.Allocator) !*RenderWorld {
+    if (!render_system.initialized) unreachable;
+
+    const render_world_ptr = try allocator.create(RenderWorld);
+    errdefer allocator.destroy(render_world_ptr);
+    render_world_ptr.* = try RenderWorld.init(allocator);
+    errdefer render_world_ptr.deinit();
+
+    try render_system.worlds.append(render_world_ptr);
+
+    return render_world_ptr;
+}
+
+pub fn destroyRenderWorld(
+    render_system: *RenderSystem,
+    allocator: std.mem.Allocator,
+    world: *RenderWorld,
+) void {
+    if (!render_system.initialized) unreachable;
+
+    const index = for (render_system.worlds.items, 0..) |world_ptr, i| {
+        if (@intFromPtr(world) == @intFromPtr(world_ptr)) {
+            break i;
+        }
+    } else @panic("World is not registered");
+
+    _ = render_system.worlds.swapRemove(index);
+
+    world.deinit();
+    allocator.destroy(world);
+}
+
 pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{OutOfMemory}!void {
     render_system.view_count = 1;
     render_system.worlds = std.ArrayList(*RenderWorld).init(allocator);
@@ -539,10 +571,7 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
 
     c_renderSystem_initColorMappings((&render_system.gamma_table).ptr);
 
-    // refers to tr.defaultMaterial
-    // so call it after assign tr.defaultMatrial
-    // in ztech_renderSystem_init
-    // RenderModelManager.instance.init();
+    RenderModelManager.instance.init();
 
     render_system.front_end_job_list = ParallelJobManager.instance.allocJobList(
         JobListId.JOBLIST_RENDERER_FRONTEND,
@@ -568,6 +597,10 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
 }
 
 pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
+    for (render_system.worlds.items) |world_ptr| {
+        allocator.destroy(world_ptr);
+        world_ptr.deinit();
+    }
     render_system.worlds.deinit();
     render_system.fonts.deinit(); // destroy items
     render_system.envprobe_jobs.deinit();

@@ -287,7 +287,8 @@ void idCommonLocal::Draw()
 		// (we want to see progress of the loading gui binarize too)
 		if( loadGUI != NULL )
 		{
-			loadGUI->Render( renderSystem, Sys_Milliseconds() );
+			// TODO: UI
+			//loadGUI->Render( renderSystem, Sys_Milliseconds() );
 		}
 
 		// draw general progress bar
@@ -338,7 +339,8 @@ void idCommonLocal::Draw()
 		renderSystem->SetColor( colorBlack );
 		renderSystem->DrawStretchPic( 0, 0, renderSystem->GetVirtualWidth(), renderSystem->GetVirtualHeight(), 0, 0, 1, 1, whiteMaterial );
 
-		loadGUI->Render( renderSystem, Sys_Milliseconds() );
+		// TODO: ui
+		//loadGUI->Render( renderSystem, Sys_Milliseconds() );
 	}
 	// RB begin
 #if defined(USE_DOOMCLASSIC)
@@ -376,7 +378,8 @@ void idCommonLocal::Draw()
 			renderSystem->SetColor( colorBlack );
 			renderSystem->DrawStretchPic( 0, 0, renderSystem->GetVirtualWidth(), renderSystem->GetVirtualHeight(), 0, 0, 1, 1, whiteMaterial );
 		}
-		game->Shell_Render();
+		// TODO: port UI
+		//game->Shell_Render();
 	}
 	else if( mapSpawned )
 	{

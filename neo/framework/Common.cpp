@@ -1294,7 +1294,11 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		cvarSystem->ClearModifiedFlags( CVAR_ARCHIVE );
 
 		// init OpenGL, which will open a window and connect sound and input hardware
+#ifdef USE_ZTECH_RENDER_SYSTEM
+		ztech_renderSystem_initBackend();
+#else
 		renderSystem->InitBackend();
+#endif
 
 		// Support up to 2 digits after the decimal point
 		com_engineHz_denominator = 100LL * com_engineHz.GetFloat();
@@ -1304,7 +1308,11 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		soundSystem->Init();
 
 		// initialize the renderSystem data structures
+#ifdef USE_ZTECH_RENDER_SYSTEM
+		ztech_renderSystem_init();
+#else
 		renderSystem->Init();
+#endif
 
 		whiteMaterial = declManager->FindMaterial( "_white" );
 
@@ -1341,9 +1349,13 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 			idLib::Printf( "Skipping Intro Videos!\n" );
 			// display the legal splash screen
 			// No clue why we have to render this twice to show up...
+#ifdef USE_ZTECH_RENDER_SYSTEM
+			// TODO: ztech_renderSplash();
+#else
 			RenderSplash();
 			// SRS - OSX needs this for some OpenGL drivers, otherwise renders leftover image before splash
 			RenderSplash();
+#endif
 		}
 
 		int legalStartTime = Sys_Milliseconds();
@@ -1396,11 +1408,13 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		// the same idRenderWorld will be used for all games
 		// and demos, insuring that level specific models
 		// will be freed
-		//renderWorld = renderSystem->AllocRenderWorld();
-		//soundWorld = soundSystem->AllocSoundWorld( renderWorld );
-		// TODO: #define USE_ZTECH_RENDER_WORLD
+#ifdef USE_ZTECH_RENDER_SYSTEM
 		soundWorld = soundSystem->AllocSoundWorld( NULL );
-		ztech_renderWorld = renderSystem->ztech_AllocRenderWorld();
+		ztech_renderWorld = ztech_renderSystem_createRenderWorld();
+#else
+		renderWorld = renderSystem->AllocRenderWorld();
+		soundWorld = soundSystem->AllocSoundWorld( renderWorld );
+#endif
 
 		menuSoundWorld = soundSystem->AllocSoundWorld( NULL );
 		menuSoundWorld->PlaceListener( vec3_origin, mat3_identity, 0 );
@@ -1546,7 +1560,7 @@ void idCommonLocal::Shutdown()
 		renderSystem->FreeRenderWorld( renderWorld );
 		renderWorld = NULL;
 	} else if (ztech_renderWorld) {
-		renderSystem->ztech_FreeRenderWorld(ztech_renderWorld);
+		ztech_renderSystem_destroyRenderWorld(ztech_renderWorld);
 		ztech_renderWorld = NULL;
 	}
 
@@ -1593,7 +1607,11 @@ void idCommonLocal::Shutdown()
 	// shut down the renderSystem
 	// SRS - Note this also shuts down any testVideo resources, including cinematic audio voices
 	printf( "renderSystem->Shutdown();\n" );
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	ztech_renderSystem_deinit();
+#else
 	renderSystem->Shutdown();
+#endif
 
 	// shut down the sound system
 	// SRS - Shut down sound system after decl manager and render system so cinematic audio voices are destroyed first

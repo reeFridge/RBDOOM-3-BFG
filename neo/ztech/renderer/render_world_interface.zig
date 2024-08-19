@@ -9,14 +9,14 @@ const CVec3 = @import("../math/vector.zig").CVec3;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const RenderSystem = @import("render_system.zig");
 
-pub const RenderWorldPtr = opaque {};
+pub const RenderWorldOpaque = opaque {};
 
-export fn ztech_renderWorld_getEntityDefsCount(rw: *RenderWorldPtr) callconv(.C) usize {
+export fn ztech_renderWorld_getEntityDefsCount(rw: *RenderWorldOpaque) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     return render_world.entity_defs.items.len;
 }
 
-export fn ztech_renderWorld_getInteractionEntry(rw: *RenderWorldPtr, row: usize, column: usize) callconv(.C) ?*Interaction {
+export fn ztech_renderWorld_getInteractionEntry(rw: *RenderWorldOpaque, row: usize, column: usize) callconv(.C) ?*Interaction {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     const table = render_world.interaction_table orelse return null;
 
@@ -25,7 +25,7 @@ export fn ztech_renderWorld_getInteractionEntry(rw: *RenderWorldPtr, row: usize,
     return entry;
 }
 
-export fn ztech_renderWorld_getInteractionRow(rw: *RenderWorldPtr, row: usize) ?[*]?*Interaction {
+export fn ztech_renderWorld_getInteractionRow(rw: *RenderWorldOpaque, row: usize) ?[*]?*Interaction {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     const table = render_world.interaction_table orelse return null;
     const row_start = row * render_world.interaction_table_width;
@@ -35,7 +35,7 @@ export fn ztech_renderWorld_getInteractionRow(rw: *RenderWorldPtr, row: usize) ?
 }
 
 export fn ztech_renderWorld_boundsInAreas(
-    rw: *RenderWorldPtr,
+    rw: *RenderWorldOpaque,
     bounds: CBounds,
     areas: [*c]c_int,
     max_areas: usize,
@@ -45,7 +45,7 @@ export fn ztech_renderWorld_boundsInAreas(
     return render_world.boundsInAreas(bounds.toBounds(), areas[0..max_areas]);
 }
 
-export fn ztech_renderWorld_renderScene(rw: *RenderWorldPtr, view: *const RenderView) callconv(.C) void {
+export fn ztech_renderWorld_renderScene(rw: *RenderWorldOpaque, view: *const RenderView) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.renderScene(view.*) catch {
@@ -53,7 +53,7 @@ export fn ztech_renderWorld_renderScene(rw: *RenderWorldPtr, view: *const Render
     };
 }
 
-export fn ztech_renderWorld_generateAllInteractions(rw: *RenderWorldPtr) callconv(.C) void {
+export fn ztech_renderWorld_generateAllInteractions(rw: *RenderWorldOpaque) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.generateAllInteractions() catch {
@@ -61,7 +61,7 @@ export fn ztech_renderWorld_generateAllInteractions(rw: *RenderWorldPtr) callcon
     };
 }
 
-export fn ztech_renderWorld_areaBounds(rw: *RenderWorldPtr, int_area_num: c_int) callconv(.C) CBounds {
+export fn ztech_renderWorld_areaBounds(rw: *RenderWorldOpaque, int_area_num: c_int) callconv(.C) CBounds {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     if (int_area_num < 0) @panic("ztech_renderWorld_areaBounds: bad area_num");
@@ -73,7 +73,7 @@ export fn ztech_renderWorld_areaBounds(rw: *RenderWorldPtr, int_area_num: c_int)
     return CBounds.fromBounds(bounds);
 }
 
-export fn ztech_renderWorld_pointInArea(rw: *RenderWorldPtr, point: *const CVec3) callconv(.C) c_int {
+export fn ztech_renderWorld_pointInArea(rw: *RenderWorldOpaque, point: *const CVec3) callconv(.C) c_int {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     const index = render_world.pointInArea(point.toVec3f()) catch return -1;
@@ -82,7 +82,7 @@ export fn ztech_renderWorld_pointInArea(rw: *RenderWorldPtr, point: *const CVec3
 }
 
 export fn ztech_renderWorld_areasAreConnected(
-    rw: *RenderWorldPtr,
+    rw: *RenderWorldOpaque,
     int_area_a: c_int,
     int_area_b: c_int,
     connection: c_int,
@@ -95,7 +95,7 @@ export fn ztech_renderWorld_areasAreConnected(
     };
 }
 
-export fn ztech_renderWorld_freeLightDef(rw: *RenderWorldPtr, light_index: c_int) callconv(.C) void {
+export fn ztech_renderWorld_freeLightDef(rw: *RenderWorldOpaque, light_index: c_int) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.freeLightDef(@intCast(light_index)) catch |err| {
@@ -103,7 +103,7 @@ export fn ztech_renderWorld_freeLightDef(rw: *RenderWorldPtr, light_index: c_int
     };
 }
 
-export fn ztech_renderWorld_addLightDef(rw: *RenderWorldPtr, def: *const RenderLight) callconv(.C) c_int {
+export fn ztech_renderWorld_addLightDef(rw: *RenderWorldOpaque, def: *const RenderLight) callconv(.C) c_int {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     const index = render_world.addLightDef(def.*) catch {
@@ -113,7 +113,7 @@ export fn ztech_renderWorld_addLightDef(rw: *RenderWorldPtr, def: *const RenderL
     return @intCast(index);
 }
 
-export fn ztech_renderWorld_updateLightDef(rw: *RenderWorldPtr, light_index: c_int, def: *const RenderLight) callconv(.C) void {
+export fn ztech_renderWorld_updateLightDef(rw: *RenderWorldOpaque, light_index: c_int, def: *const RenderLight) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.updateLightDef(@intCast(light_index), def.*) catch {
@@ -121,7 +121,7 @@ export fn ztech_renderWorld_updateLightDef(rw: *RenderWorldPtr, light_index: c_i
     };
 }
 
-export fn ztech_renderWorld_addEntityDef(rw: *RenderWorldPtr, def: *const RenderEntity) callconv(.C) c_int {
+export fn ztech_renderWorld_addEntityDef(rw: *RenderWorldOpaque, def: *const RenderEntity) callconv(.C) c_int {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     const index = render_world.addEntityDef(def.*) catch {
@@ -131,7 +131,7 @@ export fn ztech_renderWorld_addEntityDef(rw: *RenderWorldPtr, def: *const Render
     return @intCast(index);
 }
 
-export fn ztech_renderWorld_updateEntityDef(rw: *RenderWorldPtr, entity_index: c_int, def: *const RenderEntity) callconv(.C) void {
+export fn ztech_renderWorld_updateEntityDef(rw: *RenderWorldOpaque, entity_index: c_int, def: *const RenderEntity) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.updateEntityDef(@intCast(entity_index), def.*) catch {
@@ -139,7 +139,7 @@ export fn ztech_renderWorld_updateEntityDef(rw: *RenderWorldPtr, entity_index: c
     };
 }
 
-export fn ztech_renderWorld_freeEntityDef(rw: *RenderWorldPtr, entity_index: c_int) callconv(.C) void {
+export fn ztech_renderWorld_freeEntityDef(rw: *RenderWorldOpaque, entity_index: c_int) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.freeEntityDef(@intCast(entity_index)) catch |err| {
@@ -148,7 +148,7 @@ export fn ztech_renderWorld_freeEntityDef(rw: *RenderWorldPtr, entity_index: c_i
 }
 
 export fn ztech_renderWorld_getPortal(
-    rw: *RenderWorldPtr,
+    rw: *RenderWorldOpaque,
     area_num: c_int,
     portal_num: c_int,
 ) callconv(.C) RenderWorld.ExitPortal {
@@ -159,7 +159,7 @@ export fn ztech_renderWorld_getPortal(
     };
 }
 
-export fn ztech_renderWorld_numPortalsInArea(rw: *RenderWorldPtr, area_index: usize) callconv(.C) usize {
+export fn ztech_renderWorld_numPortalsInArea(rw: *RenderWorldOpaque, area_index: usize) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     return render_world.numPortalsInArea(area_index) catch {
@@ -167,29 +167,7 @@ export fn ztech_renderWorld_numPortalsInArea(rw: *RenderWorldPtr, area_index: us
     };
 }
 
-export fn ztech_allocRenderWorld(rw: **anyopaque) callconv(.C) bool {
-    const allocator = global.gpa.allocator();
-    const render_world_ptr = allocator.create(RenderWorld) catch
-        return false;
-
-    render_world_ptr.* = RenderWorld.init(allocator) catch {
-        allocator.destroy(render_world_ptr);
-        return false;
-    };
-
-    rw.* = @ptrCast(render_world_ptr);
-
-    return true;
-}
-
-export fn ztech_freeRenderWorld(rw: *RenderWorldPtr) callconv(.C) void {
-    const allocator = global.gpa.allocator();
-    const render_world_ptr: *RenderWorld = @alignCast(@ptrCast(rw));
-    render_world_ptr.deinit();
-    allocator.destroy(render_world_ptr);
-}
-
-export fn ztech_renderWorld_numAreas(rw: *RenderWorldPtr) callconv(.C) usize {
+export fn ztech_renderWorld_numAreas(rw: *RenderWorldOpaque) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     return if (render_world.area_nodes) |area_nodes|

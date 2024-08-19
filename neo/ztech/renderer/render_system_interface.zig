@@ -11,9 +11,12 @@ const Framebuffer = @import("framebuffer.zig");
 const FrameData = @import("frame_data.zig");
 const nvrhi = @import("nvrhi.zig");
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
+const RenderWorldOpaque = @import("render_world_interface.zig").RenderWorldOpaque;
+const RenderWorld = @import("render_world.zig");
 
-// TODO:
-// * DrawStretchPic - Font rendering depends on it!
+export fn ztech_renderSystem_getViewCount() callconv(.C) c_int {
+    return @intCast(RenderSystem.instance.view_count);
+}
 
 export fn ztech_renderSystem_drawStretchPicture(
     top_left: *const CVec4,
@@ -85,53 +88,16 @@ export fn ztech_renderSystem_finishCommandBuffers() callconv(.C) ?*FrameData.Emp
     return RenderSystem.instance.finishCommandBuffers();
 }
 
-export fn ztech_renderSystem_initBackend(
-    command_list_ptr: *?*nvrhi.ICommandList,
-) callconv(.C) void {
+export fn ztech_renderSystem_initBackend() callconv(.C) void {
     RenderSystem.instance.initBackend();
-    const instance = &RenderSystem.instance;
-
-    command_list_ptr.* = instance.command_list.commandList_ptr().?;
 }
 
-export fn ztech_renderSystem_init(
-    view_count: *c_int,
-    gui_model_ptr: **GuiModel,
-    front_end_job_list: **ParallelJobList,
-    envprobe_job_list: **ParallelJobList,
-    default_material: *?*const Material,
-    default_point_light: *?*const Material,
-    default_projected_light: *?*const Material,
-    white_material: *?*const Material,
-    char_set_material: *?*const Material,
-    imgui_material: *?*const Material,
-    tr_gui_model_ptr: **GuiModel,
-) callconv(.C) void {
+export fn ztech_renderSystem_init() callconv(.C) void {
     RenderSystem.instance.init(global.gpa.allocator()) catch unreachable;
-
-    ztech_renderSystem_init_syncState(
-        view_count,
-        gui_model_ptr,
-        front_end_job_list,
-        envprobe_job_list,
-        default_material,
-        default_point_light,
-        default_projected_light,
-        white_material,
-        char_set_material,
-        imgui_material,
-        tr_gui_model_ptr,
-    );
-
-    RenderModelManager.instance.init();
 }
 
-export fn ztech_renderSystem_deinit(
-    command_list_ptr: *?*nvrhi.ICommandList,
-) callconv(.C) void {
+export fn ztech_renderSystem_deinit() callconv(.C) void {
     RenderSystem.instance.deinit(global.gpa.allocator());
-
-    command_list_ptr.* = null; // avoid double free
 }
 
 export fn ztech_renderSystem_getCroppedViewport(out: *ScreenRect) callconv(.C) void {
@@ -142,32 +108,18 @@ export fn ztech_renderSystem_getFrameCount() callconv(.C) c_int {
     return @intCast(RenderSystem.instance.frame_count);
 }
 
-export fn ztech_renderSystem_init_syncState(
-    view_count: *c_int,
-    gui_model_ptr: **GuiModel,
-    front_end_job_list: **ParallelJobList,
-    envprobe_job_list: **ParallelJobList,
-    default_material: *?*const Material,
-    default_point_light: *?*const Material,
-    default_projected_light: *?*const Material,
-    white_material: *?*const Material,
-    char_set_material: *?*const Material,
-    imgui_material: *?*const Material,
-    tr_gui_model_ptr: **GuiModel,
-) callconv(.C) void {
-    const instance = &RenderSystem.instance;
+export fn ztech_renderSystem_createRenderWorld() callconv(.C) *RenderWorldOpaque {
+    const allocator = global.gpa.allocator();
 
-    view_count.* = @intCast(instance.view_count);
-    gui_model_ptr.* = instance.gui_model;
-    tr_gui_model_ptr.* = instance.gui_model;
+    const render_world = RenderSystem.instance.createRenderWorld(allocator) catch
+        @panic("Fails to create RenderWorld");
 
-    front_end_job_list.* = instance.front_end_job_list;
-    envprobe_job_list.* = instance.envprobe_job_list;
+    return @ptrCast(render_world);
+}
 
-    default_material.* = instance.default_material;
-    default_point_light.* = instance.default_point_light;
-    default_projected_light.* = instance.default_projected_light;
-    white_material.* = instance.white_material;
-    char_set_material.* = instance.char_set_material;
-    imgui_material.* = instance.imgui_material;
+export fn ztech_renderSystem_destroyRenderWorld(rw: *RenderWorldOpaque) callconv(.C) void {
+    const render_world: *RenderWorld = @ptrCast(@alignCast(rw));
+    const allocator = global.gpa.allocator();
+
+    RenderSystem.instance.destroyRenderWorld(allocator, render_world);
 }

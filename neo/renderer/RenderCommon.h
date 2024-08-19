@@ -889,8 +889,6 @@ public:
 	virtual float			GetPhysicalScreenWidthInCentimeters() const;
 	virtual idRenderWorld* 	AllocRenderWorld();
 	virtual void			FreeRenderWorld( idRenderWorld* rw );
-	virtual void* ztech_AllocRenderWorld();
-	virtual void ztech_FreeRenderWorld(void* rw);
 	virtual void			BeginLevelLoad();
 	virtual void			EndLevelLoad();
 	virtual void			LoadLevelImages();
@@ -989,10 +987,8 @@ public:
 	idVec4					ambientLightVector;	// used for "ambient bump mapping"
 
 	idList<idRenderWorldLocal*>worlds;
-	idList<void*>ztech_worlds;
 
 	idRenderWorldLocal* 	primaryWorld;
-	void* 	ztech_primaryWorld;
 	renderView_t			primaryRenderView;
 	viewDef_t* 				primaryView;
 	// many console commands need to know which world they should operate on
@@ -1057,21 +1053,9 @@ public:
 	bool					omitSwapBuffers;
 };
 
-class ztechRenderSystemLocal : public idRenderSystemLocal
-{
-public:
-	ztechRenderSystemLocal();
-	~ztechRenderSystemLocal();
-
-	virtual void Init();
-	virtual void Shutdown();
-	virtual void Clear();
-	virtual void InitBackend();
-};
 
 #define USE_ZTECH_RENDER_SYSTEM
 #ifdef USE_ZTECH_RENDER_SYSTEM
-extern ztechRenderSystemLocal tr;
 
 extern "C" {
 	void ztech_renderSystem_setBackendInitialized(void);
@@ -1085,27 +1069,19 @@ extern "C" {
 	void ztech_renderSystem_finishRendering();
 	emptyCommand_t* ztech_renderSystem_finishCommandBuffers();
 	void ztech_renderSystem_renderCommandBuffers(const emptyCommand_t* const);
-	void ztech_renderSystem_init(
-			int*,
-			idGuiModel**,
-			idParallelJobList**,
-			idParallelJobList**,
-			const idMaterial**,
-			const idMaterial**,
-			const idMaterial**,
-			const idMaterial**,
-			const idMaterial**,
-			const idMaterial**,
-			idGuiModel**
-			);
+	void ztech_renderSystem_init();
+	void ztech_renderSystem_deinit();
+	void ztech_renderSystem_initBackend();
+	void ztech_renderSystem_setColor(idVec4);
+	void ztech_renderSystem_drawStretchPicture(const idVec4*, const idVec4*, const idVec4*, const idVec4*, const idMaterial*, float z);
 
-	void ztech_renderSystem_deinit(nvrhi::ICommandList**);
-	void ztech_renderSystem_initBackend(nvrhi::ICommandList**);
+	typedef void RenderWorldOpaque;
+	RenderWorldOpaque* ztech_renderSystem_createRenderWorld();
+	void ztech_renderSystem_destroyRenderWorld(RenderWorldOpaque*);
 }
 
-#else
-extern idRenderSystemLocal	tr;
 #endif
+extern idRenderSystemLocal	tr;
 extern glconfig_t			glConfig;		// outside of TR since it shouldn't be cleared during ref re-init
 
 //

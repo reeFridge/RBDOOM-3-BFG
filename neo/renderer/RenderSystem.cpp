@@ -43,12 +43,7 @@ extern DeviceManager* deviceManager;
 idRenderBackend backend_;
 #endif
 
-#ifdef USE_ZTECH_RENDER_SYSTEM
-ztechRenderSystemLocal	tr;
-#else
 idRenderSystemLocal	tr;
-#endif
-
 idRenderSystem* renderSystem = &tr;
 
 /*
@@ -266,11 +261,9 @@ idRenderSystemLocal::~idRenderSystemLocal()
 idRenderSystemLocal::SetColor
 =============
 */
-extern "C" void ztech_renderSystem_setColor(idVec4);
 void idRenderSystemLocal::SetColor( const idVec4& rgba )
 {
-	//currentColorNativeBytesOrder = LittleLong( PackColor( rgba ) );
-	ztech_renderSystem_setColor(rgba);
+	currentColorNativeBytesOrder = LittleLong( PackColor( rgba ) );
 }
 
 /*
@@ -319,16 +312,13 @@ void idRenderSystemLocal::DrawStretchPic( float x, float y, float w, float h, fl
 idRenderSystemLocal::DrawStretchPic
 =============
 */
-extern "C" void ztech_renderSystem_drawStretchPicture(const idVec4*, const idVec4*, const idVec4*, const idVec4*, const idMaterial*, float z);
 static triIndex_t quadPicIndexes[6] = { 3, 0, 2, 2, 0, 1 };
 void idRenderSystemLocal::DrawStretchPic( const idVec4& topLeft, const idVec4& topRight, const idVec4& bottomRight, const idVec4& bottomLeft, const idMaterial* material, float z )
 {
-	ztech_renderSystem_drawStretchPicture(&topLeft, &topRight, &bottomRight, &bottomLeft, material, z);
-	return;
-	//if( !IsInitialized() )
-	//{
-	//	return;
-	//}
+	if( !IsInitialized() )
+	{
+		return;
+	}
 	if( material == NULL )
 	{
 		return;
@@ -998,28 +988,6 @@ idRenderWorld* idRenderSystemLocal::AllocRenderWorld()
 	rw = new( TAG_RENDER ) idRenderWorldLocal;
 	worlds.Append( rw );
 	return rw;
-}
-
-extern "C" bool ztech_allocRenderWorld(void**);
-void* idRenderSystemLocal::ztech_AllocRenderWorld()
-{
-	void* rw = NULL;
-	if (ztech_allocRenderWorld(&rw)) {
-		ztech_worlds.Append( rw );
-	}
-
-	return rw;
-}
-
-extern "C" void ztech_freeRenderWorld(void*);
-void idRenderSystemLocal::ztech_FreeRenderWorld(void* rw)
-{
-	if( ztech_primaryWorld == rw )
-	{
-		ztech_primaryWorld = NULL;
-	}
-	ztech_worlds.Remove(rw);
-	ztech_freeRenderWorld(rw);
 }
 
 /*

@@ -68,9 +68,14 @@ void R_ShadowBounds( const idBounds& modelBounds, const idBounds& lightBounds, c
 idRenderEntityLocal::IsDirectlyVisible()
 ============================
 */
+extern "C" int ztech_renderSystem_getViewCount();
 bool idRenderEntityLocal::IsDirectlyVisible() const
 {
+#ifdef USE_ZTECH_RENDER_SYSTEM
+	if( viewCount != ztech_renderSystem_getViewCount() )
+#else
 	if( viewCount != tr.viewCount )
+#endif
 	{
 		return false;
 	}

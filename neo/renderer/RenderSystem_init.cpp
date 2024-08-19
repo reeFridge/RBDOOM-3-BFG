@@ -2075,96 +2075,6 @@ srfTriangles_t* R_MakeTestImageTriangles()
 	return tri;
 }
 
-ztechRenderSystemLocal::ztechRenderSystemLocal()
-{
-	idRenderSystemLocal();
-}
-
-ztechRenderSystemLocal::~ztechRenderSystemLocal()
-{
-	idRenderSystemLocal::~idRenderSystemLocal();
-}
-
-void ztechRenderSystemLocal::Init()
-{
-	ztech_renderSystem_init(
-			&viewCount,
-			&ambientLightVector,
-			&guiModel,
-			gammaTable,
-			identitySpace.modelMatrix,
-			cubeAxis,
-			&frontEndJobList,
-			&envprobeJobList,
-			&unitSquareTriangles,
-			&zeroOneCubeTriangles,
-			&zeroOneSphereTriangles,
-			&testImageTriangles,
-			&defaultMaterial,
-			&defaultPointLight,
-			&defaultProjectedLight,
-			&whiteMaterial,
-			&charSetMaterial,
-			&imgGuiMaterial,
-			&tr_guiModel
-			);
-}
-
-void ztechRenderSystemLocal::Shutdown()
-{
-	fonts.DeleteContents();
-
-	// SRS - if testVideo is currently playing, make sure cinematic is deleted before ShutdownCinematic()
-	if( tr.testVideo )
-	{
-		delete tr.testVideo;
-		tr.testVideo = NULL;
-	}
-
-	idCinematic::ShutdownCinematic();
-
-	ztech_renderSystem_deinit(&commandList);
-
-	Clear();
-
-	bInitialized = false;
-}
-
-void ztechRenderSystemLocal::Clear() {
-	registered = false;
-	frameCount = 0;
-	viewCount = 0;
-	frameShaderTime = 0.0f;
-	ambientLightVector.Zero();
-	worlds.Clear();
-	primaryWorld = NULL;
-	memset( &primaryRenderView, 0, sizeof( primaryRenderView ) );
-	primaryView = NULL;
-	defaultMaterial = NULL;
-	testImage = NULL;
-	ambientCubeImage = NULL;
-	viewDef = NULL;
-	memset( &pc, 0, sizeof( pc ) );
-	memset( &identitySpace, 0, sizeof( identitySpace ) );
-	memset( renderCrops, 0, sizeof( renderCrops ) );
-	currentRenderCrop = 0;
-	currentColorNativeBytesOrder = 0xFFFFFFFF;
-	currentGLState = 0;
-	guiRecursionLevel = 0;
-	guiModel = NULL;
-	memset( gammaTable, 0, sizeof( gammaTable ) );
-	memset( &cubeAxis, 0, sizeof( cubeAxis ) ); // RB
-	takingScreenshot = false;
-	takingEnvprobe = false;
-
-	frontEndJobList = NULL;
-
-	// RB
-	envprobeJobList = NULL;
-	envprobeJobs.Clear();
-	lightGridJobs.Clear();
-}
-
 /*
 ===============
 idRenderSystemLocal::Init
@@ -2507,10 +2417,6 @@ void idRenderSystemLocal::InitBackend()
 		commandList->close();
 		deviceManager->GetDevice()->executeCommandList( commandList );
 	}
-}
-
-void ztechRenderSystemLocal::InitBackend() {
-	ztech_renderSystem_initBackend(&commandList);
 }
 
 /*
