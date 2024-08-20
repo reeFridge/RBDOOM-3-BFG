@@ -86,6 +86,10 @@ extern "C" usercmd_t c_getUserCmdForPlayer(int num) {
 	return commonLocal.GetUCmdMgr().GetWritableUserCmdForPlayer(num);
 }
 
+extern "C" void ztech_game_runFrame();
+
+#define USE_ZTECH_GAME
+
 /*
 ===============
 idGameThread::Run
@@ -134,7 +138,11 @@ int idGameThread::Run()
 			SCOPED_PROFILE_EVENT( "GameTic" );
 			if( userCmdMgr )
 			{
+#ifdef USE_ZTECH_GAME
+				ztech_game_runFrame();
+#else
 				game->RunFrame( *userCmdMgr, ret );
+#endif
 			}
 			if( ret.syncNextGameFrame || ret.sessionCommand[0] != 0 )
 			{
@@ -262,6 +270,8 @@ void idCommonLocal::DrawLoadPacifierProgressbar()
 	renderSystem->DrawSmallStringExt( 0, renderSystem->GetVirtualHeight() - 64, loadPacifierStatus, idVec4( 1.0f, 1.0f, 1.0f, 1.0f ), true );
 }
 // RB end
+
+extern "C" bool ztech_game_draw(int);
 
 /*
 ===============
@@ -392,7 +402,12 @@ void idCommonLocal::Draw()
 			int	start = Sys_Milliseconds();
 			if( game )
 			{
+#define USE_ZTECH_GAME
+#ifdef USE_ZTECH_GAME
+				gameDraw = ztech_game_draw(Game()->GetLocalClientNum());
+#else
 				gameDraw = game->Draw( Game()->GetLocalClientNum() );
+#endif
 			}
 			int end = Sys_Milliseconds();
 			time_gameDraw += ( end - start );	// note time used for com_speeds

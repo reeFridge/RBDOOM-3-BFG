@@ -7,6 +7,7 @@ const CMat3 = @import("math/matrix.zig").CMat3;
 const types = @import("types.zig");
 const RenderSystem = @import("renderer/render_system.zig");
 
+usingnamespace @import("game_interface.zig");
 usingnamespace @import("renderer/render_system_interface.zig");
 usingnamespace @import("renderer/render_world_interface.zig");
 usingnamespace @import("renderer/frame_data_interface.zig");
@@ -73,8 +74,6 @@ export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
 
 const pvs = @import("pvs.zig");
 
-extern fn c_getClientPVS([*]c_int, usize) callconv(.C) pvs.Handle;
-
 export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) callconv(.C) bool {
     const len = global.entities.getByType(types.Player).field_storage.len;
 
@@ -90,29 +89,6 @@ export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) c
 }
 
 const RenderView = @import("renderer/render_world.zig").RenderView;
-
-export fn ztech_getPlayerRenderView(render_view: **const RenderView) callconv(.C) bool {
-    const players = global.entities.getByType(types.Player).field_storage;
-
-    if (players.len == 0) return false;
-
-    const player_view = &players.items(.view)[0];
-
-    render_view.* = &player_view.render_view;
-
-    return true;
-}
-
-pub export fn ztech_setupPlayerPVS(player_PVS: *pvs.Handle, player_connected_areas: *pvs.Handle) callconv(.C) void {
-    const all_areas = global.entities.getByType(types.Player).field_storage.items(.pvs_areas);
-
-    if (all_areas.len == 0) @panic("Player is not spawned yet!");
-
-    const player_areas = &all_areas[0];
-
-    player_PVS.* = c_getClientPVS(&player_areas.ids, player_areas.len);
-    player_connected_areas.* = c_getClientPVS(&player_areas.ids, player_areas.len);
-}
 
 export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C) bool {
     const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
@@ -150,34 +126,6 @@ export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopaque)
     std.debug.print("[OK]\n", .{});
 
     return true;
-}
-
-const UpdatePlayer = @import("update/player.zig");
-const UpdateRenderEntity = @import("update/render_entity.zig");
-const UpdateRenderLight = @import("update/render_light.zig");
-const UpdatePhysicsClip = @import("update/physics/clip.zig");
-const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
-const UpdatePhysicsImpact = @import("update/physics/impact.zig");
-const UpdatePhysicsTransform = @import("update/physics/transform.zig");
-
-export fn ztech_processEntities() callconv(.C) void {
-    if (!Game.c_isNewFrame()) return;
-
-    var ents = &global.entities;
-
-    ents.process(UpdatePlayer.handleInput);
-    ents.process(UpdatePlayer.updateViewAngles);
-    ents.processWithQuery(types.Player, UpdatePlayer.update);
-
-    ents.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);
-    ents.processWithQuery(UpdatePhysicsContacts.Query, UpdatePhysicsContacts.update);
-    ents.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
-    ents.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
-
-    ents.process(UpdateRenderLight.fromTransform);
-    ents.process(UpdateRenderLight.present);
-    ents.process(UpdateRenderEntity.fromTransform);
-    ents.process(UpdateRenderEntity.present);
 }
 
 const QueryField = @import("entity.zig").QueryField;

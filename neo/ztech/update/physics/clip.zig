@@ -14,9 +14,8 @@ pub const Query = struct {
 };
 
 pub fn update(list: anytype) void {
-    const time_state = Game.c_getTimeState();
-    const delta_time_ms = time_state.delta();
-    const dt = (@as(f32, @floatFromInt(delta_time_ms)) / 1000.0);
+    const delta_time_ms = Game.instance.deltaTimeMs();
+    const dt = Game.instance.deltaTime();
 
     var list_slice = list.slice();
     for (

@@ -47,10 +47,7 @@ export fn ztech_renderWorld_boundsInAreas(
 
 export fn ztech_renderWorld_renderScene(rw: *RenderWorldOpaque, view: *const RenderView) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
-
-    render_world.renderScene(view.*) catch {
-        @panic("ztech_renderWorld_renderScene: fails");
-    };
+    render_world.renderScene(view.*);
 }
 
 export fn ztech_renderWorld_generateAllInteractions(rw: *RenderWorldOpaque) callconv(.C) void {
@@ -174,4 +171,13 @@ export fn ztech_renderWorld_numAreas(rw: *RenderWorldOpaque) callconv(.C) usize 
         area_nodes.len
     else
         0;
+}
+
+export fn ztech_renderWorld_initFromMap(rw: *RenderWorldOpaque, c_map_name: [*c]const u8) callconv(.C) bool {
+    const render_world_ptr: *RenderWorld = @alignCast(@ptrCast(rw));
+    const map_name: [:0]const u8 = std.mem.span(c_map_name);
+
+    render_world_ptr.initFromMap(map_name) catch return false;
+
+    return true;
 }

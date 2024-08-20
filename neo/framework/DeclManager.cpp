@@ -2343,6 +2343,10 @@ void idDeclManagerLocal::ExportEntityDefsToTrenchBroom_f( const idCmdArgs& args 
 		{
 			const idDeclEntityDef* decl = defsSorted[ d ];
 
+			if (idStr::Icmp( decl->GetName(), "ztech_light" ) == 0) {
+				common->Printf("Catch!!!\n");
+			}
+
 			totalEntitiesCount++;
 
 			// only include entityDefs with "editor_" values in them

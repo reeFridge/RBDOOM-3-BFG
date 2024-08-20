@@ -5,8 +5,8 @@ const Plane = @import("math/plane.zig").Plane;
 const MAX_CURRENT_PVS: usize = 64;
 
 pub const Handle = extern struct {
-    i: c_int,
-    h: c_uint,
+    i: c_int = -1,
+    h: c_uint = 0,
 };
 
 pub const Current = extern struct {

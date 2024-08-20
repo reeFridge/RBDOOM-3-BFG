@@ -450,7 +450,7 @@ extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
 extern fn R_AddDrawViewCmd(*ViewDef, bool) callconv(.C) void;
 extern fn c_setDefaultEnvironmentProbes(*ViewDef) callconv(.C) void;
 
-pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) !void {
+pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
     if (!RenderSystem.instance.initialized) return;
 
     // close any gui drawing
@@ -1424,7 +1424,17 @@ pub fn freeDefs(render_world: *RenderWorld) void {
     }
 }
 
+fn freeInteractions(render_world: *RenderWorld) void {
+    for (render_world.entity_defs.items) |opt_item_ptr| {
+        const item_ptr = opt_item_ptr orelse continue;
+        while (item_ptr.firstInteraction) |inter| {
+            inter.unlinkAndFree(render_world.allocator);
+        }
+    }
+}
+
 pub fn freeWorld(render_world: *RenderWorld) void {
+    render_world.freeInteractions();
     render_world.freeDefs();
 
     // free all the portals and check light/model references
@@ -1508,15 +1518,6 @@ pub fn setupAreaRefs(render_world: *RenderWorld, portal_areas: []PortalArea) voi
         portal_area.envprobeRefs.areaPrev = &portal_area.envprobeRefs;
         portal_area.envprobeRefs.areaNext = portal_area.envprobeRefs.areaPrev;
     }
-}
-
-export fn ztech_RenderWorld_initFromMap(rw: *anyopaque, c_map_name: [*c]const u8) callconv(.C) bool {
-    const render_world_ptr: *RenderWorld = @alignCast(@ptrCast(rw));
-    const map_name: [:0]const u8 = std.mem.span(c_map_name);
-
-    render_world_ptr.initFromMap(map_name) catch return false;
-
-    return true;
 }
 
 const MAX_OS_PATH: usize = 256;

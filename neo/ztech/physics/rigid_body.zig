@@ -27,7 +27,8 @@ pub const IntegrationState = struct {
 };
 
 pub const State = struct {
-    rest_start_time: i32 = -1,
+    rest_start_time: usize = 0,
+    rest: bool = false,
     last_time_step: f32 = 0,
     local_origin: Vec3(f32) = .{},
     local_axis: Mat3(f32) = Mat3(f32).identity(),
@@ -149,6 +150,7 @@ pub fn integrate(self: *PhysicsRigidBody, delta_time: f32, next_state: *State) v
     i_next.position = i_next.position.subtract(i_next.orientation.multiplyVec3(self.center_of_mass));
 
     next_state.rest_start_time = self.current.rest_start_time;
+    next_state.rest = self.current.rest;
 }
 
 extern fn c_balanceInertiaTensor(*CMat3) callconv(.C) void;
@@ -267,7 +269,7 @@ pub fn getImpactInfo(self: PhysicsRigidBody, point: Vec3(f32)) ImpactInfo {
     };
 }
 
-pub fn willMove(self: *PhysicsRigidBody, time_step_ms: i32) bool {
+pub fn willMove(self: *PhysicsRigidBody, time_step_ms: usize) bool {
     const time_step = @as(f32, @floatFromInt(time_step_ms)) * MS2SEC;
 
     return !self.atRest() and time_step > 0.0;
@@ -451,7 +453,7 @@ pub fn contactFriction(
 
 pub fn activateContactEntities(_: *PhysicsRigidBody) void {}
 
-pub fn evaluate(self: *PhysicsRigidBody, time_step_ms: i32) State {
+pub fn evaluate(self: *PhysicsRigidBody, time_step_ms: usize) State {
     const time_step = @as(f32, @floatFromInt(time_step_ms)) * MS2SEC;
     self.current.last_time_step = time_step;
 
@@ -469,15 +471,17 @@ pub inline fn clearExternalForces(self: *PhysicsRigidBody) void {
 }
 
 pub inline fn atRest(self: PhysicsRigidBody) bool {
-    return self.current.rest_start_time >= 0;
+    return self.current.rest;
 }
 
 pub fn rest(self: *PhysicsRigidBody) void {
-    self.current.rest_start_time = Game.c_getTimeState().time;
+    self.current.rest_start_time = Game.instance.time;
+    self.current.rest = true;
     self.current.integration.linear_momentum = .{};
     self.current.integration.angular_momentum = .{};
 }
 
 pub fn activate(self: *PhysicsRigidBody) void {
-    self.current.rest_start_time = -1;
+    self.current.rest_start_time = 0;
+    self.current.rest = false;
 }

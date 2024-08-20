@@ -287,19 +287,6 @@ void idGameLocal::Clear()
 	lastCmdRunTimeOnServer.Zero();
 }
 
-typedef struct {
-	int time;
-	int previous_time;
-} CTimeState;
-
-extern "C" CTimeState c_getTimeState() {
-	return {gameLocal.time, gameLocal.previousTime};
-}
-
-extern "C" bool c_isNewFrame() {
-	return gameLocal.isNewFrame;
-}
-
 /*
 ===========
 idGameLocal::Init
@@ -2325,8 +2312,28 @@ pvsHandle_t idGameLocal::GetClientPVS( idPlayer* player, pvsType_t type )
 	}
 }
 
-extern "C" pvsHandle_t c_getClientPVS(int* areas, size_t num) {
+extern "C" pvsHandle_t c_getClientPvs(int* areas, size_t num) {
 	return gameLocal.pvs.SetupCurrentPVS(areas, static_cast<int>(num));
+}
+
+extern "C" void c_freeClientPvs(pvsHandle_t handle) {
+	gameLocal.pvs.FreeCurrentPVS(handle);
+}
+
+extern "C" void c_game_updateTime(int framenum) {
+	gameLocal.framenum = framenum;
+	gameLocal.fast.previousTime = FRAME_TO_MSEC( framenum - 1 );
+	gameLocal.fast.time = FRAME_TO_MSEC( framenum );
+	gameLocal.fast.realClientTime = gameLocal.fast.time;
+	gameLocal.SetServerGameTimeMs( gameLocal.fast.time );
+
+	gameLocal.ComputeSlowScale();
+
+	gameLocal.slow.previousTime = gameLocal.slow.time;
+	gameLocal.slow.time += idMath::Ftoi( ( gameLocal.fast.time - gameLocal.fast.previousTime ) * gameLocal.slowmoScale );
+	gameLocal.slow.realClientTime = gameLocal.slow.time;
+
+	gameLocal.SelectTimeGroup( false );
 }
 
 /*
@@ -2655,11 +2662,6 @@ void idGameLocal::RunSharedThink()
 }
 // jmarshall end
 
-extern "C" void ztech_processEntities();
-extern "C" void ztech_setupPlayerPVS(pvsHandle_t*, pvsHandle_t*);
-extern "C" bool ztech_getPlayerRenderView(const renderView_t**);
-extern "C" bool ztech_getPlayerHandle(external_entity_handle_t*);
-
 /*
 ================
 idGameLocal::RunFrame
@@ -2693,19 +2695,15 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 	}
 #endif
 
-	if( gameRenderWorld == NULL && game_ztechRenderWorld == NULL)
+	if( gameRenderWorld == NULL )
 	{
 		return;
 	}
 
-	ztech_SyncPlayersWithLobbyUsers( false );
-	//SyncPlayersWithLobbyUsers( false );
+	SyncPlayersWithLobbyUsers( false );
 	ServerSendNetworkSyncCvars();
 
 	player = GetLocalPlayer();
-
-	external_entity_handle_t player_handle;
-	bool player_exists = ztech_getPlayerHandle(&player_handle);
 
 	if( !common->IsMultiplayer() && g_stopTime.GetBool() )
 	{
@@ -2760,11 +2758,6 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 				{
 					gameRenderWorld->SetRenderView( view );
 				}
-			} else if (player_exists) {
-				if (ztech_getPlayerRenderView(&view)) {
-					if (gameRenderWorld)
-						gameRenderWorld->SetRenderView(view);
-				}
 			}
 
 			// clear any debug lines from a previous frame
@@ -2787,8 +2780,6 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 			// create a merged pvs for all players
 			if (player) {
 				SetupPlayerPVS();
-			} else if (player_exists) {
-				ztech_setupPlayerPVS(&playerPVS, &playerConnectedAreas);
 			}
 
 			// sort the active entity list
@@ -2850,8 +2841,6 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 					}
 				}
 			}
-
-			ztech_processEntities();
 
 			RunTimeGroup2( cmdMgr );
 // jmarshall
@@ -3259,26 +3248,15 @@ bool idGameLocal::Draw( int clientNum )
 
 	idPlayer* player = static_cast<idPlayer*>( entities[ clientNum ] );
 
-	if( ( player != NULL ) && ( player->GetRenderView() != NULL ) )
+	if( ( player == NULL ) || ( player->GetRenderView() == NULL ) )
 	{
-		// render the scene
-		player->playerView.RenderPlayerView( player->hudManager );
-
-		return true;
-	} else {
-		const renderView_t* view = NULL;
-		if (ztech_getPlayerRenderView(&view)) {
-			// do the first render
-			if (gameRenderWorld)
-				gameRenderWorld->RenderScene(view);
-			else if (game_ztechRenderWorld)
-				ztech_renderWorld_renderScene(game_ztechRenderWorld, view);
-
-			return true;
-		}
+		return false;
 	}
 
-	return false;
+	// render the scene
+	player->playerView.RenderPlayerView( player->hudManager );
+
+	return true;
 }
 
 /*

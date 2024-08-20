@@ -376,8 +376,11 @@ void idCommonLocal::LoadLoadingGui( const char* mapName, bool& hellMap )
 	}
 }
 
-extern "C" bool ztech_RenderWorld_initFromMap(void*, uint8_t const *const);
+extern "C" bool ztech_renderWorld_initFromMap(void*, uint8_t const *const);
 extern "C" void ztech_renderWorld_generateAllInteractions(void*);
+extern "C" bool ztech_game_initFromMap(void*);
+extern "C" void ztech_game_runFrame();
+#define USE_ZTECH_GAME
 
 /*
 ===============
@@ -535,7 +538,7 @@ void idCommonLocal::ExecuteMapChange()
 			common->Error( "couldn't load %s", fullMapName.c_str() );
 		}
 	} else if (ztech_renderWorld) {
-		if (!ztech_RenderWorld_initFromMap(ztech_renderWorld, (const uint8_t*)fullMapName.c_str())) {
+		if (!ztech_renderWorld_initFromMap(ztech_renderWorld, (const uint8_t*)fullMapName.c_str())) {
 			common->Error("couldn't load %s", fullMapName.c_str());
 		}
 	}
@@ -563,6 +566,9 @@ void idCommonLocal::ExecuteMapChange()
 			game->SetPersistentPlayerInfo( 0, mapSpawnData.persistentPlayerInfo );
 		}
 		game->SetServerInfo( matchParameters.serverInfo );
+#ifdef USE_ZTECH_GAME
+		ztech_game_initFromMap(ztech_renderWorld);
+#endif
 		game->InitFromNewMap( fullMapName, renderWorld, ztech_renderWorld, soundWorld, matchParameters.gameMode, Sys_Milliseconds() );
 	}
 
@@ -601,7 +607,11 @@ void idCommonLocal::ExecuteMapChange()
 		}
 		else
 		{
+#ifdef USE_ZTECH_GAME
+			ztech_game_runFrame();
+#else
 			game->RunFrame( emptyCommandManager, emptyGameReturn );
+#endif
 		}
 	}
 
@@ -624,7 +634,11 @@ void idCommonLocal::ExecuteMapChange()
 			{
 				emptyCommandManager.PutUserCmdForPlayer( playerIndex, usercmd_t() );
 			}
+#ifdef USE_ZTECH_GAME
+			ztech_game_runFrame();
+#else
 			game->RunFrame( emptyCommandManager, emptyGameReturn );
+#endif
 		}
 
 		// kick off an auto-save of the game (so we can always continue in this map if we die before hitting an autosave)
