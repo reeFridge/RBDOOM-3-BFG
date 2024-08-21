@@ -447,8 +447,6 @@ extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
 extern fn R_AddInGameGuis([*]*DrawSurface, c_int) callconv(.C) void;
 extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
 extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
-extern fn R_AddDrawViewCmd(*ViewDef, bool) callconv(.C) void;
-extern fn c_setDefaultEnvironmentProbes(*ViewDef) callconv(.C) void;
 
 pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
     if (!RenderSystem.instance.initialized) return;
@@ -489,6 +487,14 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
 
     view_def.isMirror = cross.dot(render_view.viewaxis.mat[0].toVec3f()) <= 0;
 
+    render_world.renderView(view_def);
+    renderPostProcess(view_def);
+
+    RenderSystem.instance.uncrop();
+    RenderSystem.instance.gui_model.clear();
+}
+
+fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
     const old_view_def = RenderSystem.instance.getView();
     RenderSystem.instance.setView(view_def);
     defer RenderSystem.instance.setView(old_view_def);
@@ -538,17 +544,55 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
     R_OptimizeViewLightsList(view_def);
 
     if (view_def.drawSurfs) |draw_surfs| {
+        // sort all the ambient surfaces for translucency ordering
         R_SortDrawSurfs(draw_surfs, view_def.numDrawSurfs);
+        // generate any subviews (mirrors, cameras, etc) before adding this view
+        render_world.generateSubviews(draw_surfs[0..@intCast(view_def.numDrawSurfs)]);
     }
 
-    // TODO: R_FindClosestEnvironmentProbes();
-    c_setDefaultEnvironmentProbes(view_def);
-    R_AddDrawViewCmd(view_def, false);
+    render_world.findClosestEnvironmentProbes(view_def);
 
-    // TODO: R_GenerateSubViews()
+    var cmd = FrameData.createCommand(FrameData.DrawSurfacesCommand);
+    cmd.commandId = .RC_DRAW_VIEW_3D;
+    cmd.viewDef = view_def;
+}
 
-    RenderSystem.instance.uncrop();
-    RenderSystem.instance.gui_model.clear();
+fn renderPostProcess(view_def: *ViewDef) void {
+    const old_view_def = RenderSystem.instance.getView();
+    RenderSystem.instance.setView(view_def);
+    defer RenderSystem.instance.setView(old_view_def);
+
+    const RDF_IRRADIANCE: c_int = 4;
+    if ((view_def.renderView.rdflags & RDF_IRRADIANCE) == 0) {
+        var cmd = FrameData.createCommand(FrameData.PostProcessCommand);
+        cmd.commandId = .RC_POST_PROCESS;
+        cmd.viewDef = view_def;
+    }
+}
+
+const ImageManager = @import("image_manager.zig");
+
+fn findClosestEnvironmentProbes(_: RenderWorld, view_def: *ViewDef) void {
+    view_def.globalProbeBounds = .{};
+    view_def.irradianceImage = ImageManager.instance.defaultUACIrradianceCube;
+    view_def.radianceImageBlends = .{ .x = 1 };
+    for (&view_def.radianceImages) |*opt_image_ptr| {
+        opt_image_ptr.* = ImageManager.instance.defaultUACRadianceCube;
+    }
+
+    if (view_def.areaNum == -1 or view_def.isSubview)
+        return;
+
+    // TODO: continue
+}
+
+fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
+    for (draw_surfs) |surf_ptr| {
+        const surf_material = surf_ptr.material orelse continue;
+        if (!surf_material.hasSubview()) continue;
+
+        // TODO: generate subview surface
+    }
 }
 
 extern fn c_addSingleLight(*anyopaque, *ViewLight, *ViewDef) callconv(.C) void;

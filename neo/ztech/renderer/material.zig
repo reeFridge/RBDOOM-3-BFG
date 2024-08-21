@@ -54,6 +54,7 @@ pub const Material = opaque {
     extern fn c_material_spectrum(*const Material) callconv(.C) c_int;
     extern fn c_material_addReference(*Material) callconv(.C) void;
     extern fn c_material_receivesLighting(*const Material) callconv(.C) bool;
+    extern fn c_material_hasSubview(*const Material) callconv(.C) bool;
 
     pub fn isDrawn(material: *const Material) bool {
         return c_material_isDrawn(material);
@@ -81,5 +82,9 @@ pub const Material = opaque {
 
     pub fn testMaterialFlag(material: *const Material, flag: c_int) bool {
         return c_material_testMaterialFlag(material, flag);
+    }
+
+    pub fn hasSubview(material: *const Material) bool {
+        return c_material_hasSubview(material);
     }
 };

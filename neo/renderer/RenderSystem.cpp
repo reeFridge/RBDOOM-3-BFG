@@ -193,7 +193,7 @@ This is the main 3D rendering command.  A single scene may
 have multiple views if a mirror, portal, or dynamic texture is present.
 =============
 */
-extern "C" void	R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly )
+void	R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly )
 {
 	drawSurfsCommand_t*	cmd;
 

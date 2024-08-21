@@ -42,23 +42,7 @@ const Framebuffer = @import("framebuffer.zig").Framebuffer;
 const nvrhi = @import("nvrhi.zig");
 const Pass = @import("render_pass.zig");
 const FrameData = @import("frame_data.zig");
-
-fn idList(T: type) type {
-    return extern struct {
-        num: c_int,
-        size: c_int,
-        granularity: c_int,
-        list: ?*T,
-        memTag: u8,
-    };
-}
-
-fn idStaticList(T: type, size: usize) type {
-    return extern struct {
-        num: c_int,
-        list: [size]T,
-    };
-}
+const idlib = @import("../idlib.zig");
 
 const TileMap = extern struct {
     const TileNode = extern struct {
@@ -74,43 +58,28 @@ const TileMap = extern struct {
     numLevels: c_uint,
     numNodes: c_uint,
     nodeIndex: c_uint,
-    tileNodeList: idList(TileNode),
+    tileNodeList: idlib.idList(TileNode),
     foundNode: ?*TileNode,
-};
-
-const idSysMutex = extern struct {
-    const MutexHandle = @import("std").c.pthread_mutex_t;
-    handle: MutexHandle,
-};
-
-const idHashIndex = extern struct {
-    hashSize: c_int,
-    hash: ?*c_int,
-    indexSize: c_int,
-    indexChain: ?*c_int,
-    granularity: c_int,
-    hashMask: c_int,
-    lookupMask: c_int,
 };
 
 const BindingCache = extern struct {
     device: ?*nvrhi.IDevice,
-    bindingSets: idList(nvrhi.BindingSetHandle),
-    bindingHash: idHashIndex,
-    mutex: idSysMutex,
+    bindingSets: idlib.idList(nvrhi.BindingSetHandle),
+    bindingHash: idlib.idHashIndex,
+    mutex: idlib.idSysMutex,
 };
 
 const SamplerCache = extern struct {
     device: ?*nvrhi.IDevice,
-    samplers: idList(nvrhi.SamplerHandle),
-    samplerHash: idHashIndex,
-    mutex: idSysMutex,
+    samplers: idlib.idList(nvrhi.SamplerHandle),
+    samplerHash: idlib.idHashIndex,
+    mutex: idlib.idSysMutex,
 };
 
 const PipelineCache = extern struct {
     device: nvrhi.DeviceHandle,
-    pipelineHash: idHashIndex,
-    pipelines: idList(anyopaque),
+    pipelineHash: idlib.idHashIndex,
+    pipelines: idlib.idList(anyopaque),
 };
 
 const BindingLayoutType = struct {
@@ -178,9 +147,9 @@ pub const RenderBackend = extern struct {
     currentJointBuffer: ?*nvrhi.IBuffer,
     currentJointOffset: c_uint,
     currentPipeline: nvrhi.GraphicsPipelineHandle,
-    currentBindingSets: idStaticList(nvrhi.BindingSetHandle, nvrhi.c_MaxBindingLayouts),
-    pendingBindingSetDescs: idStaticList(
-        idStaticList(nvrhi.BindingSetDesc, nvrhi.c_MaxBindingLayouts),
+    currentBindingSets: idlib.idStaticList(nvrhi.BindingSetHandle, nvrhi.c_MaxBindingLayouts),
+    pendingBindingSetDescs: idlib.idStaticList(
+        idlib.idStaticList(nvrhi.BindingSetDesc, nvrhi.c_MaxBindingLayouts),
         BindingLayoutType.NUM_BINDING_LAYOUTS,
     ),
     currentFramebuffer: *Framebuffer,

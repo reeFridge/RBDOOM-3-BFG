@@ -3,40 +3,11 @@ const RenderWorld = @import("renderer/render_world.zig");
 const RenderSystem = @import("renderer/render_system.zig");
 const global = @import("global.zig");
 const types = @import("types.zig");
-
-const KeyValue = extern struct {
-    key: *const anyopaque,
-    value: *const anyopaque,
-};
-
-fn List(T: type) type {
-    return extern struct {
-        num: c_int,
-        size: c_int,
-        granularity: c_int,
-        list: [*]T,
-        memTag: u8,
-    };
-}
-
-const HashIndex = extern struct {
-    hashSize: c_int,
-    hash: *c_int,
-    indexSize: c_int,
-    indexChain: *c_int,
-    granularity: c_int,
-    hashMask: c_int,
-    lookupMask: c_int,
-};
-
-pub const Dict = extern struct {
-    args: List(KeyValue),
-    argsHash: HashIndex,
-};
+const idlib = @import("idlib.zig");
 
 pub const DeclEntityDef = extern struct {
     base: *anyopaque,
-    dict: Dict,
+    dict: idlib.idDict,
 
     pub fn name(self: DeclEntityDef) []const u8 {
         const c_str = c_declGetName(&self);
@@ -162,7 +133,7 @@ fn processEntities(game: *Game) void {
     var ents = &global.entities;
 
     ents.process(UpdatePlayer.handleInput);
-    ents.process(UpdatePlayer.updateViewAngles);
+    ents.process(UpdatePlayer.updateTransformByInput);
     ents.processWithQuery(types.Player, UpdatePlayer.update);
 
     ents.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);

@@ -76,6 +76,10 @@ typedef struct mtrParsingData_s
 
 idCVar r_forceSoundOpAmplitude( "r_forceSoundOpAmplitude", "0", CVAR_FLOAT, "Don't call into the sound system for amplitudes" );
 
+extern "C" bool c_material_hasSubview(const idMaterial* material) {
+	return material->HasSubview();
+}
+
 extern "C" void c_material_addReference(idMaterial* material) {
 	material->AddReference();
 }

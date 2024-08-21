@@ -5,6 +5,7 @@ const Input = @import("../types.zig").Input;
 const UserCmd = @import("../types.zig").UserCmd;
 const Transform = @import("../physics/physics.zig").Transform;
 const Mat3 = @import("../math/matrix.zig").Mat3;
+const Game = @import("../game.zig");
 
 pub fn update(list: anytype) void {
     var list_slice = list.slice();
@@ -47,12 +48,14 @@ inline fn shortToAngle(angle_short: c_short) f32 {
     return @as(f32, @floatFromInt(angle_short)) * (360.0 / 65536.0);
 }
 
-pub fn updateViewAngles(T: type, list: anytype) void {
+pub fn updateTransformByInput(T: type, list: anytype) void {
     if (comptime !assertFields(struct {
         delta_view_angles: Angles,
         transform: Transform,
         input: Input,
     }, T)) return;
+
+    const dt = Game.instance.deltaTime();
 
     var list_slice = list.slice();
     for (
@@ -86,5 +89,10 @@ pub fn updateViewAngles(T: type, list: anytype) void {
 
         // update transform
         transform.axis = view_angles.toMat3();
+
+        const forward = transform.axis.v[0].normalize();
+        const wishvel = forward.scale(@floatFromInt(input.user_cmd.forwardmove));
+
+        transform.origin = transform.origin.add(wishvel.scale(dt));
     }
 }

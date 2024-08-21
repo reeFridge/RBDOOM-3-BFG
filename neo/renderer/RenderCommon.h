@@ -770,7 +770,7 @@ extern	idFrameData*	frameData;
 
 //=======================================================================
 
-extern "C" void R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly );
+void R_AddDrawViewCmd( viewDef_t* parms, bool guiOnly );
 extern "C" void R_SetupSplitFrustums( viewDef_t* viewDef );
 void R_AddDrawPostProcess( viewDef_t* parms );
 

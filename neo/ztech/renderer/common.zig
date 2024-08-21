@@ -175,7 +175,7 @@ pub const ViewDef = extern struct {
     globalProbeBounds: CBounds,
     inverseBaseEnvProbeProject: RenderMatrix,
     irradianceImage: ?*Image,
-    radianceImages: [3]*Image,
+    radianceImages: [3]?*Image,
     radianceImageBlends: CVec4,
     targetRender: ?*Framebuffer,
 };

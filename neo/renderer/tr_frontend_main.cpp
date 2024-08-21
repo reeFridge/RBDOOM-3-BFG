@@ -488,18 +488,6 @@ public:
 	}
 };
 
-extern "C" void c_setDefaultEnvironmentProbes(viewDef_t* viewDef) {
-	// set safe defaults
-	viewDef->globalProbeBounds.Clear();
-
-	viewDef->irradianceImage = globalImages->defaultUACIrradianceCube;
-	viewDef->radianceImageBlends.Set( 1, 0, 0, 0 );
-	for( int i = 0; i < 3; i++ )
-	{
-		viewDef->radianceImages[i] = globalImages->defaultUACRadianceCube;
-	}
-}
-
 static void R_FindClosestEnvironmentProbes()
 {
 	// set safe defaults
