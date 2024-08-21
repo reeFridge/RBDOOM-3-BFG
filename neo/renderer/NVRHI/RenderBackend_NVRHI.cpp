@@ -2391,44 +2391,22 @@ void idRenderBackend::ResetPipelineCache()
 	pipelineCache.Clear();
 }
 
-extern "C" unsigned long c_commandListHandle_reset(nvrhi::CommandListHandle* ref) {
-	return ref->Reset();
-}
+extern "C" {
 
-extern "C" void c_device_waitForIdle(nvrhi::IDevice* device) {
-	device->waitForIdle();
-}
-
-extern "C" void c_device_executeCommandList(nvrhi::IDevice* device, nvrhi::ICommandList* commandList) {
-	device->executeCommandList(commandList);
-}
-
-extern "C" nvrhi::ICommandList* c_device_createCommandList(nvrhi::IDevice* device) {
-	nvrhi::CommandListHandle wrapper_handle = device->createCommandList();
-
-	return wrapper_handle.Detach();
-}
-
-extern "C" void c_commandList_open(nvrhi::ICommandList* commandList) {
-	commandList->open();
-}
-
-extern "C" void c_commandList_close(nvrhi::ICommandList* commandList) {
-	commandList->close();
-}
-
-extern "C" void c_renderBackend_shutdown(idRenderBackend* instance) {
+void c_renderBackend_shutdown(idRenderBackend* instance) {
 	instance->Shutdown();
 }
 
-extern "C" void c_renderBackend_init(idRenderBackend* instance) {
+void c_renderBackend_init(idRenderBackend* instance) {
 	instance->Init();
 }
 
-extern "C" void c_renderBackend_checkCVars(idRenderBackend* instance) {
+void c_renderBackend_checkCVars(idRenderBackend* instance) {
 	instance->CheckCVars();
 }
 
-extern "C" void c_renderBackend_executeBackendCommands(idRenderBackend* instance, emptyCommand_t* cmdHead) {
+void c_renderBackend_executeBackendCommands(idRenderBackend* instance, emptyCommand_t* cmdHead) {
 	instance->ExecuteBackEndCommands(cmdHead);
+}
+
 }

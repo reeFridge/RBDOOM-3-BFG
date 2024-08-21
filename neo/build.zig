@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) !void {
     exe.addIncludePath(b.path("libs/optick"));
     exe.addIncludePath(b.path("libs/vma/include"));
     exe.addIncludePath(b.path("libs/libbinkdec/include"));
+    exe.addIncludePath(b.path("cnvrhi"));
     exe.addIncludePath(b.path("./"));
 
     // TODO: find_package(Vulkan OPTIONAL_COMPONENTS ${Vulkan_COMPONENTS})
@@ -231,10 +232,10 @@ pub fn build(b: *std.Build) !void {
         "sound/OpenAL/AL_CinematicAudio.cpp",
     });
 
+    try exe_src_cpp.appendSlice(&.{"cnvrhi/cnvrhi.cpp"});
+
     const flags = [_][]const u8{"-fno-sanitize=undefined"};
-
     const cflags = flags ++ [_][]const u8{};
-
     const cxxflags = flags ++ [_][]const u8{ "-std=c++17", "-Wno-inconsistent-missing-override" };
 
     exe.addCSourceFiles(.{ .files = exe_src_cpp.items, .flags = &cxxflags });

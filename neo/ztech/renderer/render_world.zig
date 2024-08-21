@@ -390,7 +390,7 @@ pub fn generateAllInteractions(render_world: *RenderWorld) !void {
     for (interaction_table) |*elem| elem.* = null;
     render_world.interaction_table = interaction_table;
 
-    const command_list_ptr = RenderSystem.instance.command_list.commandList_ptr() orelse @panic("CommandListHandle is not initialized!");
+    const command_list_ptr = RenderSystem.instance.command_list.ptr_ orelse @panic("CommandListHandle is not initialized!");
 
     command_list_ptr.open();
     defer {

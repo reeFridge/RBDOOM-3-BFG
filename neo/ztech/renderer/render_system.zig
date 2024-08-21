@@ -484,13 +484,13 @@ pub fn initBackend(render_system: *RenderSystem) void {
 
     const device = DeviceManager.instance().getDevice();
 
-    const command_list_ptr = if (render_system.command_list.commandList_ptr()) |ptr|
+    const command_list_ptr = if (render_system.command_list.ptr_) |ptr|
         ptr
     else command_list: {
-        var handle = device.createCommandList();
+        const handle = device.createCommandList();
         render_system.command_list = handle;
 
-        break :command_list handle.commandList_ptr() orelse @panic("Fails to create command-list!");
+        break :command_list handle.ptr_ orelse @panic("Fails to create command-list!");
     };
 
     command_list_ptr.open();
@@ -626,7 +626,7 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     ParallelJobManager.instance.freeJobList(render_system.envprobe_job_list);
     ParallelJobManager.instance.freeJobList(render_system.front_end_job_list);
 
-    _ = render_system.command_list.commandListHandle_reset();
+    render_system.command_list.deinit();
 
     backend_.shutdown();
 
@@ -696,7 +696,7 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
     // scene generation, the basic surfaces needed for drawing the buffers will
     // always be present.
     {
-        const command_list = render_system.command_list.commandList_ptr() orelse unreachable;
+        const command_list = render_system.command_list.ptr_ orelse unreachable;
         R_InitDrawSurfFromTri(
             &render_system.unit_square_surface_,
             render_system.unit_square_triangles,
