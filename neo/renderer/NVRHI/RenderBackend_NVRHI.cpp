@@ -1903,11 +1903,7 @@ void idRenderBackend::GL_BlockingSwapBuffers()
 
 	if( deviceManager->GetGraphicsAPI() == nvrhi::GraphicsAPI::VULKAN )
 	{
-#ifdef USE_ZTECH_RENDER_SYSTEM
-		ztech_renderSystem_invalidateSwapBuffers();
-#else
 		tr.InvalidateSwapBuffers();
-#endif
 	}
 }
 
@@ -2393,10 +2389,6 @@ void c_renderBackend_checkCVars(idRenderBackend* instance) {
 
 void c_renderBackend_executeBackendCommands(idRenderBackend* instance, emptyCommand_t* cmdHead) {
 	instance->ExecuteBackEndCommands(cmdHead);
-}
-
-void c_renderBackend_GLBlockingSwapBuffers(idRenderBackend* instance) {
-	instance->GL_BlockingSwapBuffers();
 }
 
 }

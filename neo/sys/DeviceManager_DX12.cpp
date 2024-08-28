@@ -89,7 +89,7 @@ public:
 		return nvrhi::GraphicsAPI::D3D12;
 	}
 
-protected:
+public:
 	bool CreateDeviceAndSwapChain() override;
 	void DestroyDeviceAndSwapChain() override;
 	void ResizeSwapChain() override;

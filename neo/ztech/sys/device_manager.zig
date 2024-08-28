@@ -4,6 +4,11 @@ pub const DeviceManager = opaque {
     extern fn c_deviceManager_getDevice(*DeviceManager) callconv(.C) *nvrhi.IDevice;
     extern fn c_deviceManager_create(nvrhi.GraphicsAPI) callconv(.C) *DeviceManager;
     extern fn c_deviceManager_destroy(*DeviceManager) callconv(.C) void;
+    extern fn c_deviceManager_present(*DeviceManager) callconv(.C) void;
+
+    pub fn present(device_manager: *DeviceManager) void {
+        c_deviceManager_present(device_manager);
+    }
 
     pub fn getDevice(device_manager: *DeviceManager) *nvrhi.IDevice {
         return c_deviceManager_getDevice(device_manager);

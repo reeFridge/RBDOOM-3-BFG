@@ -647,7 +647,7 @@ pub fn finishRendering(render_system: *RenderSystem) void {
     if (!render_system.omit_swap_buffers) {
         // wait for our fence to hit, which means the swap has actually happened
         // We must do this before clearing any resources the GPU may be using
-        backend_.swapBuffers();
+        backend_.swapBuffersBlocking();
     }
 
     backend_.checkCVars();

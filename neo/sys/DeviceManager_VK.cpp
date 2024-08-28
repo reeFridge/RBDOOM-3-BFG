@@ -118,7 +118,7 @@ public:
 		return nvrhi::GraphicsAPI::VULKAN;
 	}
 
-protected:
+public:
 	bool CreateDeviceAndSwapChain() override;
 	void DestroyDeviceAndSwapChain() override;
 

@@ -247,7 +247,6 @@ pub const RenderBackend = extern struct {
 
     extern fn c_renderBackend_clearContext() callconv(.C) void;
     extern fn c_renderBackend_checkCVars(*RenderBackend) callconv(.C) void;
-    extern fn c_renderBackend_GLBlockingSwapBuffers(*RenderBackend) callconv(.C) void;
     extern fn c_renderBackend_executeBackendCommands(*RenderBackend, ?*FrameData.EmptyCommand) callconv(.C) void;
     extern fn c_renderBackend_constructInPlace(*RenderBackend) callconv(.C) void;
 
@@ -386,8 +385,15 @@ pub const RenderBackend = extern struct {
         device.runGarbageCollection();
     }
 
-    pub fn swapBuffers(backend: *RenderBackend) void {
-        c_renderBackend_GLBlockingSwapBuffers(backend);
+    pub fn swapBuffersBlocking(_: *RenderBackend) void {
+        const device_manager = DeviceManager.instance();
+        device_manager.present();
+        device_manager.getDevice().runGarbageCollection();
+        RenderLog.instance.endFrame();
+
+        // if api == VULKAN
+        // invalidate swap buffers
+        RenderSystem.instance.omit_swap_buffers = true;
     }
 
     pub fn checkCVars(backend: *RenderBackend) void {

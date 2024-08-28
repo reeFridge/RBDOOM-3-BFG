@@ -146,7 +146,7 @@ public:
 
 	void UpdateWindowSize( const glimpParms_t& params );
 
-protected:
+public:
 	friend class idRenderBackend;
 	friend class idImage;
 

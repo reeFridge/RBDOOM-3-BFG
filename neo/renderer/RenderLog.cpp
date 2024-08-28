@@ -334,4 +334,8 @@ void c_renderLog_shutdown(idRenderLog* renderLog) {
 	renderLog->Shutdown();
 }
 
+void c_renderLog_endFrame(idRenderLog* renderLog) {
+	renderLog->EndFrame();
+}
+
 }
