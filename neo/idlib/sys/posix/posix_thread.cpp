@@ -517,6 +517,39 @@ void Sys_MutexUnlock( mutexHandle_t& handle )
 	pthread_mutex_unlock( & handle );
 }
 
+extern "C" {
+
+void c_sysMutex_unlock(mutexHandle_t* handle) {
+	pthread_mutex_unlock(handle);
+}
+
+bool c_sysMutex_lock(mutexHandle_t* handle, bool blocking) {
+	if(pthread_mutex_trylock(handle) != 0) {
+		if( !blocking ) {
+			return false;
+		}
+		pthread_mutex_lock(handle);
+	}
+
+	return true;
+}
+
+void c_sysMutex_create(mutexHandle_t* handle) {
+	pthread_mutexattr_t attr;
+
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+	pthread_mutex_init(handle, &attr);
+
+	pthread_mutexattr_destroy(&attr);
+}
+
+void c_sysMutex_destroy(mutexHandle_t* handle) {
+	pthread_mutex_destroy(handle);
+}
+
+}
+
 /*
 ================================================================================================
 

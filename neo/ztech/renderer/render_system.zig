@@ -476,18 +476,18 @@ const JobListId = @import("parallel_job_list.zig").JobListId;
 const JobListPriority = @import("parallel_job_list.zig").JobListPriority;
 const global = @import("../global.zig");
 
-pub fn initBackend(render_system: *RenderSystem) void {
+pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) error{OutOfMemory}!void {
     if (render_system.initialized) return;
     // also inits FrameData
     // and calls to ztech_renderSystem_setBackendInitialized()
-    backend_.init();
+    try backend_.init(allocator);
 
     const device = DeviceManager.instance().getDevice();
 
     const command_list_ptr = if (render_system.command_list.ptr_) |ptr|
         ptr
     else command_list: {
-        const handle = device.createCommandList();
+        const handle = device.createCommandList(.{});
         render_system.command_list = handle;
 
         break :command_list handle.ptr_ orelse @panic("Fails to create command-list!");
@@ -647,7 +647,7 @@ pub fn finishRendering(render_system: *RenderSystem) void {
     if (!render_system.omit_swap_buffers) {
         // wait for our fence to hit, which means the swap has actually happened
         // We must do this before clearing any resources the GPU may be using
-        backend_.GL_BlockingSwapBuffers();
+        backend_.swapBuffers();
     }
 
     backend_.checkCVars();

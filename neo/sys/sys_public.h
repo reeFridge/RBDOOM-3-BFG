@@ -584,7 +584,7 @@ void			Sys_ClearEvents();
 
 // input is tied to windows, so it needs to be started up and shut down whenever
 // the main window is recreated
-void			Sys_InitInput();
+extern "C" void			Sys_InitInput();
 void			Sys_ShutdownInput();
 
 // keyboard input polling

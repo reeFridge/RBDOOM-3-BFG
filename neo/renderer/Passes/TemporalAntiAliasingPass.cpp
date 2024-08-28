@@ -311,3 +311,11 @@ idVec2 TemporalAntiAliasingPass::GetCurrentPixelOffset()
 		}
 	}
 }
+
+extern "C" {
+
+void c_temporalAntiAliasingPass_delete(TemporalAntiAliasingPass* ptr) {
+	delete ptr;
+}
+
+}

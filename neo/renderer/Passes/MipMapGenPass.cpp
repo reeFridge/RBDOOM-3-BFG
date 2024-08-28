@@ -284,3 +284,11 @@ void MipMapGenPass::Display( CommonRenderPasses& commonPasses, nvrhi::ICommandLi
 
 	commandList->endMarker(); // "MipMapGen::Display"
 }
+
+extern "C" {
+
+void c_mipMapGenPass_delete(MipMapGenPass* ptr) {
+	delete ptr;
+}
+
+}

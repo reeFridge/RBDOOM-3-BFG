@@ -1,3 +1,11 @@
+const std = @import("std");
+const RenderSystem = @import("render_system.zig");
+const DeviceManager = @import("../sys/device_manager.zig");
+const VertexCache = @import("vertex_cache.zig");
+const ImmediateMode = @import("immediate_mode.zig");
+const RenderLog = @import("render_log.zig");
+const RenderProgManager = @import("render_prog_manager.zig");
+
 const BackendCounters = extern struct {
     c_surfaces: c_int,
     c_shaders: c_int,
@@ -37,6 +45,7 @@ const ViewDef = @import("common.zig").ViewDef;
 const ViewEntity = @import("common.zig").ViewEntity;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
+const RenderMatrixIdentity = @import("matrix.zig").identity;
 const CVec2 = @import("../math/vector.zig").CVec2;
 const Framebuffer = @import("framebuffer.zig").Framebuffer;
 const nvrhi = @import("nvrhi.zig");
@@ -60,6 +69,17 @@ const TileMap = extern struct {
     nodeIndex: c_uint,
     tileNodeList: idlib.idList(TileNode),
     foundNode: ?*TileNode,
+
+    extern fn c_tileMap_init(*TileMap, c_uint, c_uint, c_uint) callconv(.C) void;
+
+    fn init(tile_map: *TileMap, map_size: usize, max_abs_tile_size: usize, num_levels: usize) void {
+        c_tileMap_init(
+            tile_map,
+            @intCast(map_size),
+            @intCast(max_abs_tile_size),
+            @intCast(num_levels),
+        );
+    }
 };
 
 const BindingCache = extern struct {
@@ -67,6 +87,22 @@ const BindingCache = extern struct {
     bindingSets: idlib.idList(nvrhi.BindingSetHandle),
     bindingHash: idlib.idHashIndex,
     mutex: idlib.idSysMutex,
+
+    fn init(binding_cache: *BindingCache, device: *nvrhi.IDevice) void {
+        binding_cache.device = device;
+    }
+
+    fn clear(binding_cache: *BindingCache) void {
+        _ = binding_cache.mutex.lockBlocking();
+        defer binding_cache.mutex.unlock();
+
+        for (binding_cache.bindingSets.slice()) |*binding_set| {
+            _ = binding_set.reset();
+        }
+
+        binding_cache.bindingSets.clear();
+        binding_cache.bindingHash.clear();
+    }
 };
 
 const SamplerCache = extern struct {
@@ -74,12 +110,53 @@ const SamplerCache = extern struct {
     samplers: idlib.idList(nvrhi.SamplerHandle),
     samplerHash: idlib.idHashIndex,
     mutex: idlib.idSysMutex,
+
+    fn init(sampler_cache: *SamplerCache, device: *nvrhi.IDevice) void {
+        sampler_cache.device = device;
+    }
+
+    fn clear(sampler_cache: *SamplerCache) void {
+        _ = sampler_cache.mutex.lockBlocking();
+        defer sampler_cache.mutex.unlock();
+
+        sampler_cache.samplers.clear();
+        sampler_cache.samplerHash.clear();
+    }
 };
 
+fn CppStdPair(First: type, Second: type) type {
+    return extern struct {
+        first: First,
+        second: Second,
+    };
+}
+
 const PipelineCache = extern struct {
+    const PipelineKey = extern struct {
+        state: u64,
+        program: c_int,
+        depthBias: c_int,
+        slopeBias: f32,
+        framebuffer: ?*Framebuffer,
+    };
+
     device: nvrhi.DeviceHandle,
     pipelineHash: idlib.idHashIndex,
-    pipelines: idlib.idList(anyopaque),
+    pipelines: idlib.idList(CppStdPair(PipelineKey, nvrhi.GraphicsPipelineHandle)),
+
+    extern fn c_pipelineCache_clear(*PipelineCache) callconv(.C) void;
+
+    fn init(pipeline_cache: *PipelineCache, device: *nvrhi.IDevice) void {
+        pipeline_cache.device = nvrhi.DeviceHandle.init(device);
+    }
+
+    fn shutdown(pipeline_cache: *PipelineCache) void {
+        pipeline_cache.device.deinit();
+    }
+
+    fn clear(pipeline_cache: *PipelineCache) void {
+        c_pipelineCache_clear(pipeline_cache);
+    }
 };
 
 const BindingLayoutType = struct {
@@ -168,21 +245,148 @@ pub const RenderBackend = extern struct {
     pixelShader: nvrhi.ShaderHandle,
     prevBindingLayoutType: c_int,
 
-    extern fn c_renderBackend_shutdown(*RenderBackend) callconv(.C) void;
-    extern fn c_renderBackend_init(*RenderBackend) callconv(.C) void;
+    extern fn c_renderBackend_clearContext() callconv(.C) void;
     extern fn c_renderBackend_checkCVars(*RenderBackend) callconv(.C) void;
     extern fn c_renderBackend_GLBlockingSwapBuffers(*RenderBackend) callconv(.C) void;
     extern fn c_renderBackend_executeBackendCommands(*RenderBackend, ?*FrameData.EmptyCommand) callconv(.C) void;
+    extern fn c_renderBackend_constructInPlace(*RenderBackend) callconv(.C) void;
+
+    extern fn VKimp_PreInit() callconv(.C) void;
+    extern fn VKimp_Shutdown(bool) callconv(.C) void;
+    extern fn R_SetNewMode(bool) callconv(.C) void;
+    extern fn Sys_InitInput() callconv(.C) void;
 
     pub fn shutdown(backend: *RenderBackend) void {
-        c_renderBackend_shutdown(backend);
+        backend.clearCaches();
+        backend.pipelineCache.shutdown();
+        backend.commonPasses.shutdown();
+
+        for (backend.currentBindingSets.slice()) |*binding_set| {
+            _ = binding_set.reset();
+        }
+
+        RenderProgManager.instance.shutdown();
+        RenderLog.instance.shutdown();
+        _ = backend.commandList.reset();
+        ImmediateMode.shutdown();
+        VKimp_Shutdown(true);
+
+        DeviceManager.deinit();
     }
 
-    pub fn init(backend: *RenderBackend) void {
-        c_renderBackend_init(backend);
+    pub fn clearCaches(backend: *RenderBackend) void {
+        backend.pipelineCache.clear();
+        backend.bindingCache.clear();
+        backend.samplerCache.clear();
+
+        if (backend.hiZGenPass) |hiZGenPass| {
+            hiZGenPass.destroy();
+            backend.hiZGenPass = null;
+        }
+
+        if (backend.ssaoPass) |ssaoPass| {
+            ssaoPass.destroy();
+            backend.ssaoPass = null;
+        }
+
+        if (backend.toneMapPass) |toneMapPass| {
+            toneMapPass.destroy();
+            backend.toneMapPass = null;
+        }
+
+        if (backend.taaPass) |taaPass| {
+            taaPass.destroy();
+            backend.taaPass = null;
+        }
+
+        backend.currentVertexBuffer.deinit();
+        backend.currentIndexBuffer.deinit();
+        backend.currentJointBuffer = null;
+        backend.currentIndexOffset = std.math.maxInt(c_uint);
+        backend.currentVertexOffset = std.math.maxInt(c_uint);
+        backend.currentBindingLayout.deinit();
+        backend.currentPipeline.deinit();
     }
 
-    pub fn GL_BlockingSwapBuffers(backend: *RenderBackend) void {
+    pub fn init(backend: *RenderBackend, allocator: std.mem.Allocator) error{OutOfMemory}!void {
+        if (RenderSystem.instance.backend_initialized) @panic("RenderBackend already initialized");
+
+        // TODO: Remove
+        c_renderBackend_constructInPlace(backend);
+
+        const api = nvrhi.GraphicsAPI.VULKAN;
+
+        DeviceManager.init(api);
+        VKimp_PreInit();
+        R_SetNewMode(true);
+        Sys_InitInput();
+
+        c_renderBackend_clearContext();
+
+        const device = DeviceManager.instance().getDevice();
+        RenderProgManager.instance.init(device);
+        RenderLog.instance.init();
+
+        const MAX_TILE_RES: usize = 1024; // shadowMapResolutions[0]
+        const NUM_QUAD_TREE_LEVELS: usize = 8;
+        const r_shadowMapAtlasSize = 8192;
+        backend.tileMap.init(r_shadowMapAtlasSize, MAX_TILE_RES, NUM_QUAD_TREE_LEVELS);
+
+        backend.bindingCache.init(device);
+        backend.samplerCache.init(device);
+        backend.pipelineCache.init(device);
+        backend.commonPasses.init(device);
+        backend.hiZGenPass = null;
+        backend.ssaoPass = null;
+
+        RenderSystem.instance.backend_initialized = true;
+
+        const command_list_ptr = if (backend.commandList.ptr_) |ptr|
+            ptr
+        else command_list: {
+            const r_vkUploadBufferSizeMB = 64;
+            const handle = device.createCommandList(.{
+                // if api == VULKAN
+                .uploadChunkSize = r_vkUploadBufferSizeMB * 1024 * 1024,
+            });
+            backend.commandList = handle;
+
+            break :command_list handle.ptr_ orelse @panic("Fails to create command-list!");
+        };
+
+        command_list_ptr.open();
+        VertexCache.instance.init(
+            @intCast(RenderSystem.glConfig.uniformBufferOffsetAlignment),
+            command_list_ptr,
+        );
+        command_list_ptr.close();
+        device.executeCommandList(command_list_ptr);
+        ImmediateMode.init(command_list_ptr);
+
+        try FrameData.init(allocator);
+        backend.slopeScaleBias = 0;
+        backend.depthBias = 0;
+
+        backend.currentBindingSets.setNum(backend.currentBindingSets.max());
+        backend.pendingBindingSetDescs.setNum(backend.pendingBindingSetDescs.max());
+
+        backend.prevMVP[0] = RenderMatrixIdentity;
+        backend.prevMVP[1] = RenderMatrixIdentity;
+        backend.prevViewsValid = false;
+
+        backend.currentVertexBuffer = .{};
+        backend.currentIndexBuffer = .{};
+        backend.currentJointBuffer = null;
+        backend.currentVertexOffset = 0;
+        backend.currentIndexOffset = 0;
+        backend.currentJointOffset = 0;
+        backend.prevBindingLayoutType = -1;
+
+        device.waitForIdle();
+        device.runGarbageCollection();
+    }
+
+    pub fn swapBuffers(backend: *RenderBackend) void {
         c_renderBackend_GLBlockingSwapBuffers(backend);
     }
 

@@ -41,9 +41,48 @@ pub const CommonRenderPasses = extern struct {
     m_AnisotropicWrapSampler: nvrhi.SamplerHandle,
     m_AnisotropicClampEdgeSampler: nvrhi.SamplerHandle,
     m_BlitBindingLayout: nvrhi.BindingLayoutHandle,
+
+    extern fn c_commonRenderPasses_init(*CommonRenderPasses, *nvrhi.IDevice) callconv(.C) void;
+    extern fn c_commonRenderPasses_shutdown(*CommonRenderPasses) callconv(.C) void;
+
+    pub fn init(common_pass: *CommonRenderPasses, device: *nvrhi.IDevice) void {
+        //common_pass.m_Device = nvrhi.DeviceHandle.init(device);
+        c_commonRenderPasses_init(common_pass, device);
+    }
+
+    pub fn shutdown(common_pass: *CommonRenderPasses) void {
+        c_commonRenderPasses_shutdown(common_pass);
+    }
 };
 
-pub const SsaoPass = opaque {};
-pub const MipMapGenPass = opaque {};
-pub const TonemapPass = opaque {};
-pub const TemporalAntiAliasingPass = opaque {};
+pub const SsaoPass = opaque {
+    extern fn c_ssaoPass_delete(*SsaoPass) callconv(.C) void;
+
+    pub fn destroy(pass: *SsaoPass) void {
+        c_ssaoPass_delete(pass);
+    }
+};
+
+pub const MipMapGenPass = opaque {
+    extern fn c_mipMapGenPass_delete(*MipMapGenPass) callconv(.C) void;
+
+    pub fn destroy(pass: *MipMapGenPass) void {
+        c_mipMapGenPass_delete(pass);
+    }
+};
+
+pub const TonemapPass = opaque {
+    extern fn c_tonemapPass_delete(*TonemapPass) callconv(.C) void;
+
+    pub fn destroy(pass: *TonemapPass) void {
+        c_tonemapPass_delete(pass);
+    }
+};
+
+pub const TemporalAntiAliasingPass = opaque {
+    extern fn c_temporalAntiAliasingPass_delete(*TemporalAntiAliasingPass) callconv(.C) void;
+
+    pub fn destroy(pass: *TemporalAntiAliasingPass) void {
+        c_temporalAntiAliasingPass_delete(pass);
+    }
+};

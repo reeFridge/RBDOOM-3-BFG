@@ -1158,3 +1158,15 @@ void RpPrintState( uint64 stateBits )
 		printStencil( STENCIL_FACE_NUM, stateBits, mask, ref );
 	}
 }
+
+extern "C" {
+
+void c_renderProgManager_init(idRenderProgManager* progManager, nvrhi::IDevice* device) {
+	progManager->Init(device);
+}
+
+void c_renderProgManager_shutdown(idRenderProgManager* progManager) {
+	progManager->Shutdown();
+}
+
+}

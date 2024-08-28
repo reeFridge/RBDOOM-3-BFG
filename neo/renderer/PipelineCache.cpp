@@ -528,3 +528,11 @@ nvrhi::DepthStencilState::StencilOpDesc PipelineCache::GetStencilOpState( uint64
 
 	return stencilOp;
 }
+
+extern "C" {
+
+void c_pipelineCache_clear(PipelineCache* instance) {
+	instance->Clear();
+}
+
+}

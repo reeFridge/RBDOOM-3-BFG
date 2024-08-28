@@ -521,3 +521,15 @@ void fhLineBuffer::Clear()
 	verticesUsed = 0;
 }
 */
+
+extern "C" {
+
+void c_immediateMode_init(nvrhi::ICommandList* commandList) {
+	fhImmediateMode::Init(commandList);
+}
+
+void c_immediateMode_shutdown() {
+	fhImmediateMode::Shutdown();
+}
+
+}

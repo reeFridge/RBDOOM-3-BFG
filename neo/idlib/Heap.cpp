@@ -110,3 +110,11 @@ char* Mem_CopyString( const char* in )
 	return out;
 }
 
+extern "C" {
+
+void c_memFree(void* ptr) {
+	Mem_Free(ptr);
+}
+
+}
+

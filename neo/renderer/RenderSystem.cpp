@@ -241,9 +241,6 @@ idRenderSystemLocal::idRenderSystemLocal() :
 	bInitialized( false ),
 	omitSwapBuffers( false )
 {
-#ifdef USE_ZTECH_RENDER_BACKEND
-	new(&backend_) idRenderBackend();
-#endif
 	Clear();
 }
 

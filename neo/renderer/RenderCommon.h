@@ -1333,7 +1333,7 @@ bool R_UseTemporalAA();
 
 uint R_GetMSAASamples();
 
-void R_SetNewMode( const bool fullInit );
+extern "C" void R_SetNewMode( const bool fullInit );
 
 void R_SetColorMappings();
 
@@ -1411,7 +1411,7 @@ std::vector<const char*> get_required_extensions();
 
 // DG: R_GetModeListForDisplay is called before GLimp_Init(), but SDL needs SDL_Init() first.
 // So add PreInit for platforms that need it, others can just stub it.
-void		VKimp_PreInit();
+extern "C" void		VKimp_PreInit();
 
 // If the desired mode can't be set satisfactorily, false will be returned.
 // If succesful, sets glConfig.nativeScreenWidth, glConfig.nativeScreenHeight, and glConfig.pixelAspect
@@ -1424,7 +1424,7 @@ bool		VKimp_SetScreenParms( glimpParms_t parms );
 
 // Destroys the rendering context, closes the window, resets the resolution,
 // and resets the gamma ramps.  SRS - Optionally shuts down SDL for quit.
-void		VKimp_Shutdown( bool shutdownSDL );
+extern "C" void		VKimp_Shutdown( bool shutdownSDL );
 
 // Sets the hardware gamma ramps for gamma and brightness adjustment.
 // These are now taken as 16 bit values, so we can take full advantage

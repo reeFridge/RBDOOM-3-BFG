@@ -174,3 +174,10 @@ void TileMap::FindNode( TileNode& parentNode, unsigned int level )
 	}
 }
 
+extern "C" {
+
+void c_tileMap_init(TileMap* tileMap, unsigned int mapSize, unsigned int maxAbsTileSize, unsigned int numLevels) {
+	tileMap->Init(mapSize, maxAbsTileSize, numLevels);
+}
+
+}

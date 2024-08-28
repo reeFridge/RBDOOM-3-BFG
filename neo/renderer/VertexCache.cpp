@@ -364,6 +364,10 @@ extern "C" void c_vertexCache_shutdown(idVertexCache* instance) {
 	instance->Shutdown();
 }
 
+extern "C" void c_vertexCache_init(idVertexCache* instance, unsigned int uniform_buffer_offset_alignment, nvrhi::ICommandList* command_list) {
+	instance->Init(uniform_buffer_offset_alignment, command_list);
+}
+
 extern "C" void c_vertexCache_beginBackend(idVertexCache* instance) {
 	instance->BeginBackEnd();
 }

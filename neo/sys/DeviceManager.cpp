@@ -129,3 +129,11 @@ void DefaultMessageCallback::message( nvrhi::MessageSeverity severity, const cha
 extern "C" nvrhi::IDevice* c_deviceManager_getDevice(DeviceManager* instance) {
 	return instance->GetDevice();
 }
+
+extern "C" DeviceManager* c_deviceManager_create(nvrhi::GraphicsAPI api) {
+	return DeviceManager::Create(api);
+}
+
+extern "C" void c_deviceManager_destroy(DeviceManager* instance) {
+	delete instance;
+}

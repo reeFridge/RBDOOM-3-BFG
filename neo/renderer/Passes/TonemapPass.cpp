@@ -318,3 +318,11 @@ void TonemapPass::ComputeExposure( nvrhi::ICommandList* commandList, const ToneM
 
 	commandList->dispatch( 1 );
 }
+
+extern "C" {
+
+void c_tonemapPass_delete(TonemapPass* ptr) {
+	delete ptr;
+}
+
+}

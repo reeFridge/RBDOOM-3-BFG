@@ -323,3 +323,15 @@ void idRenderLog::CloseBlock()
 {
 	PC_EndNamedEvent( commandList );
 }
+
+extern "C" {
+
+void c_renderLog_init(idRenderLog* renderLog) {
+	renderLog->Init();
+}
+
+void c_renderLog_shutdown(idRenderLog* renderLog) {
+	renderLog->Shutdown();
+}
+
+}

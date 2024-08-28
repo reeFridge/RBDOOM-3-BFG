@@ -334,3 +334,15 @@ void CommonRenderPasses::BlitTexture( nvrhi::ICommandList* commandList, nvrhi::I
 	params.sourceTexture = sourceTexture;
 	BlitTexture( commandList, params, bindingCache );
 }
+
+extern "C" {
+
+void c_commonRenderPasses_init(CommonRenderPasses* instance, nvrhi::IDevice* device) {
+	instance->Init(device);
+}
+
+void c_commonRenderPasses_shutdown(CommonRenderPasses* instance) {
+	instance->Shutdown();
+}
+
+}

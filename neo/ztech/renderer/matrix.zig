@@ -6,6 +6,15 @@ const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Bounds = @import("../bounding_volume/bounds.zig");
 
+pub const identity: RenderMatrix = .{
+    .m = .{
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    },
+};
+
 // This is a row-major matrix and transforms are applied with left-multiplication.
 pub const RenderMatrix = extern struct {
     extern fn c_renderMatrix_projectedBounds(*CBounds, *const RenderMatrix, *const CBounds, bool) callconv(.C) void;

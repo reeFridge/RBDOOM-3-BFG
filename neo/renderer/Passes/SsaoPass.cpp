@@ -314,3 +314,11 @@ void SsaoPass::Render(
 		commandList->dispatch( dispatchWidth, dispatchHeight, 1 );
 	}
 }
+
+extern "C" {
+
+void c_ssaoPass_delete(SsaoPass* ptr) {
+	delete ptr;
+}
+
+}

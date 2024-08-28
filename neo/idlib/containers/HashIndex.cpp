@@ -171,3 +171,11 @@ int idHashIndex::GetSpread() const
 	delete[] numHashItems;
 	return 100 - ( error * 100 / totalItems );
 }
+
+extern "C" {
+
+void c_hashIndex_clear(idHashIndex* instance) {
+	instance->Clear();
+}
+
+}

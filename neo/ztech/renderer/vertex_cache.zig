@@ -6,6 +6,7 @@ pub const VertexCache = opaque {
     extern fn c_vertexCache_allocStaticIndex(*VertexCache, *const anyopaque, c_int, *nvrhi.ICommandList) callconv(.C) VertexCacheHandle;
     extern fn c_vertexCache_allocStaticVertex(*VertexCache, *const anyopaque, c_int, *nvrhi.ICommandList) callconv(.C) VertexCacheHandle;
     extern fn c_vertexCache_shutdown(*VertexCache) callconv(.C) void;
+    extern fn c_vertexCache_init(*VertexCache, c_int, *nvrhi.ICommandList) callconv(.C) void;
     extern fn c_vertexCache_beginBackend(*VertexCache) callconv(.C) void;
 
     pub fn allocStaticIndex(
@@ -32,6 +33,18 @@ pub const VertexCache = opaque {
             vertex_cache,
             data,
             @intCast(bytes),
+            command_list,
+        );
+    }
+
+    pub fn init(
+        vertex_cache: *VertexCache,
+        uniform_buffer_offset_alignment: usize,
+        command_list: *nvrhi.ICommandList,
+    ) void {
+        c_vertexCache_init(
+            vertex_cache,
+            @intCast(uniform_buffer_offset_alignment),
             command_list,
         );
     }

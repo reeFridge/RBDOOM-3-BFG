@@ -156,11 +156,7 @@ void idRenderBackend::Init()
 {
 	common->Printf( "----- R_InitOpenGL -----\n" );
 
-#ifdef USE_ZTECH_RENDER_SYSTEM
-	if( ztech_renderSystem_isBackendInitialized() )
-#else
 	if( tr.IsInitialized() )
-#endif
 	{
 		common->FatalError( "R_InitOpenGL called while active" );
 	}
@@ -218,11 +214,7 @@ void idRenderBackend::Init()
 
 	tileMap.Init( r_shadowMapAtlasSize.GetInteger(), MAX_TILE_RES, NUM_QUAD_TREE_LEVELS );
 
-#ifdef USE_ZTECH_RENDER_SYSTEM
-	ztech_renderSystem_setBackendInitialized();
-#else
 	tr.SetInitialized();
-#endif
 
 	if( !commandList )
 	{
@@ -245,10 +237,7 @@ void idRenderBackend::Init()
 	fhImmediateMode::Init( commandList );
 
 	// allocate the frame data, which may be more if smp is enabled
-	if (USE_ZTECH_FRAME_DATA)
-		ztech_frameData_init();
-	else
-		R_InitFrameData();
+	R_InitFrameData();
 
 	// TODO REMOVE: reset our gamma
 	R_SetColorMappings();
@@ -1886,10 +1875,6 @@ void idRenderBackend::GL_EndFrame()
 	taaPass->AdvanceFrame();
 }
 
-extern "C" void c_renderBackend_GLBlockingSwapBuffers(idRenderBackend* backend) {
-	backend->GL_BlockingSwapBuffers();
-}
-
 /*
 =============
 GL_BlockingSwapBuffers
@@ -2393,12 +2378,13 @@ void idRenderBackend::ResetPipelineCache()
 
 extern "C" {
 
-void c_renderBackend_shutdown(idRenderBackend* instance) {
-	instance->Shutdown();
+void c_renderBackend_constructInPlace(idRenderBackend* mem) {
+	new(mem) idRenderBackend();
 }
 
-void c_renderBackend_init(idRenderBackend* instance) {
-	instance->Init();
+void c_renderBackend_clearContext() {
+	context.currentImageParm = 0;
+	context.imageParms.Zero();
 }
 
 void c_renderBackend_checkCVars(idRenderBackend* instance) {
@@ -2407,6 +2393,10 @@ void c_renderBackend_checkCVars(idRenderBackend* instance) {
 
 void c_renderBackend_executeBackendCommands(idRenderBackend* instance, emptyCommand_t* cmdHead) {
 	instance->ExecuteBackEndCommands(cmdHead);
+}
+
+void c_renderBackend_GLBlockingSwapBuffers(idRenderBackend* instance) {
+	instance->GL_BlockingSwapBuffers();
 }
 
 }

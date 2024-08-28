@@ -89,7 +89,7 @@ export fn ztech_renderSystem_finishCommandBuffers() callconv(.C) ?*FrameData.Emp
 }
 
 export fn ztech_renderSystem_initBackend() callconv(.C) void {
-    RenderSystem.instance.initBackend();
+    RenderSystem.instance.initBackend(global.gpa.allocator()) catch unreachable;
 }
 
 export fn ztech_renderSystem_init() callconv(.C) void {

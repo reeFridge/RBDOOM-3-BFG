@@ -8,8 +8,12 @@ void c_nvrhi_device_executeCommandList(nvrhi::IDevice* device, nvrhi::ICommandLi
 	device->executeCommandList(commandList);
 }
 
-void c_nvrhi_device_createCommandList(nvrhi::IDevice* device, nvrhi::CommandListHandle* handle) {
-	*handle = device->createCommandList();
+void c_nvrhi_device_createCommandList(nvrhi::IDevice* device, nvrhi::CommandListHandle* handle, nvrhi::CommandListParameters params) {
+	*handle = device->createCommandList(params);
+}
+
+void c_nvrhi_device_runGarbageCollection(nvrhi::IDevice* device) {
+	device->runGarbageCollection();
 }
 
 void c_nvrhi_commandList_open(nvrhi::ICommandList* commandList) {

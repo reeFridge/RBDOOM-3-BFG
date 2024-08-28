@@ -1,5 +1,11 @@
 const std = @import("std");
 
+pub const GraphicsAPI = enum(u8) {
+    D3D11,
+    D3D12,
+    VULKAN,
+};
+
 pub const IResource = opaque {
     extern fn c_nvrhi_resource_addRef(*IResource) callconv(.C) c_ulong;
     extern fn c_nvrhi_resource_release(*IResource) callconv(.C) c_ulong;
@@ -104,7 +110,7 @@ pub const BufferRange = extern struct {
 };
 
 pub const BindingSetItem = extern struct {
-    resourceHandle: ?*anyopaque,
+    resourceHandle: ?*IResource,
     slot: u32,
     type: u8,
     dimension: u8,
@@ -117,8 +123,15 @@ pub const BindingSetItem = extern struct {
     },
 };
 
+pub fn static_vector(T: type, _max_elements: usize) type {
+    return extern struct {
+        current_size: usize,
+        items: [_max_elements]T,
+    };
+}
+
 pub const BindingSetDesc = extern struct {
-    bindings: [c_MaxBindingsPerLayout]BindingSetItem,
+    bindings: static_vector(BindingSetItem, c_MaxBindingsPerLayout),
     trackLiveness: bool,
 };
 
@@ -137,9 +150,14 @@ const IGraphicsPipeline = opaque {};
 const IBindingLayout = opaque {};
 pub const IBuffer = opaque {};
 pub const IDevice = opaque {
+    extern fn c_nvrhi_device_runGarbageCollection(*IDevice) callconv(.C) void;
     extern fn c_nvrhi_device_waitForIdle(*IDevice) callconv(.C) void;
     extern fn c_nvrhi_device_executeCommandList(*IDevice, *ICommandList) callconv(.C) void;
-    extern fn c_nvrhi_device_createCommandList(*IDevice, *CommandListHandle) callconv(.C) void;
+    extern fn c_nvrhi_device_createCommandList(*IDevice, *CommandListHandle, CommandListParameters) callconv(.C) void;
+
+    pub fn runGarbageCollection(device: *IDevice) void {
+        c_nvrhi_device_runGarbageCollection(device);
+    }
 
     pub fn executeCommandList(device: *IDevice, command_list_ptr: *ICommandList) void {
         c_nvrhi_device_executeCommandList(device, command_list_ptr);
@@ -147,9 +165,9 @@ pub const IDevice = opaque {
 
     /// increases ref count
     /// should call handle.deinit on resource release
-    pub fn createCommandList(device: *IDevice) CommandListHandle {
+    pub fn createCommandList(device: *IDevice, params: CommandListParameters) CommandListHandle {
         var handle = CommandListHandle{};
-        c_nvrhi_device_createCommandList(device, &handle);
+        c_nvrhi_device_createCommandList(device, &handle, params);
 
         return handle;
     }
@@ -157,6 +175,32 @@ pub const IDevice = opaque {
     pub fn waitForIdle(device: *IDevice) void {
         return c_nvrhi_device_waitForIdle(device);
     }
+};
+
+pub const CommandQueue = enum(u8) {
+    Graphics = 0,
+    Compute,
+    Copy,
+    Count,
+};
+
+pub const CommandListParameters = extern struct {
+    // A command list with enableImmediateExecution = true maps to the immediate context on DX11.
+    // Two immediate command lists cannot be open at the same time, which is checked by the validation layer.
+    enableImmediateExecution: bool = true,
+
+    // Minimum size of memory chunks created to upload data to the device on DX12.
+    uploadChunkSize: usize = 64 * 1024,
+
+    // Minimum size of memory chunks created for AS build scratch buffers.
+    scratchChunkSize: usize = 64 * 1024,
+
+    // Maximum total memory size used for all AS build scratch buffers owned by this command list.
+    scratchMaxMemory: usize = 1024 * 1024 * 1024,
+
+    // Type of the queue that this command list is to be executed on.
+    // COPY and COMPUTE queues have limited subsets of methods available.
+    queueType: CommandQueue = CommandQueue.Graphics,
 };
 
 pub const ICommandList = opaque {

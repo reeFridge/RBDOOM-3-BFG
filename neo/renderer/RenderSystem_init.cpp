@@ -1468,9 +1468,9 @@ extern "C" void c_renderSystem_initColorMappings(unsigned short* gammaTable) {
 	}
 // SRS - Generalized Vulkan SDL platform
 #if defined( VULKAN_USE_PLATFORM_SDL )
-	VKimp_SetGamma( tr.gammaTable, tr.gammaTable, tr.gammaTable );
+	VKimp_SetGamma( gammaTable, gammaTable, gammaTable );
 #else
-	GLimp_SetGamma( tr.gammaTable, tr.gammaTable, tr.gammaTable );
+	GLimp_SetGamma( gammaTable, gammaTable, gammaTable );
 #endif
 }
 
