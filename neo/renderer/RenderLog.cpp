@@ -338,4 +338,16 @@ void c_renderLog_endFrame(idRenderLog* renderLog) {
 	renderLog->EndFrame();
 }
 
+void c_renderLog_fetchGPUTimers(idRenderLog* renderLog, backEndCounters_t* pc) {
+	renderLog->FetchGPUTimers(*pc);
+}
+
+void c_renderLog_startFrame(idRenderLog* renderLog, nvrhi::ICommandList* _commandList) {
+	renderLog->StartFrame(_commandList);
+}
+
+void c_renderLog_openMainBlock(idRenderLog* renderLog, renderLogMainBlock_t block) {
+	renderLog->OpenMainBlock(block);
+}
+
 }

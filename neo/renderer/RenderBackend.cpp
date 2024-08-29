@@ -5307,71 +5307,71 @@ void idRenderBackend::ExecuteBackEndCommands( const emptyCommand_t* cmds )
 	int c_setBuffers = 0;
 	int c_copyRenders = 0;
 
-	resolutionScale.SetCurrentGPUFrameTime( commonLocal.GetRendererGPUMicroseconds() );
+	//@f resolutionScale.SetCurrentGPUFrameTime( commonLocal.GetRendererGPUMicroseconds() );
 
-	ResizeImages();
+	//@f ResizeImages();
 
-	if( cmds->commandId == RC_NOP && !cmds->next )
-	{
-		return;
-	}
+	//@f if( cmds->commandId == RC_NOP && !cmds->next )
+	//@f {
+	//@f 	return;
+	//@f }
 
-	if( renderSystem->GetStereo3DMode() != STEREO3D_OFF )
-	{
-		StereoRenderExecuteBackEndCommands( cmds );
-		//renderLog.EndFrame();
-		return;
-	}
+	//@f if( renderSystem->GetStereo3DMode() != STEREO3D_OFF )
+	//@f {
+	//@f 	StereoRenderExecuteBackEndCommands( cmds );
+	//@f 	//renderLog.EndFrame();
+	//@f 	return;
+	//@f }
 
-	GL_StartFrame();
+	//@f GL_StartFrame();
 
-	void* textureId = globalImages->hierarchicalZbufferImage->GetTextureID();
+	//@f void* textureId = globalImages->hierarchicalZbufferImage->GetTextureID();
 
 	// RB: we need to load all images left before rendering
 	// this can be expensive here because of the runtime image compression
 	//globalImages->LoadDeferredImages( commandList );
 
-	if( !ssaoPass && r_useNewSsaoPass.GetBool() )
-	{
-		ssaoPass = new SsaoPass(
-			deviceManager->GetDevice(),
-			&commonPasses, globalImages->currentDepthImage->GetTextureHandle(),
-			globalImages->gbufferNormalsRoughnessImage->GetTextureHandle(),
-			globalImages->ambientOcclusionImage[0]->GetTextureHandle() );
-	}
+	//@f if( !ssaoPass && r_useNewSsaoPass.GetBool() )
+	//@f {
+	//@f 	ssaoPass = new SsaoPass(
+	//@f 		deviceManager->GetDevice(),
+	//@f 		&commonPasses, globalImages->currentDepthImage->GetTextureHandle(),
+	//@f 		globalImages->gbufferNormalsRoughnessImage->GetTextureHandle(),
+	//@f 		globalImages->ambientOcclusionImage[0]->GetTextureHandle() );
+	//@f }
 
-	if( globalImages->hierarchicalZbufferImage->GetTextureID() != textureId || !hiZGenPass )
-	{
-		if( hiZGenPass )
-		{
-			delete hiZGenPass;
-		}
+	//@f if( globalImages->hierarchicalZbufferImage->GetTextureID() != textureId || !hiZGenPass )
+	//@f {
+	//@f 	if( hiZGenPass )
+	//@f 	{
+	//@f 		delete hiZGenPass;
+	//@f 	}
 
-		hiZGenPass = new MipMapGenPass( deviceManager->GetDevice(), globalImages->hierarchicalZbufferImage->GetTextureHandle() );
-	}
+	//@f 	hiZGenPass = new MipMapGenPass( deviceManager->GetDevice(), globalImages->hierarchicalZbufferImage->GetTextureHandle() );
+	//@f }
 
 
-	if( !toneMapPass )
-	{
-		TonemapPass::CreateParameters createParms;
-		toneMapPass = new TonemapPass();
-		toneMapPass->Init( deviceManager->GetDevice(), &commonPasses, createParms, globalFramebuffers.ldrFBO->GetApiObject() );
-	}
+	//@f if( !toneMapPass )
+	//@f {
+	//@f 	TonemapPass::CreateParameters createParms;
+	//@f 	toneMapPass = new TonemapPass();
+	//@f 	toneMapPass->Init( deviceManager->GetDevice(), &commonPasses, createParms, globalFramebuffers.ldrFBO->GetApiObject() );
+	//@f }
 
-	if( !taaPass )
-	{
-		TemporalAntiAliasingPass::CreateParameters taaParams;
-		taaParams.sourceDepth = globalImages->currentDepthImage->GetTextureHandle();
-		taaParams.motionVectors = globalImages->taaMotionVectorsImage->GetTextureHandle();
-		taaParams.unresolvedColor = globalImages->currentRenderHDRImage->GetTextureHandle();
-		taaParams.resolvedColor = globalImages->taaResolvedImage->GetTextureHandle();
-		taaParams.feedback1 = globalImages->taaFeedback1Image->GetTextureHandle();
-		taaParams.feedback2 = globalImages->taaFeedback2Image->GetTextureHandle();
-		taaParams.motionVectorStencilMask = 0; //0x01;
-		taaParams.useCatmullRomFilter = true;
-		taaPass = new TemporalAntiAliasingPass();
-		taaPass->Init( deviceManager->GetDevice(), &commonPasses, NULL, taaParams );
-	}
+	//@f if( !taaPass )
+	//@f {
+	//@f 	TemporalAntiAliasingPass::CreateParameters taaParams;
+	//@f 	taaParams.sourceDepth = globalImages->currentDepthImage->GetTextureHandle();
+	//@f 	taaParams.motionVectors = globalImages->taaMotionVectorsImage->GetTextureHandle();
+	//@f 	taaParams.unresolvedColor = globalImages->currentRenderHDRImage->GetTextureHandle();
+	//@f 	taaParams.resolvedColor = globalImages->taaResolvedImage->GetTextureHandle();
+	//@f 	taaParams.feedback1 = globalImages->taaFeedback1Image->GetTextureHandle();
+	//@f 	taaParams.feedback2 = globalImages->taaFeedback2Image->GetTextureHandle();
+	//@f 	taaParams.motionVectorStencilMask = 0; //0x01;
+	//@f 	taaParams.useCatmullRomFilter = true;
+	//@f 	taaPass = new TemporalAntiAliasingPass();
+	//@f 	taaPass->Init( deviceManager->GetDevice(), &commonPasses, NULL, taaParams );
+	//@f }
 
 	uint64 backEndStartTime = Sys_Microseconds();
 

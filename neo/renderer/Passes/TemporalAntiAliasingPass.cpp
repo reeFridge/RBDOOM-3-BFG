@@ -318,4 +318,17 @@ void c_temporalAntiAliasingPass_delete(TemporalAntiAliasingPass* ptr) {
 	delete ptr;
 }
 
+TemporalAntiAliasingPass* c_temporalAntiAliasingPass_create() {
+	return new TemporalAntiAliasingPass();
+}
+
+void c_temporalAntiAliasingPass_init(TemporalAntiAliasingPass* pass,
+	nvrhi::IDevice* device,
+	CommonRenderPasses* commonPasses,
+	const viewDef_t* viewDef,
+	const TemporalAntiAliasingPass::CreateParameters* params
+) {
+	pass->Init(device, commonPasses, viewDef, *params);
+}
+
 }

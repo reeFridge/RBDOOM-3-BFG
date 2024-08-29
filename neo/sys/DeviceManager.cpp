@@ -144,4 +144,12 @@ void c_deviceManager_present(DeviceManager* instance) {
 	instance->Present();
 }
 
+void c_deviceManager_beginFrame(DeviceManager* instance) {
+	instance->BeginFrame();
+}
+
+void c_deviceManager_updateWindowSize(DeviceManager* instance, glimpParms_t parms) {
+	instance->UpdateWindowSize(parms);
+}
+
 }

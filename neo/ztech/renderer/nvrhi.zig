@@ -141,13 +141,14 @@ pub const DeviceHandle = RefCountPtr(IDevice);
 pub const TextureHandle = RefCountPtr(ITexture);
 pub const SamplerHandle = RefCountPtr(ISampler);
 
-const ITexture = opaque {};
-const ISampler = opaque {};
-const IShader = opaque {};
-const IInputLayout = opaque {};
-const IBindingSet = opaque {};
-const IGraphicsPipeline = opaque {};
-const IBindingLayout = opaque {};
+pub const ITexture = opaque {};
+pub const ISampler = opaque {};
+pub const IShader = opaque {};
+pub const IFramebuffer = opaque {};
+pub const IInputLayout = opaque {};
+pub const IBindingSet = opaque {};
+pub const IGraphicsPipeline = opaque {};
+pub const IBindingLayout = opaque {};
 pub const IBuffer = opaque {};
 pub const IDevice = opaque {
     extern fn c_nvrhi_device_runGarbageCollection(*IDevice) callconv(.C) void;

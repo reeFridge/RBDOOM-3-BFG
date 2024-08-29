@@ -26,6 +26,10 @@ pub const ResolutionScale = extern struct {
     pub fn resetToFullResolution(resolution_scale: *ResolutionScale) void {
         resolution_scale.currentResolution = 1;
     }
+
+    pub fn setCurrentGPUFrameTime(resolution_scale: *ResolutionScale, time: c_int) void {
+        c_resolutionScale_setCurrentGPUFrameTime(resolution_scale, time);
+    }
 };
 
 pub const instance = @extern(*ResolutionScale, .{ .name = "resolutionScale" });

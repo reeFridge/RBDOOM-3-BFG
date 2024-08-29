@@ -291,4 +291,11 @@ void c_mipMapGenPass_delete(MipMapGenPass* ptr) {
 	delete ptr;
 }
 
+MipMapGenPass* c_mipMapGenPass_create(
+		nvrhi::IDevice* device,
+		nvrhi::ITexture* texture,
+		MipMapGenPass::Mode mode) {
+	return new MipMapGenPass(device, texture, mode);
+}
+
 }

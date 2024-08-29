@@ -49,3 +49,7 @@ Framebuffer* Framebuffer::Find( const char* name )
 
 	return nullptr;
 }
+
+extern "C" nvrhi::IFramebuffer* c_framebuffer_getApiObject(Framebuffer* framebuffer) {
+	return framebuffer->GetApiObject();
+}

@@ -211,3 +211,16 @@ pub const CalcLightGridPointParams = extern struct {
     outBuffer: [*]f16,
     time: c_int,
 };
+
+pub const GLImplParams = extern struct {
+    x: c_int = 0, // ignored in fullscreen
+    y: c_int = 0, // ignored in fullscreen
+    width: c_int,
+    height: c_int,
+    fullScreen: c_int = 0, // 0 = windowed, otherwise 1 based monitor number to go full screen on
+    // -1 = borderless window for spanning multiple displays
+    startMaximized: bool = false,
+    stereo: bool = false,
+    displayHz: c_int = 0,
+    multiSamples: c_int,
+};

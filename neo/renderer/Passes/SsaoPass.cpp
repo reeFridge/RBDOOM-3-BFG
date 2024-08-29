@@ -321,4 +321,13 @@ void c_ssaoPass_delete(SsaoPass* ptr) {
 	delete ptr;
 }
 
+SsaoPass* c_ssaoPass_create(
+	nvrhi::IDevice* device,
+	CommonRenderPasses* commonPasses,
+	nvrhi::ITexture* gbufferDepth,
+	nvrhi::ITexture* gbufferNormals,
+	nvrhi::ITexture* destinationTexture) {
+	return new SsaoPass(device, commonPasses, gbufferDepth, gbufferNormals, destinationTexture);
+}
+
 }

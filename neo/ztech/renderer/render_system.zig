@@ -744,8 +744,10 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
     return command_buffer_head;
 }
 
-pub fn renderCommandBuffers(_: *RenderSystem, cmd_head: ?*FrameData.EmptyCommand) void {
-    var opt_cmd = cmd_head;
+pub fn renderCommandBuffers(_: *RenderSystem, opt_cmd_head: ?*FrameData.EmptyCommand) void {
+    var opt_cmd = opt_cmd_head;
+    const cmd_head = opt_cmd orelse return;
+
     while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
         if (cmd.commandId == .RC_DRAW_VIEW_3D or cmd.commandId == .RC_DRAW_VIEW_GUI)
             break;

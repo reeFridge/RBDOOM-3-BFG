@@ -699,4 +699,25 @@ void idImage::EmptyGarbage()
 		allocationsToFree.Clear();
 	}
 }
+
+extern "C" {
+
+void c_image_emptyGarbage() {
+	idImage::EmptyGarbage();
+}
+
+}
+
 #endif
+
+extern "C" {
+
+void* c_image_getTextureID(idImage* instance) {
+	return instance->GetTextureID();
+}
+
+void c_image_getTextureHandle(idImage* instance, nvrhi::TextureHandle* handle) {
+	*handle = instance->GetTextureHandle();
+}
+
+}

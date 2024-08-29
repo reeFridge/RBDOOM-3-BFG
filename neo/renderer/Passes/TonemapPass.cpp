@@ -325,4 +325,12 @@ void c_tonemapPass_delete(TonemapPass* ptr) {
 	delete ptr;
 }
 
+TonemapPass* c_tonemapPass_create() {
+	return new TonemapPass();
+}
+
+void c_tonemapPass_init(TonemapPass* pass, nvrhi::IDevice* device, CommonRenderPasses* commonPasses, const TonemapPass::CreateParameters* params, nvrhi::IFramebuffer* sampleFramebuffer) {
+	pass->Init(device, commonPasses, *params, sampleFramebuffer);
+}
+
 }

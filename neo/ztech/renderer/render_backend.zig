@@ -1,12 +1,16 @@
 const std = @import("std");
+const Image = @import("image.zig");
 const RenderSystem = @import("render_system.zig");
 const DeviceManager = @import("../sys/device_manager.zig");
 const VertexCache = @import("vertex_cache.zig");
 const ImmediateMode = @import("immediate_mode.zig");
 const RenderLog = @import("render_log.zig");
 const RenderProgManager = @import("render_prog_manager.zig");
+const ResolutionScale = @import("resolution_scale.zig");
+const Common = @import("../framework/common.zig");
+const ImageManager = @import("image_manager.zig");
 
-const BackendCounters = extern struct {
+pub const BackendCounters = extern struct {
     c_surfaces: c_int,
     c_shaders: c_int,
     c_drawElements: c_int,
@@ -48,6 +52,7 @@ const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const RenderMatrixIdentity = @import("matrix.zig").identity;
 const CVec2 = @import("../math/vector.zig").CVec2;
 const Framebuffer = @import("framebuffer.zig").Framebuffer;
+const global_framebuffers = @import("framebuffer.zig").global_framebuffers;
 const nvrhi = @import("nvrhi.zig");
 const Pass = @import("render_pass.zig");
 const FrameData = @import("frame_data.zig");
@@ -337,6 +342,8 @@ pub const RenderBackend = extern struct {
         backend.commonPasses.init(device);
         backend.hiZGenPass = null;
         backend.ssaoPass = null;
+        backend.toneMapPass = null;
+        backend.taaPass = null;
 
         RenderSystem.instance.backend_initialized = true;
 
@@ -400,7 +407,106 @@ pub const RenderBackend = extern struct {
         c_renderBackend_checkCVars(backend);
     }
 
-    pub fn executeBackendCommands(backend: *RenderBackend, cmd_head: ?*FrameData.EmptyCommand) void {
+    pub fn executeBackendCommands(backend: *RenderBackend, cmd_head: *FrameData.EmptyCommand) void {
+        ResolutionScale.instance.setCurrentGPUFrameTime(@intCast(Common.instance.getRendererGPUMicroseconds()));
+        backend.resizeImages();
+
+        if (cmd_head.commandId == .RC_NOP and cmd_head.next == null) return;
+
+        if (RenderSystem.glConfig.stereo3Dmode != RenderSystem.STEREO3D_OFF) {
+            backend.stereoRenderExecuteBackendCommands(cmd_head);
+            return;
+        }
+
+        backend.startFrame();
+
+        const texture_id = ImageManager.instance.hierarchicalZbufferImage.?.getTextureID();
+
+        // RB: we need to load all images left before rendering
+        // this can be expensive here because of the runtime image compression
+        // ImageManager.instance.loadDeferredImages(backend.commandList.ptr_);
+        const device_manager = DeviceManager.instance();
+
+        if (backend.ssaoPass == null) {
+            backend.ssaoPass = Pass.SsaoPass.create(
+                device_manager.getDevice(),
+                &backend.commonPasses,
+                ImageManager.instance.currentDepthImage.?.getTexturePtr(),
+                ImageManager.instance.gbufferNormalsRoughnessImage.?.getTexturePtr(),
+                ImageManager.instance.ambientOcclusionImage[0].?.getTexturePtr(),
+            );
+        }
+
+        if (texture_id != ImageManager.instance.hierarchicalZbufferImage.?.getTextureID() or
+            backend.hiZGenPass == null)
+        {
+            if (backend.hiZGenPass) |pass| {
+                pass.destroy();
+            }
+
+            backend.hiZGenPass = Pass.MipMapGenPass.create(
+                device_manager.getDevice(),
+                ImageManager.instance.hierarchicalZbufferImage.?.getTexturePtr(),
+                .MODE_MAX,
+            );
+        }
+
+        if (backend.toneMapPass == null) {
+            const pass = Pass.TonemapPass.create();
+            pass.init(
+                device_manager.getDevice(),
+                &backend.commonPasses,
+                .{},
+                global_framebuffers.ldrFBO.getApiObject(),
+            );
+            backend.toneMapPass = pass;
+        }
+
+        if (backend.taaPass == null) {
+            const pass = Pass.TemporalAntiAliasingPass.create();
+            pass.init(
+                device_manager.getDevice(),
+                &backend.commonPasses,
+                null,
+                .{
+                    .sourceDepth = ImageManager.instance.currentDepthImage.?.getTexturePtr(),
+                    .motionVectors = ImageManager.instance.taaMotionVectorsImage.?.getTexturePtr(),
+                    .unresolvedColor = ImageManager.instance.currentRenderHDRImage.?.getTexturePtr(),
+                    .resolvedColor = ImageManager.instance.taaResolvedImage.?.getTexturePtr(),
+                    .feedback1 = ImageManager.instance.taaFeedback1Image.?.getTexturePtr(),
+                    .feedback2 = ImageManager.instance.taaFeedback2Image.?.getTexturePtr(),
+                    .motionVectorStencilMask = 0, //0x01,
+                    .useCatmullRomFilter = true,
+                },
+            );
+            backend.taaPass = pass;
+        }
+
         c_renderBackend_executeBackendCommands(backend, cmd_head);
+    }
+
+    fn stereoRenderExecuteBackendCommands(_: *RenderBackend, _: *FrameData.EmptyCommand) void {
+        // TODO: implement
+    }
+
+    fn startFrame(backend: *RenderBackend) void {
+        RenderLog.instance.fetchGPUTimers(&backend.pc);
+
+        DeviceManager.instance().beginFrame();
+        Image.emptyGarbage();
+
+        const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
+        command_list.open();
+
+        RenderLog.instance.startFrame(command_list);
+        RenderLog.instance.openMainBlock(RenderLog.MRB_GPU_TIME);
+    }
+
+    fn resizeImages(_: *RenderBackend) void {
+        DeviceManager.instance().updateWindowSize(.{
+            .width = RenderSystem.glConfig.nativeScreenWidth,
+            .height = RenderSystem.glConfig.nativeScreenHeight,
+            .multiSamples = RenderSystem.glConfig.multisamples,
+        });
     }
 };
