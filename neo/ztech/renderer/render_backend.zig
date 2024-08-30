@@ -51,8 +51,9 @@ const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const RenderMatrixIdentity = @import("matrix.zig").identity;
 const CVec2 = @import("../math/vector.zig").CVec2;
-const Framebuffer = @import("framebuffer.zig").Framebuffer;
-const global_framebuffers = @import("framebuffer.zig").global_framebuffers;
+const framebuffer = @import("framebuffer.zig");
+const Framebuffer = framebuffer.Framebuffer;
+const global_framebuffers = framebuffer.global_framebuffers;
 const nvrhi = @import("nvrhi.zig");
 const Pass = @import("render_pass.zig");
 const FrameData = @import("frame_data.zig");
@@ -197,6 +198,17 @@ const BindingLayoutType = struct {
     pub const NUM_BINDING_LAYOUTS: c_int = 29;
 };
 
+const NvrhiContext = extern struct {
+    const MAX_IMAGE_PARMS = 16;
+
+    currentImageParm: c_int = 0,
+    imageParms: [MAX_IMAGE_PARMS]?*Image.Image,
+    scissor: ScreenRect,
+};
+
+const nvrhi_context = @extern(*NvrhiContext, .{ .name = "context" });
+const prev_nvrhi_context = @extern(*NvrhiContext, .{ .name = "prevContext" });
+
 pub const RenderBackend = extern struct {
     pc: BackendCounters,
     unitSquareSurface: DrawSurface,
@@ -252,8 +264,14 @@ pub const RenderBackend = extern struct {
 
     extern fn c_renderBackend_clearContext() callconv(.C) void;
     extern fn c_renderBackend_checkCVars(*RenderBackend) callconv(.C) void;
-    extern fn c_renderBackend_executeBackendCommands(*RenderBackend, ?*FrameData.EmptyCommand) callconv(.C) void;
+    extern fn c_renderBackend_stereoRenderExecuteBackEndCommands(*RenderBackend, *FrameData.EmptyCommand) callconv(.C) void;
     extern fn c_renderBackend_constructInPlace(*RenderBackend) callconv(.C) void;
+
+    extern fn c_renderBackend_drawView(*RenderBackend, *anyopaque, c_int) callconv(.C) void;
+    extern fn c_renderBackend_setBuffer(*RenderBackend, *anyopaque) callconv(.C) void;
+    extern fn c_renderBackend_copyRender(*RenderBackend, *anyopaque) callconv(.C) void;
+    extern fn c_renderBackend_postProcess(*RenderBackend, *anyopaque) callconv(.C) void;
+    extern fn c_renderBackend_crtPostProcess(*RenderBackend) callconv(.C) void;
 
     extern fn VKimp_PreInit() callconv(.C) void;
     extern fn VKimp_Shutdown(bool) callconv(.C) void;
@@ -418,7 +436,7 @@ pub const RenderBackend = extern struct {
             return;
         }
 
-        backend.startFrame();
+        backend.glStartFrame();
 
         const texture_id = ImageManager.instance.hierarchicalZbufferImage.?.getTextureID();
 
@@ -482,14 +500,122 @@ pub const RenderBackend = extern struct {
             backend.taaPass = pass;
         }
 
-        c_renderBackend_executeBackendCommands(backend, cmd_head);
+        backend.glSetDefaultState();
+
+        const timerQueryAvailable = RenderSystem.glConfig.timerQueryAvailable;
+        var draw_view_3d = false;
+        var opt_cmd: ?*FrameData.EmptyCommand = cmd_head;
+        while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
+            switch (cmd.commandId) {
+                .RC_NOP => {},
+                .RC_DRAW_VIEW_GUI => {
+                    if (draw_view_3d) {
+                        RenderLog.instance.openMainBlock(RenderLog.MRB_DRAW_GUI);
+                        defer RenderLog.instance.closeMainBlock(RenderLog.MRB_DRAW_GUI);
+                        RenderLog.instance.openBlock("Render_DrawViewGUI", .{});
+                        defer RenderLog.instance.closeBlock();
+                        RenderSystem.glConfig.timerQueryAvailable = false;
+                        defer RenderSystem.glConfig.timerQueryAvailable = timerQueryAvailable;
+
+                        backend.drawView(@ptrCast(cmd), 0);
+                    } else {
+                        backend.drawView(@ptrCast(cmd), 0);
+                    }
+                },
+                .RC_DRAW_VIEW_3D => {
+                    draw_view_3d = true;
+                    backend.drawView(@ptrCast(cmd), 0);
+                },
+                .RC_SET_BUFFER => {
+                    backend.setBuffer(@ptrCast(cmd));
+                },
+                .RC_COPY_RENDER => {
+                    backend.copyRender(@ptrCast(cmd));
+                },
+                .RC_POST_PROCESS => {
+                    backend.postProcess(@ptrCast(cmd));
+                },
+                .RC_CRT_POST_PROCESS => {
+                    backend.crtPostProcess();
+                },
+            }
+        }
+
+        backend.glEndFrame();
     }
 
-    fn stereoRenderExecuteBackendCommands(_: *RenderBackend, _: *FrameData.EmptyCommand) void {
-        // TODO: implement
+    fn drawView(backend: *RenderBackend, data: *anyopaque, stereo_eye: c_int) void {
+        c_renderBackend_drawView(backend, data, stereo_eye);
     }
 
-    fn startFrame(backend: *RenderBackend) void {
+    fn setBuffer(backend: *RenderBackend, data: *anyopaque) void {
+        c_renderBackend_setBuffer(backend, data);
+    }
+
+    fn copyRender(backend: *RenderBackend, data: *anyopaque) void {
+        c_renderBackend_copyRender(backend, data);
+    }
+
+    fn postProcess(backend: *RenderBackend, data: *anyopaque) void {
+        c_renderBackend_postProcess(backend, data);
+    }
+
+    fn crtPostProcess(backend: *RenderBackend) void {
+        c_renderBackend_crtPostProcess(backend);
+    }
+
+    fn stereoRenderExecuteBackendCommands(
+        backend: *RenderBackend,
+        cmds: *FrameData.EmptyCommand,
+    ) void {
+        c_renderBackend_stereoRenderExecuteBackEndCommands(backend, cmds);
+    }
+
+    fn glSetDefaultState(backend: *RenderBackend) void {
+        const GLS_DEFAULT: u64 = 0;
+        backend.glStateBits = 0;
+        backend.glSetState(GLS_DEFAULT);
+        backend.glScissor(
+            0,
+            0,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+        );
+
+        RenderProgManager.instance.unbind();
+        framebuffer.unbind();
+        RenderLog.instance.closeBlock();
+    }
+
+    fn glScissor(
+        _: *RenderBackend,
+        x: c_int,
+        y: c_int,
+        w: c_int,
+        h: c_int,
+    ) void {
+        nvrhi_context.scissor.clear();
+        nvrhi_context.scissor.addPoint(@floatFromInt(x), @floatFromInt(y));
+        nvrhi_context.scissor.addPoint(@floatFromInt(x + w), @floatFromInt(y + h));
+    }
+
+    fn glSetState(backend: *RenderBackend, state_bits: u64) void {
+        const GLS_DEPTH_TEST_MASK: u64 = @as(u64, 1) << @intCast(60);
+        const GLS_MIRROR_VIEW: u64 = @as(u64, 1) << @intCast(62);
+        const GLS_KEEP: u64 = GLS_DEPTH_TEST_MASK;
+
+        backend.glStateBits = state_bits | (backend.glStateBits & GLS_KEEP);
+        if (backend.viewDef) |view_def| {
+            if (view_def.isMirror) {
+                backend.glStateBits |= GLS_MIRROR_VIEW;
+            }
+        }
+
+        // the rest of this is handled by
+        // PipelineCache::GetOrCreatePipeline and GetRenderState similar to Vulkan
+    }
+
+    fn glStartFrame(backend: *RenderBackend) void {
         RenderLog.instance.fetchGPUTimers(&backend.pc);
 
         DeviceManager.instance().beginFrame();
@@ -500,6 +626,20 @@ pub const RenderBackend = extern struct {
 
         RenderLog.instance.startFrame(command_list);
         RenderLog.instance.openMainBlock(RenderLog.MRB_GPU_TIME);
+    }
+
+    fn glEndFrame(backend: *RenderBackend) void {
+        // for VULKAN only
+        // ready to present
+        RenderSystem.instance.omit_swap_buffers = false;
+        RenderLog.instance.closeMainBlock(RenderLog.MRB_GPU_TIME);
+
+        const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
+        command_list.close();
+
+        DeviceManager.instance().endFrame();
+        DeviceManager.instance().getDevice().executeCommandList(command_list);
+        if (backend.taaPass) |taaPass| taaPass.advanceFrame();
     }
 
     fn resizeImages(_: *RenderBackend) void {

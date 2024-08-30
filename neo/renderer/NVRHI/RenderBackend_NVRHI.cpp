@@ -132,8 +132,8 @@ bool NvrhiContext::operator!=( NvrhiContext& other ) const
 	return !( *this == other );
 }
 
-static NvrhiContext context;
-static NvrhiContext prevContext;
+NvrhiContext context;
+NvrhiContext prevContext;
 
 
 /*
@@ -2387,8 +2387,28 @@ void c_renderBackend_checkCVars(idRenderBackend* instance) {
 	instance->CheckCVars();
 }
 
-void c_renderBackend_executeBackendCommands(idRenderBackend* instance, emptyCommand_t* cmdHead) {
-	instance->ExecuteBackEndCommands(cmdHead);
+void c_renderBackend_drawView(idRenderBackend* instance, void* data, const int stereoEye) {
+	instance->DrawView(data, stereoEye);
+}
+
+void c_renderBackend_setBuffer(idRenderBackend* instance, void* data) {
+	instance->SetBuffer(data);
+}
+
+void c_renderBackend_copyRender(idRenderBackend* instance, void* data) {
+	instance->CopyRender(data);
+}
+
+void c_renderBackend_postProcess(idRenderBackend* instance, void* data) {
+	instance->PostProcess(data);
+}
+
+void c_renderBackend_crtPostProcess(idRenderBackend* instance) {
+	instance->CRTPostProcess();
+}
+
+void c_renderBackend_stereoRenderExecuteBackEndCommands(idRenderBackend* instance, const emptyCommand_t* const allCmds ) {
+	instance->StereoRenderExecuteBackEndCommands(allCmds);
 }
 
 }

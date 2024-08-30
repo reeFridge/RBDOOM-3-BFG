@@ -169,6 +169,7 @@ pub const TemporalAntiAliasingPass = opaque {
         numConstantBufferVersions: u32 = 16,
     };
 
+    extern fn c_temporalAntiAliasingPass_advanceFrame(*TemporalAntiAliasingPass) callconv(.C) void;
     extern fn c_temporalAntiAliasingPass_delete(*TemporalAntiAliasingPass) callconv(.C) void;
     extern fn c_temporalAntiAliasingPass_create() callconv(.C) *TemporalAntiAliasingPass;
     extern fn c_temporalAntiAliasingPass_init(
@@ -201,5 +202,9 @@ pub const TemporalAntiAliasingPass = opaque {
 
     pub fn destroy(pass: *TemporalAntiAliasingPass) void {
         c_temporalAntiAliasingPass_delete(pass);
+    }
+
+    pub fn advanceFrame(pass: *TemporalAntiAliasingPass) void {
+        c_temporalAntiAliasingPass_advanceFrame(pass);
     }
 };

@@ -86,18 +86,6 @@ void Framebuffer::Init()
 	ResizeFramebuffers();
 }
 
-extern "C" void c_framebuffer_init() {
-	Framebuffer::Init();
-}
-
-extern "C" void c_framebuffer_checkFramebuffers() {
-	Framebuffer::CheckFramebuffers();
-}
-
-extern "C" void c_framebuffer_shutdown() {
-	Framebuffer::Shutdown();
-}
-
 void Framebuffer::CheckFramebuffers()
 {
 	//int screenWidth = renderSystem->GetWidth();
@@ -326,4 +314,24 @@ idScreenRect Framebuffer::GetViewPortInfo() const
 	screenRect.AddPoint( viewport.minX, viewport.minY );
 	screenRect.AddPoint( viewport.maxX, viewport.maxY );
 	return screenRect;
+}
+
+extern "C" {
+
+void c_framebuffer_init() {
+	Framebuffer::Init();
+}
+
+void c_framebuffer_unbind() {
+	Framebuffer::Unbind();
+}
+
+void c_framebuffer_checkFramebuffers() {
+	Framebuffer::CheckFramebuffers();
+}
+
+void c_framebuffer_shutdown() {
+	Framebuffer::Shutdown();
+}
+
 }

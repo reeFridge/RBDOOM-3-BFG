@@ -147,7 +147,6 @@ public:
 
 	void				DrawElementsWithCounters( const drawSurf_t* surf, bool shadowCounter = false );
 
-private:
 	void				DrawFlickerBox();
 
 	void				GetCurrentBindingLayout( int bindingLayoutType );
@@ -212,11 +211,9 @@ private:
 	void				PostProcess( const void* data );
 	void				CRTPostProcess();
 
-private:
 	void				GL_StartFrame();
 	void				GL_EndFrame();
 
-public:
 	uint64				GL_GetCurrentState() const;
 	idVec2				GetCurrentPixelOffset() const;
 
@@ -225,7 +222,6 @@ public:
 		return commandList;
 	}
 
-private:
 	uint64				GL_GetCurrentStateMinusStencil() const;
 	void				GL_SetDefaultState();
 
@@ -288,7 +284,6 @@ private:
 
 	void				SetBuffer( const void* data );
 
-private:
 	void				DBG_SimpleSurfaceSetup( const drawSurf_t* drawSurf );
 	void				DBG_SimpleWorldSetup();
 	void				DBG_PolygonClear();
@@ -345,7 +340,6 @@ public:
 	float				slopeScaleBias;
 	float				depthBias;
 
-private:
 	uint64				glStateBits;
 
 	const viewDef_t* 	viewDef;
@@ -368,7 +362,6 @@ private:
 	// quad-tree for managing tiles within tiled shadow map
 	TileMap				tileMap;
 
-private:
 	idScreenRect					stateViewport;
 	idScreenRect					stateScissor;
 

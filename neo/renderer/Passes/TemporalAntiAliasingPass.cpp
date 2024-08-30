@@ -318,6 +318,10 @@ void c_temporalAntiAliasingPass_delete(TemporalAntiAliasingPass* ptr) {
 	delete ptr;
 }
 
+void c_temporalAntiAliasingPass_advanceFrame(TemporalAntiAliasingPass* instance) {
+	instance->AdvanceFrame();
+}
+
 TemporalAntiAliasingPass* c_temporalAntiAliasingPass_create() {
 	return new TemporalAntiAliasingPass();
 }

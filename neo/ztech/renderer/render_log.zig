@@ -1,5 +1,6 @@
 const BackendCounters = @import("render_backend.zig").BackendCounters;
 const nvrhi = @import("nvrhi.zig");
+const CVec4 = @import("../math/vector.zig").CVec4;
 
 pub const RenderLog = opaque {
     extern fn c_renderLog_init(*RenderLog) callconv(.C) void;
@@ -8,9 +9,25 @@ pub const RenderLog = opaque {
     extern fn c_renderLog_fetchGPUTimers(*RenderLog, *BackendCounters) callconv(.C) void;
     extern fn c_renderLog_startFrame(*RenderLog, *nvrhi.ICommandList) callconv(.C) void;
     extern fn c_renderLog_openMainBlock(*RenderLog, renderLogMainBlock_t) callconv(.C) void;
+    extern fn c_renderLog_closeBlock(*RenderLog) callconv(.C) void;
+
+    extern fn c_renderLog_openBlock(*RenderLog, [*c]const u8, *const CVec4) callconv(.C) void;
+    extern fn c_renderLog_closeMainBlock(*RenderLog, c_int) callconv(.C) void;
+
+    pub fn openBlock(renderLog: *RenderLog, label: []const u8, color: CVec4) void {
+        c_renderLog_openBlock(renderLog, label.ptr, &color);
+    }
+
+    pub fn closeBlock(render_log: *RenderLog) void {
+        c_renderLog_closeBlock(render_log);
+    }
 
     pub fn openMainBlock(render_log: *RenderLog, block: renderLogMainBlock_t) void {
         c_renderLog_openMainBlock(render_log, block);
+    }
+
+    pub fn closeMainBlock(render_log: *RenderLog, block: c_int) void {
+        c_renderLog_closeMainBlock(render_log, block);
     }
 
     pub fn fetchGPUTimers(render_log: *RenderLog, pc: *BackendCounters) void {

@@ -35,4 +35,14 @@ pub const ScreenRect = extern struct {
         rect.zmin = 0.0;
         rect.zmax = 1.0;
     }
+
+    pub fn addPoint(rect: *ScreenRect, x: f32, y: f32) void {
+        const ix: c_short = @intFromFloat(x);
+        const iy: c_short = @intFromFloat(y);
+
+        if (ix < rect.x1) rect.x1 = ix;
+        if (ix > rect.x2) rect.x2 = ix;
+        if (iy < rect.y1) rect.y1 = iy;
+        if (iy > rect.y2) rect.y2 = iy;
+    }
 };

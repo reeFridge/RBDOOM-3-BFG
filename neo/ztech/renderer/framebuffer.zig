@@ -42,6 +42,7 @@ pub const global_framebuffers = @extern(*GlobalFramebuffers, .{ .name = "globalF
 extern fn c_framebuffer_init() callconv(.C) void;
 extern fn c_framebuffer_shutdown() callconv(.C) void;
 extern fn c_framebuffer_checkFramebuffers() callconv(.C) void;
+extern fn c_framebuffer_unbind() callconv(.C) void;
 
 pub fn init() void {
     c_framebuffer_init();
@@ -53,4 +54,8 @@ pub fn shutdown() void {
 
 pub fn checkFramebuffers() void {
     c_framebuffer_checkFramebuffers();
+}
+
+pub fn unbind() void {
+    c_framebuffer_unbind();
 }

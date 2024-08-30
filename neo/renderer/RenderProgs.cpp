@@ -1169,4 +1169,8 @@ void c_renderProgManager_shutdown(idRenderProgManager* progManager) {
 	progManager->Shutdown();
 }
 
+void c_renderProgManager_unbind(idRenderProgManager* progManager) {
+	progManager->Unbind();
+}
+
 }

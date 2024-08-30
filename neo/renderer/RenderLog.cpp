@@ -334,6 +334,10 @@ void c_renderLog_shutdown(idRenderLog* renderLog) {
 	renderLog->Shutdown();
 }
 
+void c_renderLog_closeBlock(idRenderLog* renderLog) {
+	renderLog->CloseBlock();
+}
+
 void c_renderLog_endFrame(idRenderLog* renderLog) {
 	renderLog->EndFrame();
 }
@@ -348,6 +352,14 @@ void c_renderLog_startFrame(idRenderLog* renderLog, nvrhi::ICommandList* _comman
 
 void c_renderLog_openMainBlock(idRenderLog* renderLog, renderLogMainBlock_t block) {
 	renderLog->OpenMainBlock(block);
+}
+
+void c_renderLog_closeMainBlock(idRenderLog* renderLog, int block) {
+	renderLog->CloseMainBlock(block);
+}
+
+void c_renderLog_openBlock(idRenderLog* renderLog, const char* label, const idVec4* color ) {
+	renderLog->OpenBlock(label, *color);
 }
 
 }

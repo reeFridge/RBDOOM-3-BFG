@@ -8,9 +8,14 @@ pub const DeviceManager = opaque {
     extern fn c_deviceManager_present(*DeviceManager) callconv(.C) void;
     extern fn c_deviceManager_updateWindowSize(*DeviceManager, GLImplParams) callconv(.C) void;
     extern fn c_deviceManager_beginFrame(*DeviceManager) callconv(.C) void;
+    extern fn c_deviceManager_endFrame(*DeviceManager) callconv(.C) void;
 
     pub fn beginFrame(device_manager: *DeviceManager) void {
         c_deviceManager_beginFrame(device_manager);
+    }
+
+    pub fn endFrame(device_manager: *DeviceManager) void {
+        c_deviceManager_endFrame(device_manager);
     }
 
     pub fn updateWindowSize(device_manager: *DeviceManager, params: GLImplParams) void {
