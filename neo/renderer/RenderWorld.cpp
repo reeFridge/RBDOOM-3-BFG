@@ -2633,3 +2633,171 @@ const idMaterial* R_RemapShaderBySkin( const idMaterial* shader, const idDeclSki
 
 	return skin->RemapShaderBySkin( shader );
 }
+
+//@f ztechRenderWorld
+
+extern void* game_ztechRenderWorld;
+
+ztechRenderWorld::ztechRenderWorld() {
+	game_ztechRenderWorld = ztech_renderSystem_createRenderWorld();
+}
+
+ztechRenderWorld::~ztechRenderWorld() {
+	ztech_renderSystem_destroyRenderWorld(game_ztechRenderWorld);
+	game_ztechRenderWorld = NULL;
+}
+
+bool ztechRenderWorld::InitFromMap(const char* mapName) {
+	return ztech_renderWorld_initFromMap(game_ztechRenderWorld, (const uint8_t*)mapName);
+}
+
+void ztechRenderWorld::ResetLocalRenderModels() {
+	common->Printf("ztechRenderWorld: method not implemented");
+}
+
+qhandle_t ztechRenderWorld::AddEntityDef(const renderEntity_t* re) {
+	return ztech_renderWorld_addEntityDef(game_ztechRenderWorld, re);
+}
+
+void ztechRenderWorld::UpdateEntityDef(qhandle_t entityHandle, const renderEntity_t* re) {
+	ztech_renderWorld_updateEntityDef(game_ztechRenderWorld, entityHandle, re);
+}
+
+void ztechRenderWorld::FreeEntityDef(qhandle_t entityHandle) {
+	ztech_renderWorld_freeEntityDef(game_ztechRenderWorld, entityHandle);
+}
+
+const renderEntity_t* ztechRenderWorld::GetRenderEntity(qhandle_t entityHandle) const {
+	return ztech_renderWorld_getRenderEntity(game_ztechRenderWorld, entityHandle);
+}
+
+qhandle_t ztechRenderWorld::AddLightDef(const renderLight_t* rlight) {
+	return ztech_renderWorld_addLightDef(game_ztechRenderWorld, rlight);
+}
+
+void ztechRenderWorld::UpdateLightDef(qhandle_t lightHandle, const renderLight_t* rlight) {
+	ztech_renderWorld_updateLightDef(game_ztechRenderWorld, lightHandle, rlight);
+}
+
+void ztechRenderWorld::FreeLightDef(qhandle_t lightHandle) {
+	ztech_renderWorld_freeLightDef(game_ztechRenderWorld, lightHandle);
+}
+
+const renderLight_t* ztechRenderWorld::GetRenderLight(qhandle_t lightHandle) const {
+	return ztech_renderWorld_getRenderLight(game_ztechRenderWorld, lightHandle);
+}
+
+qhandle_t ztechRenderWorld::AddEnvprobeDef(const renderEnvironmentProbe_t* ep) {
+	common->Printf("ztechRenderWorld::AddEnvprobeDef: method not implemented\n");
+	return 0;
+}
+
+void ztechRenderWorld::UpdateEnvprobeDef(qhandle_t envprobeHandle, const renderEnvironmentProbe_t* ep) {
+	common->Printf("ztechRenderWorld::UpdateEnvprobeDef: method not implemented\n");
+}
+
+void ztechRenderWorld::FreeEnvprobeDef(qhandle_t envprobeHandle) {
+	common->Printf("ztechRenderWorld::FreeEnvprobeDef: method not implemented\n");
+}
+
+const renderEnvironmentProbe_t* ztechRenderWorld::GetRenderEnvprobe(qhandle_t envprobeHandle) const {
+	common->Printf("ztechRenderWorld::GetRenderEnvprobe: method not implemented\n");
+	return NULL;
+}
+
+bool ztechRenderWorld::CheckAreaForPortalSky(int areaNum) {
+	common->Printf("ztechRenderWorld::CheckAreaForPortalSky: method not implemented\n");
+	return false;
+}
+
+void ztechRenderWorld::GenerateAllInteractions() {
+	ztech_renderWorld_generateAllInteractions(game_ztechRenderWorld);
+}
+
+void ztechRenderWorld::RegenerateWorld() {
+	common->Printf("ztechRenderWorld::RegenerateWorld: method not implemented\n");
+}
+
+void ztechRenderWorld::ProjectDecalOntoWorld(const idFixedWinding& winding, const idVec3& projectionOrigin, const bool parallel, const float fadeDepth, const idMaterial* material, const int startTime) {
+	common->Printf("ztechRenderWorld::ProjectDecalOntoWorld: method not implemented\n");
+}
+
+void ztechRenderWorld::ProjectDecal(qhandle_t entityHandle, const idFixedWinding& winding, const idVec3& projectionOrigin, const bool parallel, const float fadeDepth, const idMaterial* material, const int startTime) {
+	common->Printf("ztechRenderWorld::ProjectDecal: method not implemented");
+}
+
+void ztechRenderWorld::ProjectOverlay(qhandle_t entityHandle, const idPlane localTextureAxis[2], const idMaterial* material, const int startTime) {
+	common->Printf("ztechRenderWorld::ProjectOverlay: method not implemented\n");
+}
+
+void ztechRenderWorld::RemoveDecals(qhandle_t entityHandle) {
+	common->Printf("ztechRenderWorld::RemoveDecals: method not implemented\n");
+}
+
+void ztechRenderWorld::SetRenderView(const renderView_t* renderView) {
+	//common->Printf("ztechRenderWorld::SetRenderView: method not implemented\n");
+}
+
+void ztechRenderWorld::RenderScene(const renderView_t* renderView) {
+	ztech_renderWorld_renderScene(game_ztechRenderWorld, renderView);
+}
+
+int ztechRenderWorld::NumPortals() const {
+	return ztech_renderWorld_getPortalsCount(game_ztechRenderWorld);
+}
+
+qhandle_t ztechRenderWorld::FindPortal(const idBounds& b) const {
+	return ztech_renderWorld_findPortal(game_ztechRenderWorld, b);
+}
+
+void ztechRenderWorld::SetPortalState(qhandle_t portal, int blockingBits) {
+	ztech_renderWorld_setPortalState(game_ztechRenderWorld, portal, blockingBits);
+}
+
+int ztechRenderWorld::GetPortalState(qhandle_t portal) {
+	return ztech_renderWorld_getPortalState(game_ztechRenderWorld, portal);
+}
+
+bool ztechRenderWorld::AreasAreConnected(int areaNum1, int areaNum2, portalConnection_t connection) const {
+	return ztech_renderWorld_areasAreConnected(game_ztechRenderWorld, areaNum1, areaNum2, connection);
+}
+
+int ztechRenderWorld::NumAreas() const {
+ return ztech_renderWorld_numAreas(game_ztechRenderWorld);
+}
+
+int ztechRenderWorld::PointInArea(const idVec3& point) const {
+	return ztech_renderWorld_pointInArea(game_ztechRenderWorld, &point);
+}
+
+int ztechRenderWorld::BoundsInAreas(const idBounds& bounds, int* areas, int maxAreas) const {
+	return ztech_renderWorld_boundsInAreas(game_ztechRenderWorld, &bounds, areas, maxAreas);
+}
+
+int ztechRenderWorld::NumPortalsInArea(int areaNum) {
+	return ztech_renderWorld_numPortalsInArea(game_ztechRenderWorld, areaNum);
+}
+
+exitPortal_t ztechRenderWorld::GetPortal(int areaNum, int portalNum) {
+	return ztech_renderWorld_getPortal(game_ztechRenderWorld, areaNum, portalNum);
+}
+
+idBounds ztechRenderWorld::AreaBounds(int areaNum) const {
+	return ztech_renderWorld_areaBounds(game_ztechRenderWorld, areaNum);
+}
+
+guiPoint_t ztechRenderWorld::GuiTrace(qhandle_t entityHandle, const idVec3 start, const idVec3 end) const {
+	common->Printf("ztechRenderWorld::GuiTrace: method not implemented\n");
+}
+
+bool ztechRenderWorld::ModelTrace(modelTrace_t& trace, qhandle_t entityHandle, const idVec3& start, const idVec3& end, const float radius) const {
+	common->Printf("ztechRenderWorld::ModelTrace: method not implemented\n");
+}
+
+bool ztechRenderWorld::Trace(modelTrace_t& trace, const idVec3& start, const idVec3& end, const float radius, bool skipDynamic, bool skipPlayer) const {
+	common->Printf("ztechRenderWorld::Trace: method not implemented\n");
+}
+
+bool ztechRenderWorld::FastWorldTrace(modelTrace_t& trace, const idVec3& start, const idVec3& end) const {
+	common->Printf("ztechRenderWorld::FastWorldTrace: method not implemented\n");
+}

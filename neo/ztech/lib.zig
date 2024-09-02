@@ -7,6 +7,7 @@ const CMat3 = @import("math/matrix.zig").CMat3;
 const types = @import("types.zig");
 const RenderSystem = @import("renderer/render_system.zig");
 
+usingnamespace @import("renderer/model_interface.zig");
 usingnamespace @import("game_interface.zig");
 usingnamespace @import("renderer/render_system_interface.zig");
 usingnamespace @import("renderer/render_world_interface.zig");

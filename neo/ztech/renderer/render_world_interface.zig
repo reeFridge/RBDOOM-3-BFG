@@ -11,6 +11,11 @@ const RenderSystem = @import("render_system.zig");
 
 pub const RenderWorldOpaque = opaque {};
 
+export fn ztech_renderWorld_getPortalsCount(rw: *RenderWorldOpaque) callconv(.C) usize {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+    return if (render_world.double_portals) |portals| portals.len else 0;
+}
+
 export fn ztech_renderWorld_getEntityDefsCount(rw: *RenderWorldOpaque) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     return render_world.entity_defs.items.len;
@@ -95,7 +100,7 @@ export fn ztech_renderWorld_areasAreConnected(
 export fn ztech_renderWorld_freeLightDef(rw: *RenderWorldOpaque, light_index: c_int) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
-    render_world.freeLightDef(@intCast(light_index)) catch |err| {
+    render_world.freeLightDefByIndex(@intCast(light_index)) catch |err| {
         std.debug.print("ztech_renderWorld_freeLightIndex: fails, err = {}\n", .{err});
     };
 }
@@ -139,7 +144,7 @@ export fn ztech_renderWorld_updateEntityDef(rw: *RenderWorldOpaque, entity_index
 export fn ztech_renderWorld_freeEntityDef(rw: *RenderWorldOpaque, entity_index: c_int) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
-    render_world.freeEntityDef(@intCast(entity_index)) catch |err| {
+    render_world.freeEntityDefByIndex(@intCast(entity_index)) catch |err| {
         std.debug.print("ztech_renderWorld_freeEntityDef: fails, err = {}\n", .{err});
     };
 }
@@ -180,4 +185,44 @@ export fn ztech_renderWorld_initFromMap(rw: *RenderWorldOpaque, c_map_name: [*c]
     render_world_ptr.initFromMap(map_name) catch return false;
 
     return true;
+}
+
+export fn ztech_renderWorld_findPortal(rw: *RenderWorldOpaque, b: CBounds) callconv(.C) c_int {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+
+    return @intCast(render_world.findPortal(b.toBounds()));
+}
+
+export fn ztech_renderWorld_setPortalState(
+    rw: *RenderWorldOpaque,
+    index: c_int,
+    block_types: c_int,
+) callconv(.C) void {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+
+    render_world.setPortalState(@intCast(index), block_types);
+}
+
+export fn ztech_renderWorld_getPortalState(
+    rw: *RenderWorldOpaque,
+    index: c_int,
+) callconv(.C) c_int {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+    return render_world.getPortalState(@intCast(index));
+}
+
+export fn ztech_renderWorld_getRenderEntity(
+    rw: *RenderWorldOpaque,
+    index: c_int,
+) callconv(.C) ?*const RenderEntity {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+    return render_world.getRenderEntity(@intCast(index));
+}
+
+export fn ztech_renderWorld_getRenderLight(
+    rw: *RenderWorldOpaque,
+    index: c_int,
+) callconv(.C) ?*const RenderLight {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+    return render_world.getRenderLight(@intCast(index));
 }

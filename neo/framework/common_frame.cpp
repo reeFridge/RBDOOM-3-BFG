@@ -88,8 +88,6 @@ extern "C" usercmd_t c_getUserCmdForPlayer(int num) {
 
 extern "C" void ztech_game_runFrame();
 
-#define USE_ZTECH_GAME
-
 /*
 ===============
 idGameThread::Run
@@ -402,7 +400,6 @@ void idCommonLocal::Draw()
 			int	start = Sys_Milliseconds();
 			if( game )
 			{
-#define USE_ZTECH_GAME
 #ifdef USE_ZTECH_GAME
 				gameDraw = ztech_game_draw(Game()->GetLocalClientNum());
 #else
@@ -433,7 +430,7 @@ void idCommonLocal::Draw()
 		// draw the wipe material on top of this if it hasn't completed yet
 		DrawWipeModel();
 
-		Dialog().Render( loadGUI != NULL );
+		//Dialog().Render( loadGUI != NULL );
 
 		// draw the half console / notify console on top of everything
 		console->Draw( false );

@@ -376,11 +376,9 @@ void idCommonLocal::LoadLoadingGui( const char* mapName, bool& hellMap )
 	}
 }
 
-extern "C" bool ztech_renderWorld_initFromMap(void*, uint8_t const *const);
-extern "C" void ztech_renderWorld_generateAllInteractions(void*);
+extern void* game_ztechRenderWorld;
 extern "C" bool ztech_game_initFromMap(void*);
 extern "C" void ztech_game_runFrame();
-#define USE_ZTECH_GAME
 
 /*
 ===============
@@ -537,10 +535,6 @@ void idCommonLocal::ExecuteMapChange()
 		{
 			common->Error( "couldn't load %s", fullMapName.c_str() );
 		}
-	} else if (ztech_renderWorld) {
-		if (!ztech_renderWorld_initFromMap(ztech_renderWorld, (const uint8_t*)fullMapName.c_str())) {
-			common->Error("couldn't load %s", fullMapName.c_str());
-		}
 	}
 
 	// for the synchronous networking we needed to roll the angles over from
@@ -567,9 +561,9 @@ void idCommonLocal::ExecuteMapChange()
 		}
 		game->SetServerInfo( matchParameters.serverInfo );
 #ifdef USE_ZTECH_GAME
-		ztech_game_initFromMap(ztech_renderWorld);
+		ztech_game_initFromMap(game_ztechRenderWorld);
 #endif
-		game->InitFromNewMap( fullMapName, renderWorld, ztech_renderWorld, soundWorld, matchParameters.gameMode, Sys_Milliseconds() );
+		game->InitFromNewMap( fullMapName, renderWorld, soundWorld, matchParameters.gameMode, Sys_Milliseconds() );
 	}
 
 	game->Shell_CreateMenu( true );
@@ -643,7 +637,7 @@ void idCommonLocal::ExecuteMapChange()
 
 		// kick off an auto-save of the game (so we can always continue in this map if we die before hitting an autosave)
 		common->Printf( "----- Saving Game -----\n" );
-		SaveGame( "autosave" );
+		//SaveGame( "autosave" );
 	}
 
 	common->Printf( "----- Generating Interactions -----\n" );
@@ -651,8 +645,6 @@ void idCommonLocal::ExecuteMapChange()
 	// let the renderSystem generate interactions now that everything is spawned
 	if (renderWorld) {
 		renderWorld->GenerateAllInteractions();
-	} else if (ztech_renderWorld) {
-		ztech_renderWorld_generateAllInteractions(ztech_renderWorld);
 	}
 
 	{

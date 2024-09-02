@@ -303,10 +303,7 @@ idLight::~idLight()
 {
 	if( lightDefHandle != -1 )
 	{
-		if (gameRenderWorld)
-			gameRenderWorld->FreeLightDef( lightDefHandle );
-		else if (game_ztechRenderWorld)
-			ztech_renderWorld_freeLightDef(game_ztechRenderWorld, lightDefHandle);
+		gameRenderWorld->FreeLightDef( lightDefHandle );
 	}
 }
 
@@ -909,17 +906,11 @@ void idLight::PresentLightDefChange()
 	// let the renderer apply it to the world
 	if( ( lightDefHandle != -1 ) )
 	{
-		if (gameRenderWorld)
-			gameRenderWorld->UpdateLightDef( lightDefHandle, &renderLight );
-		else if (game_ztechRenderWorld)
-			ztech_renderWorld_updateLightDef(game_ztechRenderWorld, lightDefHandle, &renderLight);
+		gameRenderWorld->UpdateLightDef( lightDefHandle, &renderLight );
 	}
 	else
 	{
-		if (gameRenderWorld)
-			lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
-		else if (game_ztechRenderWorld)
-			lightDefHandle = ztech_renderWorld_addLightDef(game_ztechRenderWorld, &renderLight);
+		lightDefHandle = gameRenderWorld->AddLightDef( &renderLight );
 	}
 }
 

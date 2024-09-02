@@ -497,7 +497,7 @@ void idPlayerView::SingleView( const renderView_t* view, idMenuHandler_HUD* hudM
 				}
 			}
 		}
-		player->DrawHUD( hudManager );
+		//@f player->DrawHUD( hudManager );
 
 		if( player->spectating )
 		{

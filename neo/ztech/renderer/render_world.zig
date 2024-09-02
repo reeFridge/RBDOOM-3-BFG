@@ -197,17 +197,34 @@ pub const DefIndexAccessError = error{
     SlotIsNull,
 };
 
+pub fn getRenderEntity(render_world: *const RenderWorld, index: usize) ?*const RenderEntity {
+    if (index >= render_world.entity_defs.items.len) return null;
+    const def = render_world.entity_defs.items[index] orelse return null;
+
+    return &def.parms;
+}
+
+pub fn getRenderLight(render_world: *const RenderWorld, index: usize) ?*const RenderLight {
+    if (index >= render_world.light_defs.items.len) return null;
+    const def = render_world.light_defs.items[index] orelse return null;
+
+    return &def.parms;
+}
+
 // Frees all references and lit surfaces from the light, and
 // NULL's out it's entry in the world list
-pub fn freeLightDef(render_world: *RenderWorld, light_index: usize) DefIndexAccessError!void {
+pub fn freeLightDefByIndex(render_world: *RenderWorld, light_index: usize) DefIndexAccessError!void {
     if (light_index >= render_world.light_defs.items.len) return error.OutOfRange;
 
     if (render_world.light_defs.items[light_index]) |def| {
-        def.freeLightDerivedData();
-
-        render_world.allocator.destroy(def);
-        render_world.light_defs.items[light_index] = null;
+        render_world.freeLightDef(def, light_index);
     } else return error.SlotIsNull;
+}
+
+inline fn freeLightDef(render_world: *RenderWorld, def: *RenderLightLocal, light_index: usize) void {
+    def.freeLightDerivedData();
+    render_world.allocator.destroy(def);
+    render_world.light_defs.items[light_index] = null;
 }
 
 pub fn addLightDef(render_world: *RenderWorld, render_light: RenderLight) !usize {
@@ -308,19 +325,29 @@ pub fn updateLightDef(
         try light.createLightRefs();
 }
 
-pub fn freeEntityDef(render_world: *RenderWorld, entity_index: usize) DefIndexAccessError!void {
+pub fn freeEntityDefByIndex(render_world: *RenderWorld, entity_index: usize) DefIndexAccessError!void {
     if (entity_index >= render_world.entity_defs.items.len) return error.OutOfRange;
 
     if (render_world.entity_defs.items[entity_index]) |def| {
-        def.freeEntityDerivedData(false, false);
-
-        def.parms.gui[0] = null;
-        def.parms.gui[1] = null;
-        def.parms.gui[2] = null;
-
-        render_world.allocator.destroy(def);
-        render_world.entity_defs.items[entity_index] = null;
+        render_world.freeEntityDef(def, entity_index);
     } else return error.SlotIsNull;
+}
+
+inline fn freeEntityDef(render_world: *RenderWorld, def: *RenderEntityLocal, entity_index: usize) void {
+    def.freeEntityDerivedData(false, false);
+
+    def.parms.gui[0] = null;
+    def.parms.gui[1] = null;
+    def.parms.gui[2] = null;
+
+    render_world.allocator.destroy(def);
+    render_world.entity_defs.items[entity_index] = null;
+}
+
+inline fn freeEnvprobeDef(render_world: *RenderWorld, def: *RenderEnvprobeLocal, index: usize) void {
+    // TODO: FreeEnvprobeDefDerivedData
+    render_world.allocator.destroy(def);
+    render_world.envprobe_defs.items[index] = null;
 }
 
 pub fn addEntityDef(render_world: *RenderWorld, render_entity: RenderEntity) !usize {
@@ -1079,9 +1106,10 @@ pub fn updateEntityDef(
     def.lastModifiedFrameNum = @intCast(RenderSystem.instance.frameCount());
 
     // optionally immediately issue any callbacks
-    const r_use_entity_callbacks = true; // TODO: CVar system
+    const r_use_entity_callbacks = false; // TODO: CVar system
     if (!r_use_entity_callbacks and def.parms.callback != null) {
-        def.issueEntityDefCallback();
+        const view_def = RenderSystem.instance.getView();
+        _ = def.issueEntityDefCallback(view_def);
     }
 
     // trigger entities don't need to get linked in and processed,
@@ -1435,24 +1463,21 @@ pub fn freeDefs(render_world: *RenderWorld) void {
         render_world.interaction_table = null;
     }
 
-    for (render_world.light_defs.items) |*item| {
+    for (render_world.light_defs.items, 0..) |*item, index| {
         if (item.*) |item_ptr| {
-            render_world.allocator.destroy(item_ptr);
-            item.* = null;
+            render_world.freeLightDef(item_ptr, index);
         }
     }
 
-    for (render_world.envprobe_defs.items) |*item| {
+    for (render_world.envprobe_defs.items, 0..) |*item, index| {
         if (item.*) |item_ptr| {
-            render_world.allocator.destroy(item_ptr);
-            item.* = null;
+            render_world.freeEnvprobeDef(item_ptr, index);
         }
     }
 
-    for (render_world.entity_defs.items) |*item| {
+    for (render_world.entity_defs.items, 0..) |*item, index| {
         if (item.*) |item_ptr| {
-            render_world.allocator.destroy(item_ptr);
-            item.* = null;
+            render_world.freeEntityDef(item_ptr, index);
         }
     }
 
@@ -1482,9 +1507,28 @@ pub fn freeWorld(render_world: *RenderWorld) void {
     render_world.freeDefs();
 
     // free all the portals and check light/model references
-    // TODO: for (render_world.portal_areas)
 
     if (render_world.portal_areas) |portal_areas| {
+        for (portal_areas) |*area| {
+            var opt_portal: ?*Portal = area.portals;
+            var opt_next_portal: ?*Portal = null;
+            while (opt_portal) |portal| : (opt_portal = opt_next_portal) {
+                opt_next_portal = portal.next;
+                portal.w.destroy();
+                render_world.allocator.destroy(portal);
+            }
+
+            // TODO:
+            // area.lightGrid.lightGridPoints.clear();
+
+            // there shouldn't be any remaining lightRefs or entityRefs
+            if (area.lightRefs.areaNext != &area.lightRefs)
+                @panic("freeWorld: unexpected remaining lightRefs");
+
+            if (area.entityRefs.areaNext != &area.entityRefs)
+                @panic("freeWorld: unexpected remaining entityRefs");
+        }
+
         render_world.allocator.free(portal_areas);
         render_world.portal_areas = null;
     }
@@ -1675,6 +1719,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             }
 
             if (std.mem.eql(u8, token.slice(), "shadowModel")) {
+                _ = try render_world.parseShadowModel(&lexer);
                 //const last_model = render_world.parseShadowModel(&lexer);
                 // add it to the model manager list
                 //global.renderModelManager.addModel(last_model);
@@ -1686,13 +1731,13 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             }
 
             if (std.mem.eql(u8, token.slice(), "interAreaPortals")) {
-                //render_world.parseInterAreaPortals(&lexer);
+                try render_world.parseInterAreaPortals(&lexer);
                 numEntries += 1;
                 continue;
             }
 
             if (std.mem.eql(u8, token.slice(), "nodes")) {
-                //render_world.parseNodes(&lexer);
+                try render_world.parseNodes(&lexer);
                 numEntries += 1;
                 continue;
             }
@@ -1983,6 +2028,172 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
     return render_model;
 }
 
+fn parseNodes(_: *RenderWorld, lexer: *Lexer) !void {
+    // TODO
+    try lexer.expectTokenString("{");
+    const num_area_nodes = try lexer.parseSize();
+    for (0..num_area_nodes) |_| {
+        var vec = std.mem.zeroes([4]f32);
+        try lexer.parse1DMatrix(&vec);
+        _ = try lexer.parseInt();
+        _ = try lexer.parseInt();
+    }
+    try lexer.expectTokenString("}");
+}
+
+fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
+    try lexer.expectTokenString("{");
+    const num_portal_areas = try lexer.parseSize();
+    const num_inter_area_portals = try lexer.parseSize();
+
+    const portal_areas = try render_world.allocator.alloc(PortalArea, num_portal_areas);
+    errdefer render_world.allocator.free(portal_areas);
+    for (portal_areas) |*area| {
+        area.* = std.mem.zeroes(PortalArea);
+    }
+
+    render_world.portal_areas = portal_areas;
+
+    const screen_rects = try render_world.allocator.alloc(ScreenRect, num_portal_areas);
+    errdefer render_world.allocator.free(screen_rects);
+    for (screen_rects) |*rect| {
+        rect.* = std.mem.zeroes(ScreenRect);
+    }
+
+    render_world.area_screen_rect = screen_rects;
+
+    render_world.setupAreaRefs(portal_areas);
+
+    const double_portals = try render_world.allocator.alloc(DoublePortal, num_inter_area_portals);
+    errdefer render_world.allocator.free(double_portals);
+    for (double_portals) |*portal| {
+        portal.* = std.mem.zeroes(DoublePortal);
+    }
+
+    render_world.double_portals = double_portals;
+
+    for (0..num_inter_area_portals) |i| {
+        const num_points = try lexer.parseSize();
+        const a1 = try lexer.parseSize();
+        const a2 = try lexer.parseSize();
+
+        const w = CWinding.create(num_points);
+        w.setNumPoints(num_points);
+
+        for (0..num_points) |j| {
+            const vec = @as([*]f32, @ptrCast(&w.p[j]))[0..3];
+            try lexer.parse1DMatrix(vec);
+        }
+
+        const p1 = try render_world.allocator.create(Portal);
+        errdefer render_world.allocator.destroy(p1);
+        p1.intoArea = @intCast(a2);
+        p1.doublePortal = &double_portals[i];
+        p1.w = w;
+        p1.plane = w.getPlane();
+        p1.next = portal_areas[a1].portals;
+        portal_areas[a1].portals = p1;
+        double_portals[i].portals[0] = p1;
+
+        const p2 = try render_world.allocator.create(Portal);
+        errdefer render_world.allocator.destroy(p2);
+        p2.intoArea = @intCast(a1);
+        p2.doublePortal = &double_portals[i];
+        p2.w = w.reverse();
+        p2.plane = w.getPlane();
+        p2.next = portal_areas[a2].portals;
+        portal_areas[a2].portals = p2;
+        double_portals[i].portals[1] = p2;
+    }
+
+    try lexer.expectTokenString("}");
+}
+
+fn parseShadowModel(_: *RenderWorld, lexer: *Lexer) !?*model.RenderModel {
+    // TODO
+    try lexer.expectTokenString("{");
+
+    // reusable token
+    var token = Token.init();
+    defer token.deinit();
+
+    // model name
+    try lexer.expectAnyToken(&token);
+    const num_verts = try lexer.parseSize(); // numVerts
+    _ = try lexer.parseSize();
+    _ = try lexer.parseSize();
+    const num_indexes = try lexer.parseSize(); // numIndexes
+    _ = try lexer.parseSize();
+
+    for (0..num_verts) |_| {
+        var vec = std.mem.zeroes([3]f32);
+        try lexer.parse1DMatrix(&vec);
+    }
+
+    for (0..num_indexes) |_| {
+        _ = try lexer.parseSize();
+    }
+
+    try lexer.expectTokenString("}");
+
+    return null;
+}
+
+/// Game code uses this to identify which portals are inside doors.
+/// Returns 0 if no portal contacts the bounds
+pub fn findPortal(render_world: RenderWorld, b: Bounds) usize {
+    const double_portals =
+        render_world.double_portals orelse return 0;
+
+    var wb = Bounds.zero;
+    for (double_portals, 0..) |*portal, i| {
+        const w = portal.portals[0].w;
+        wb.clear();
+
+        for (0..@intCast(w.numPoints)) |j| {
+            _ = wb.addPoint(w.getVec3Point(j).toVec3f());
+        }
+
+        if (wb.intersectsBounds(b)) return i + 1;
+    }
+
+    return 0;
+}
+
+pub fn setPortalState(render_world: *RenderWorld, portal_index: usize, block_types: c_int) void {
+    if (portal_index == 0) return;
+    const double_portals = render_world.double_portals orelse @panic("double_portals not initialized!");
+    const portal_areas = render_world.portal_areas orelse @panic("portal_areas not initialized!");
+
+    const old_state = double_portals[portal_index - 1].blockingBits;
+    if (old_state == block_types) return;
+    double_portals[portal_index - 1].blockingBits = block_types;
+
+    // leave the connectedAreaGroup the same on one side,
+    // then flood fill from the other side with a new number for each changed attribute
+    for (0..NUM_PORTAL_ATTRIBUTES) |i| {
+        const attribute_mask = @as(c_int, 1) << @intCast(i);
+        if (((old_state ^ block_types) & attribute_mask) != 0) {
+            render_world.connected_area_num += 1;
+            const portal = double_portals[portal_index - 1].portals[1];
+            render_world.floodConnectedAreas(
+                portal_areas,
+                &portal_areas[@intCast(portal.intoArea)],
+                i,
+            );
+        }
+    }
+}
+
+pub fn getPortalState(render_world: *RenderWorld, portal_index: usize) c_int {
+    if (portal_index == 0) return 0;
+
+    return if (render_world.double_portals) |double_portals|
+        double_portals[portal_index - 1].blockingBits
+    else
+        0;
+}
+
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 
 inline fn createModelSurface(
@@ -2112,39 +2323,6 @@ inline fn createModelSurface(
 pub fn destroyModelSurface(render_world: *RenderWorld, model_surface: *model.ModelSurface) void {
     const geometry = if (model_surface.geometry) |tris| tris else return;
 
-    destroySurfaceTriangles(render_world.allocator, geometry);
+    geometry.deinit(render_world.allocator);
     model_surface.geometry = null;
-}
-
-pub fn destroySurfaceTriangles(allocator: std.mem.Allocator, tri: *model.SurfaceTriangles) void {
-    resetSurfaceTrianglesVertexCaches(tri);
-
-    if (!tri.referencedVerts) {
-        if (tri.verts) |verts| {
-            // R_CreateLightTris points tri->verts at the verts of the ambient surface
-            if (@intFromPtr(tri.ambientSurface) == 0 or verts != tri.ambientSurface.*.verts) {
-                const verts_slice = verts[0..@intCast(tri.numVerts)];
-                allocator.free(verts_slice);
-            }
-        }
-    }
-
-    if (!tri.referencedIndexes) {
-        if (tri.indexes) |indexes| {
-            // if a surface is completely inside a light volume R_CreateLightTris points tri->indexes at the indexes of the ambient surface
-            if (@intFromPtr(tri.ambientSurface) == 0 or indexes != tri.ambientSurface.*.indexes) {
-                const indexes_slice = indexes[0..@intCast(tri.numIndexes)];
-                allocator.free(indexes_slice);
-            }
-        }
-    }
-
-    allocator.destroy(tri);
-}
-
-fn resetSurfaceTrianglesVertexCaches(tri: *model.SurfaceTriangles) void {
-    // we don't support reclaiming static geometry memory
-    // without a level change
-    tri.ambientCache = 0;
-    tri.indexCache = 0;
 }

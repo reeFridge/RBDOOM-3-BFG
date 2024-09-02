@@ -36,6 +36,22 @@ If you have questions concerning this license or the applicable additional terms
 
 idCVar r_useSilRemap( "r_useSilRemap", "1", CVAR_RENDERER | CVAR_BOOL, "consider verts with the same XYZ, but different ST the same for shadows" );
 
+extern "C" {
+
+void ztech_triSurf_allocVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocIndexes(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocSilIndexes(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocDominantTris(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocMirroredVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocDupVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_resizeVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_resizeIndexes(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_deinit(srfTriangles_t*);
+srfTriangles_t* ztech_triSurf_init();
+void ztech_triSurf_freeVertices(srfTriangles_t*);
+
+}
+
 #if defined( DMAP )
 /*
 ==========================================================================================
@@ -171,6 +187,7 @@ is highly uneven.
 
 // instead of using the texture T vector, cross the normal and S vector for an orthogonal axis
 #define DERIVE_UNSMOOTHED_BITANGENT
+#define USE_ZTECH_TRI_SURF
 
 // SP Begin
 
@@ -269,10 +286,6 @@ void R_FreeStaticTriSurfVertexCaches( srfTriangles_t* tri )
 	tri->indexCache = 0;
 }
 
-extern "C" void c_freeStaticTriSurf(srfTriangles_t* tri) {
-	R_FreeStaticTriSurf(tri);
-}
-
 /*
 ==============
 R_FreeStaticTriSurf
@@ -285,6 +298,9 @@ void R_FreeStaticTriSurf( srfTriangles_t* tri )
 		return;
 	}
 
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_deinit(tri);
+#else
 	R_FreeStaticTriSurfVertexCaches( tri );
 
 	if( !tri->referencedVerts )
@@ -331,6 +347,7 @@ void R_FreeStaticTriSurf( srfTriangles_t* tri )
 	memset( tri, 0, sizeof( srfTriangles_t ) );
 
 	Mem_Free( tri );
+#endif
 }
 
 /*
@@ -340,6 +357,9 @@ R_FreeStaticTriSurfVerts
 */
 void R_FreeStaticTriSurfVerts( srfTriangles_t* tri )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_freeVertices(tri);
+#else
 	// we don't support reclaiming static geometry memory
 	// without a level change
 	tri->ambientCache = 0;
@@ -352,6 +372,7 @@ void R_FreeStaticTriSurfVerts( srfTriangles_t* tri )
 			Mem_Free( tri->verts );
 		}
 	}
+#endif
 }
 
 /*
@@ -361,8 +382,12 @@ R_AllocStaticTriSurf
 */
 srfTriangles_t* R_AllocStaticTriSurf()
 {
+#ifdef USE_ZTECH_TRI_SURF
+	return ztech_triSurf_init();
+#else
 	srfTriangles_t* tris = ( srfTriangles_t* )Mem_ClearedAlloc( sizeof( srfTriangles_t ), TAG_SRFTRIS );
 	return tris;
+#endif
 }
 
 /*
@@ -394,8 +419,12 @@ R_AllocStaticTriSurfVerts
 */
 void R_AllocStaticTriSurfVerts( srfTriangles_t* tri, int numVerts )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_allocVertices(tri, static_cast<uintptr_t>(numVerts));
+#else
 	assert( tri->verts == NULL );
 	tri->verts = ( idDrawVert* )Mem_Alloc16( numVerts * sizeof( idDrawVert ), TAG_TRI_VERTS );
+#endif
 }
 
 /*
@@ -405,8 +434,12 @@ R_AllocStaticTriSurfIndexes
 */
 void R_AllocStaticTriSurfIndexes( srfTriangles_t* tri, int numIndexes )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_allocIndexes(tri, static_cast<uintptr_t>(numIndexes));
+#else
 	assert( tri->indexes == NULL );
 	tri->indexes = ( triIndex_t* )Mem_Alloc16( numIndexes * sizeof( triIndex_t ), TAG_TRI_INDEXES );
+#endif
 }
 
 /*
@@ -416,8 +449,12 @@ R_AllocStaticTriSurfSilIndexes
 */
 void R_AllocStaticTriSurfSilIndexes( srfTriangles_t* tri, int numIndexes )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_allocSilIndexes(tri, static_cast<uintptr_t>(numIndexes));
+#else
 	assert( tri->silIndexes == NULL );
 	tri->silIndexes = ( triIndex_t* )Mem_Alloc16( numIndexes * sizeof( triIndex_t ), TAG_TRI_SIL_INDEXES );
+#endif
 }
 
 /*
@@ -427,8 +464,12 @@ R_AllocStaticTriSurfDominantTris
 */
 void R_AllocStaticTriSurfDominantTris( srfTriangles_t* tri, int numVerts )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_allocDominantTris(tri, numVerts);
+#else
 	assert( tri->dominantTris == NULL );
 	tri->dominantTris = ( dominantTri_t* )Mem_Alloc16( numVerts * sizeof( dominantTri_t ), TAG_TRI_DOMINANT_TRIS );
+#endif
 }
 
 /*
@@ -438,8 +479,12 @@ R_AllocStaticTriSurfMirroredVerts
 */
 void R_AllocStaticTriSurfMirroredVerts( srfTriangles_t* tri, int numMirroredVerts )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_allocMirroredVertices(tri, static_cast<uintptr_t>(numMirroredVerts));
+#else
 	assert( tri->mirroredVerts == NULL );
 	tri->mirroredVerts = ( int* )Mem_Alloc16( numMirroredVerts * sizeof( *tri->mirroredVerts ), TAG_TRI_MIR_VERT );
+#endif
 }
 
 /*
@@ -449,8 +494,12 @@ R_AllocStaticTriSurfDupVerts
 */
 void R_AllocStaticTriSurfDupVerts( srfTriangles_t* tri, int numDupVerts )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_allocDupVertices(tri, static_cast<uintptr_t>(numDupVerts));
+#else
 	assert( tri->dupVerts == NULL );
 	tri->dupVerts = ( int* )Mem_Alloc16( numDupVerts * 2 * sizeof( *tri->dupVerts ), TAG_TRI_DUP_VERT );
+#endif
 }
 
 /*
@@ -460,11 +509,15 @@ R_ResizeStaticTriSurfVerts
 */
 void R_ResizeStaticTriSurfVerts( srfTriangles_t* tri, int numVerts )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_resizeVertices(tri, static_cast<uintptr_t>(numVerts));
+#else
 	idDrawVert* newVerts = ( idDrawVert* )Mem_Alloc16( numVerts * sizeof( idDrawVert ), TAG_TRI_VERTS );
 	const int copy = Min( numVerts, tri->numVerts );
 	memcpy( newVerts, tri->verts, copy * sizeof( idDrawVert ) );
 	Mem_Free( tri->verts );
 	tri->verts = newVerts;
+#endif
 }
 
 /*
@@ -474,11 +527,15 @@ R_ResizeStaticTriSurfIndexes
 */
 void R_ResizeStaticTriSurfIndexes( srfTriangles_t* tri, int numIndexes )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_resizeIndexes(tri, static_cast<uintptr_t>(numIndexes));
+#else
 	triIndex_t* newIndexes = ( triIndex_t* )Mem_Alloc16( numIndexes * sizeof( triIndex_t ), TAG_TRI_INDEXES );
 	const int copy = std::min( numIndexes, tri->numIndexes );
 	memcpy( newIndexes, tri->indexes, copy * sizeof( triIndex_t ) );
 	Mem_Free( tri->indexes );
 	tri->indexes = newIndexes;
+#endif
 }
 
 /*
@@ -797,11 +854,12 @@ static void	R_DuplicateMirroredVertexes( srfTriangles_t* tri )
 
 	// now create the new list
 	R_AllocStaticTriSurfMirroredVerts( tri, tri->numMirroredVerts );
+	const int oldNumVerts = tri->numVerts;
 	R_ResizeStaticTriSurfVerts( tri, totalVerts );
 
 	// create the duplicates
 	numMirror = 0;
-	for( i = 0; i < tri->numVerts; i++ )
+	for( i = 0; i < oldNumVerts; i++ )
 	{
 		j = tverts[i].negativeRemap;
 		if( j )

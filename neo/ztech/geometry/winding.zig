@@ -1,3 +1,4 @@
+const std = @import("std");
 const CVec3 = @import("../math/vector.zig").CVec3;
 const Plane = @import("../math/plane.zig").Plane;
 
@@ -19,8 +20,36 @@ pub const CWinding = extern struct {
     p: [*]CVec5,
     allocedSize: c_int,
 
+    extern fn c_winding_create(c_int) callconv(.C) *CWinding;
+    extern fn c_winding_setNumPoints(*CWinding, c_int) callconv(.C) void;
+    extern fn c_winding_reverse(*const CWinding) callconv(.C) *CWinding;
+    extern fn c_winding_getPlane(*const CWinding, *Plane) callconv(.C) void;
+    extern fn c_winding_destroy(*CWinding) callconv(.C) void;
+
     pub fn getVec3Point(w: CWinding, index: usize) CVec3 {
         return w.p[index].toVec3();
+    }
+
+    pub fn create(num_points: usize) *CWinding {
+        return c_winding_create(@intCast(num_points));
+    }
+
+    pub fn destroy(w: *CWinding) void {
+        c_winding_destroy(w);
+    }
+
+    pub fn setNumPoints(w: *CWinding, num_points: usize) void {
+        c_winding_setNumPoints(w, @intCast(num_points));
+    }
+
+    pub fn reverse(w: CWinding) *CWinding {
+        return c_winding_reverse(&w);
+    }
+
+    pub fn getPlane(w: CWinding) Plane {
+        var plane = std.mem.zeroes(Plane);
+        c_winding_getPlane(&w, &plane);
+        return plane;
     }
 };
 

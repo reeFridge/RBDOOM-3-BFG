@@ -93,10 +93,7 @@ void idSmokeParticles::Init()
 
 	renderEntity.callback = idSmokeParticles::ModelCallback;
 	// add to renderer list
-	if (gameRenderWorld)
-		renderEntityHandle = gameRenderWorld->AddEntityDef( &renderEntity );
-	else if (game_ztechRenderWorld)
-		renderEntityHandle = ztech_renderWorld_addEntityDef(game_ztechRenderWorld, &renderEntity);
+	renderEntityHandle = gameRenderWorld->AddEntityDef( &renderEntity );
 
 	currentParticleTime = -1;
 
@@ -113,10 +110,7 @@ void idSmokeParticles::Shutdown()
 	// make sure the render entity is freed before the model is freed
 	if( renderEntityHandle != -1 )
 	{
-		if (gameRenderWorld)
-			gameRenderWorld->FreeEntityDef( renderEntityHandle );
-		else if (game_ztechRenderWorld)
-			ztech_renderWorld_freeEntityDef(game_ztechRenderWorld, renderEntityHandle);
+		gameRenderWorld->FreeEntityDef( renderEntityHandle );
 
 		renderEntityHandle = -1;
 	}

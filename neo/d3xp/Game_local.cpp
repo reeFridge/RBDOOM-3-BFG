@@ -1297,29 +1297,16 @@ void idGameLocal::PopulateEnvironmentProbes()
 
 	// naive approach: place an env probe into the center of each BSP area
 
-	int	numAreas = 0;
-
-	if (gameRenderWorld)
-		numAreas = gameRenderWorld->NumAreas();
-	else if (game_ztechRenderWorld)
-		numAreas = ztech_renderWorld_numAreas(game_ztechRenderWorld);
+	int	numAreas = gameRenderWorld->NumAreas();
 
 	for( int i = 0; i < numAreas; i++ )
 	{
-		idBounds areaBounds;
-		if (gameRenderWorld)
-			areaBounds = gameRenderWorld->AreaBounds( i );
-		else if (game_ztechRenderWorld)
-			areaBounds = ztech_renderWorld_areaBounds(game_ztechRenderWorld, i);
+		idBounds areaBounds = gameRenderWorld->AreaBounds( i );
 
 		idVec3 point = areaBounds.GetCenter();
 		point.SnapInt();
 
-		int areaNum = 0;
-		if (gameRenderWorld)
-			areaNum = gameRenderWorld->PointInArea( point );
-		else if (game_ztechRenderWorld)
-			areaNum = ztech_renderWorld_pointInArea(game_ztechRenderWorld, &point);
+		int areaNum = gameRenderWorld->PointInArea( point );
 
 		if( areaNum < 0 )
 		{
@@ -1351,7 +1338,7 @@ void idGameLocal::PopulateEnvironmentProbes()
 idGameLocal::InitFromNewMap
 ===================
 */
-void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorld, void* ztech_renderWorld, idSoundWorld* soundWorld, int gameMode, int randseed )
+void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorld, idSoundWorld* soundWorld, int gameMode, int randseed )
 {
 
 	this->gameType = ( gameType_t )idMath::ClampInt( GAME_SP, GAME_COUNT - 1, gameMode );
@@ -1365,7 +1352,6 @@ void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorl
 
 	gamestate = GAMESTATE_STARTUP;
 
-	game_ztechRenderWorld = ztech_renderWorld;
 	gameRenderWorld = renderWorld;
 	gameSoundWorld = soundWorld;
 
@@ -1391,8 +1377,11 @@ void idGameLocal::InitFromNewMap( const char* mapName, idRenderWorld* renderWorl
 	mpGame.Reset();
 	mpGame.Precache();
 
-	ztech_SyncPlayersWithLobbyUsers( true );
-	//SyncPlayersWithLobbyUsers( true );
+#ifdef USE_ZTECH
+	ztech_SyncPlayersWithLobbyUsers(true);
+#else
+	SyncPlayersWithLobbyUsers( true );
+#endif
 
 	// free up any unused animations
 	animationLib.FlushUnusedAnims();
@@ -1782,7 +1771,6 @@ void idGameLocal::MapShutdown()
 
 	mapFileName.Clear();
 
-	game_ztechRenderWorld = NULL;
 	gameRenderWorld = NULL;
 	gameSoundWorld = NULL;
 
@@ -2700,7 +2688,11 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 		return;
 	}
 
+#ifdef USE_ZTECH
+	ztech_SyncPlayersWithLobbyUsers(false);
+#else
 	SyncPlayersWithLobbyUsers( false );
+#endif
 	ServerSendNetworkSyncCvars();
 
 	player = GetLocalPlayer();
@@ -2708,8 +2700,7 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 	if( !common->IsMultiplayer() && g_stopTime.GetBool() )
 	{
 		// clear any debug lines from a previous frame
-		if (gameRenderWorld)
-			gameRenderWorld->DebugClearLines( time + 1 );
+		gameRenderWorld->DebugClearLines( time + 1 );
 
 		// set the user commands for this frame
 		if( player )
@@ -2761,12 +2752,10 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 			}
 
 			// clear any debug lines from a previous frame
-			if (gameRenderWorld)
-				gameRenderWorld->DebugClearLines( time );
+			gameRenderWorld->DebugClearLines( time );
 
 			// clear any debug polygons from a previous frame
-			if (gameRenderWorld)
-				gameRenderWorld->DebugClearPolygons( time );
+			gameRenderWorld->DebugClearPolygons( time );
 
 			// free old smoke particles
 			smokeParticles->FreeSmokes();
@@ -2939,8 +2928,7 @@ void idGameLocal::RunFrame( idUserCmdMgr& cmdMgr, gameReturn_t& ret )
 
 	// show any debug info for this frame
 	RunDebugInfo();
-	if (gameRenderWorld)
-		D_DrawDebugLines();
+	D_DrawDebugLines();
 
 	if( g_recordTrace.GetBool() )
 	{
@@ -5208,14 +5196,9 @@ Now that everything has been spawned, associate areas with location entities
 void idGameLocal::SpreadLocations()
 {
 	idEntity* ent;
-	int numAreas = 0;
+	int numAreas = gameRenderWorld->NumAreas();
 
 	// allocate the area table
-	if (gameRenderWorld)
-		numAreas = gameRenderWorld->NumAreas();
-	else if (game_ztechRenderWorld)
-		numAreas = ztech_renderWorld_numAreas(game_ztechRenderWorld);
-
 	locationEntities = new( TAG_GAME ) idLocationEntity *[ numAreas ];
 	memset( locationEntities, 0, numAreas * sizeof( *locationEntities ) );
 
@@ -5227,11 +5210,7 @@ void idGameLocal::SpreadLocations()
 			continue;
 		}
 		idVec3	point = ent->spawnArgs.GetVector( "origin" );
-		int areaNum = 0;
-		if (gameRenderWorld)
-			areaNum = gameRenderWorld->PointInArea( point );
-		else if (game_ztechRenderWorld)
-			areaNum = ztech_renderWorld_pointInArea(game_ztechRenderWorld, &point);
+		int areaNum = gameRenderWorld->PointInArea( point );
 
 		if( areaNum < 0 )
 		{
@@ -5257,13 +5236,8 @@ void idGameLocal::SpreadLocations()
 			{
 				continue;
 			}
-			bool connected = false;
-			if (gameRenderWorld)
-				connected = gameRenderWorld->AreasAreConnected( areaNum, i, PS_BLOCK_LOCATION );
-			else if (game_ztechRenderWorld)
-				connected = ztech_renderWorld_areasAreConnected(game_ztechRenderWorld, areaNum, i, PS_BLOCK_LOCATION);
 
-			if( connected )
+			if( gameRenderWorld->AreasAreConnected( areaNum, i, PS_BLOCK_LOCATION ) )
 			{
 				locationEntities[i] = static_cast<idLocationEntity*>( ent );
 			}

@@ -9,14 +9,16 @@ const RenderWorld = @import("render_world.zig");
 const RenderModel = @import("model.zig").RenderModel;
 const Material = @import("material.zig").Material;
 const DeclSkin = @import("common.zig").DeclSkin;
+const ViewDef = @import("common.zig").ViewDef;
 const ViewEntity = @import("common.zig").ViewEntity;
 const RenderSystem = @import("render_system.zig");
 const RenderModelManager = @import("render_model_manager.zig");
+const RenderView = @import("render_world.zig").RenderView;
 
 pub const MAX_ENTITY_SHADER_PARMS: usize = 12;
 pub const MAX_RENDERENTITY_GUI: usize = 3;
 
-const deferredEntityCallback_t = fn (?*anyopaque, ?*anyopaque) callconv(.C) bool;
+const deferredEntityCallback_t = fn (?*RenderEntity, ?*RenderView) callconv(.C) bool;
 
 extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *RenderEntity) callconv(.C) void;
 
@@ -171,9 +173,18 @@ pub const RenderEntityLocal = extern struct {
     needsPortalSky: bool = false,
 
     /// Calls `entity.parms.callback()`
-    pub fn issueEntityDefCallback(_: *RenderEntityLocal) bool {
-        // TODO: implement
-        return false;
+    pub fn issueEntityDefCallback(entity: *RenderEntityLocal, opt_view_def: ?*ViewDef) bool {
+        var updated = false;
+        const opt_render_view = if (opt_view_def) |view_def|
+            &view_def.renderView
+        else
+            null;
+
+        updated = entity.parms.callback.?(&entity.parms, opt_render_view);
+
+        if (entity.parms.hModel == null) @panic("dynamic entity callback didn't set model");
+
+        return updated;
     }
 
     /// Creates all needed model references in portal areas,

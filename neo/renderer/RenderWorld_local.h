@@ -394,4 +394,79 @@ static idInteraction* const INTERACTION_EMPTY = ( idInteraction* )1;
 void R_ListRenderLightDefs_f( const idCmdArgs& args );
 void R_ListRenderEntityDefs_f( const idCmdArgs& args );
 
+class ztechRenderWorld : public idRenderWorld
+{
+public:
+	ztechRenderWorld();
+	virtual					~ztechRenderWorld();
+
+	virtual	bool			InitFromMap( const char* mapName );
+	virtual void			ResetLocalRenderModels();				// Fixes a crash when switching between expansion packs in Doom3:BFG
+
+	virtual	qhandle_t		AddEntityDef( const renderEntity_t* re );
+	virtual	void			UpdateEntityDef( qhandle_t entityHandle, const renderEntity_t* re );
+	virtual	void			FreeEntityDef( qhandle_t entityHandle );
+	virtual const renderEntity_t* GetRenderEntity( qhandle_t entityHandle ) const;
+
+	virtual	qhandle_t		AddLightDef( const renderLight_t* rlight );
+	virtual	void			UpdateLightDef( qhandle_t lightHandle, const renderLight_t* rlight );
+	virtual	void			FreeLightDef( qhandle_t lightHandle );
+	virtual const renderLight_t* GetRenderLight( qhandle_t lightHandle ) const;
+
+	// RB: environment probes for IBL
+	virtual	qhandle_t		AddEnvprobeDef( const renderEnvironmentProbe_t* ep );
+	virtual	void			UpdateEnvprobeDef( qhandle_t envprobeHandle, const renderEnvironmentProbe_t* ep );
+	virtual	void			FreeEnvprobeDef( qhandle_t envprobeHandle );
+	virtual const renderEnvironmentProbe_t* GetRenderEnvprobe( qhandle_t envprobeHandle ) const;
+	// RB end
+
+	virtual bool			CheckAreaForPortalSky( int areaNum );
+
+	virtual	void			GenerateAllInteractions();
+	virtual void			RegenerateWorld();
+
+	virtual void			ProjectDecalOntoWorld( const idFixedWinding& winding, const idVec3& projectionOrigin, const bool parallel, const float fadeDepth, const idMaterial* material, const int startTime );
+	virtual void			ProjectDecal( qhandle_t entityHandle, const idFixedWinding& winding, const idVec3& projectionOrigin, const bool parallel, const float fadeDepth, const idMaterial* material, const int startTime );
+	virtual void			ProjectOverlay( qhandle_t entityHandle, const idPlane localTextureAxis[2], const idMaterial* material, const int startTime );
+	virtual void			RemoveDecals( qhandle_t entityHandle );
+
+	virtual void			SetRenderView( const renderView_t* renderView );
+	virtual	void			RenderScene( const renderView_t* renderView );
+
+	virtual int				NumPortals() const;
+	virtual	qhandle_t		FindPortal( const idBounds& b ) const;
+	virtual	void			SetPortalState( qhandle_t portal, int blockingBits );
+	virtual int				GetPortalState( qhandle_t portal );
+	virtual	bool			AreasAreConnected( int areaNum1, int areaNum2, portalConnection_t connection ) const;
+
+	virtual	int				NumAreas() const;
+	virtual int				PointInArea( const idVec3& point ) const;
+	virtual int				BoundsInAreas( const idBounds& bounds, int* areas, int maxAreas ) const;
+	virtual	int				NumPortalsInArea( int areaNum );
+	virtual exitPortal_t	GetPortal( int areaNum, int portalNum );
+	virtual	idBounds		AreaBounds( int areaNum ) const; // RB
+
+	virtual	guiPoint_t		GuiTrace( qhandle_t entityHandle, const idVec3 start, const idVec3 end ) const;
+	virtual bool			ModelTrace( modelTrace_t& trace, qhandle_t entityHandle, const idVec3& start, const idVec3& end, const float radius ) const;
+	virtual bool			Trace( modelTrace_t& trace, const idVec3& start, const idVec3& end, const float radius, bool skipDynamic = true, bool skipPlayer = false ) const;
+	virtual bool			FastWorldTrace( modelTrace_t& trace, const idVec3& start, const idVec3& end ) const;
+
+	void			DebugClearLines( int time ) {}
+	void			DebugLine( const idVec4& color, const idVec3& start, const idVec3& end, const int lifetime = 0, const bool depthTest = false ) {}
+	void			DebugArrow( const idVec4& color, const idVec3& start, const idVec3& end, int size, const int lifetime = 0 ) {}
+	void			DebugWinding( const idVec4& color, const idWinding& w, const idVec3& origin, const idMat3& axis, const int lifetime = 0, const bool depthTest = false ) {}
+	void			DebugCircle( const idVec4& color, const idVec3& origin, const idVec3& dir, const float radius, const int numSteps, const int lifetime = 0, const bool depthTest = false ) {}
+	void			DebugSphere( const idVec4& color, const idSphere& sphere, const int lifetime = 0, bool depthTest = false ) {}
+	void			DebugBounds( const idVec4& color, const idBounds& bounds, const idVec3& org = vec3_origin, const int lifetime = 0 ) {}
+	void			DebugBox( const idVec4& color, const idBox& box, const int lifetime = 0 ) {}
+	void			DebugCone( const idVec4& color, const idVec3& apex, const idVec3& dir, float radius1, float radius2, const int lifetime = 0 ) {}
+	void			DebugScreenRect( const idVec4& color, const idScreenRect& rect, const viewDef_t* viewDef, const int lifetime = 0 ) {}
+	void			DebugAxis( const idVec3& origin, const idMat3& axis ) {}
+
+	void			DebugClearPolygons( int time ) {}
+	void			DebugPolygon( const idVec4& color, const idWinding& winding, const int lifeTime = 0, const bool depthTest = false ) {}
+
+	void			DrawText( const char* text, const idVec3& origin, float scale, const idVec4& color, const idMat3& viewAxis, const int align = 1, const int lifetime = 0, bool depthTest = false ) {}
+};
+
 #endif /* !__RENDERWORLDLOCAL_H__ */

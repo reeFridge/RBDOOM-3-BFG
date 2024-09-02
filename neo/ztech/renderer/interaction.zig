@@ -246,7 +246,7 @@ pub const Interaction = extern struct {
                     );
                     interaction_generated = true;
 
-                    RenderWorld.destroySurfaceTriangles(surface_allocator, light_tris);
+                    light_tris.deinit(surface_allocator);
                 }
             }
         }
@@ -595,7 +595,7 @@ fn createInteractionLightSurfaceTriangles(
     }
 
     if (num_indexes == 0) {
-        RenderWorld.destroySurfaceTriangles(allocator, surface_triangles);
+        surface_triangles.deinit(allocator);
         return null;
     }
 

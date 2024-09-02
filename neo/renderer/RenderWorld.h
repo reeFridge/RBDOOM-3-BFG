@@ -479,27 +479,37 @@ class idInteraction;
 
 extern "C" {
 
-size_t ztech_renderWorld_getEntityDefsCount(void *const);
-idInteraction *ztech_renderWorld_getInteractionEntry(void *const, size_t const, size_t const);
-idInteraction **ztech_renderWorld_getInteractionRow(void *const, size_t const);
+typedef void RenderWorldOpaque;
+bool ztech_renderWorld_initFromMap(RenderWorldOpaque*, uint8_t const *const);
+void ztech_renderWorld_generateAllInteractions(RenderWorldOpaque*);
 
-int ztech_renderWorld_addEntityDef(void*, const renderEntity_t*);
-void ztech_renderWorld_updateEntityDef(void*, int, const renderEntity_t*);
-void ztech_renderWorld_freeEntityDef(void*, int);
+size_t ztech_renderWorld_getEntityDefsCount(RenderWorldOpaque*const);
+idInteraction *ztech_renderWorld_getInteractionEntry(RenderWorldOpaque*const, size_t const, size_t const);
+idInteraction **ztech_renderWorld_getInteractionRow(RenderWorldOpaque*const, size_t const);
 
-int ztech_renderWorld_addLightDef(void*, const renderLight_t*);
-void ztech_renderWorld_updateLightDef(void*, int, const renderLight_t*);
-void ztech_renderWorld_freeLightDef(void*, int);
+int ztech_renderWorld_addEntityDef(RenderWorldOpaque*, const renderEntity_t*);
+void ztech_renderWorld_updateEntityDef(RenderWorldOpaque*, int, const renderEntity_t*);
+void ztech_renderWorld_freeEntityDef(RenderWorldOpaque*, int);
 
-exitPortal_t ztech_renderWorld_getPortal(void*, int, int);
-size_t ztech_renderWorld_boundsInAreas(void*, int*, size_t);
-size_t ztech_renderWorld_numAreas(void*);
-size_t ztech_renderWorld_numPortalsInArea(void*, size_t);
-int ztech_renderWorld_pointInArea(void*, const idVec3*);
-bool ztech_renderWorld_areasAreConnected(void*, int, int, portalConnection_t);
-idBounds ztech_renderWorld_areaBounds(void*, int);
+int ztech_renderWorld_addLightDef(RenderWorldOpaque*, const renderLight_t*);
+void ztech_renderWorld_updateLightDef(RenderWorldOpaque*, int, const renderLight_t*);
+void ztech_renderWorld_freeLightDef(RenderWorldOpaque*, int);
 
-void ztech_renderWorld_renderScene(void*, const renderView_t*);
+exitPortal_t ztech_renderWorld_getPortal(RenderWorldOpaque*, int, int);
+size_t ztech_renderWorld_boundsInAreas(RenderWorldOpaque*, const idBounds*, int*, size_t);
+size_t ztech_renderWorld_numAreas(RenderWorldOpaque*);
+size_t ztech_renderWorld_numPortalsInArea(RenderWorldOpaque*, size_t);
+size_t ztech_renderWorld_getPortalsCount(RenderWorldOpaque*);
+int ztech_renderWorld_pointInArea(RenderWorldOpaque*, const idVec3*);
+bool ztech_renderWorld_areasAreConnected(RenderWorldOpaque*, int, int, portalConnection_t);
+idBounds ztech_renderWorld_areaBounds(RenderWorldOpaque*, int);
+int ztech_renderWorld_findPortal(RenderWorldOpaque*, idBounds);
+void ztech_renderWorld_setPortalState(RenderWorldOpaque*, int, int);
+int ztech_renderWorld_getPortalState(RenderWorldOpaque*, int);
+const renderEntity_t* ztech_renderWorld_getRenderEntity(RenderWorldOpaque*, int);
+const renderLight_t* ztech_renderWorld_getRenderLight(RenderWorldOpaque*, int);
+
+void ztech_renderWorld_renderScene(RenderWorldOpaque*, const renderView_t*);
 
 }
 

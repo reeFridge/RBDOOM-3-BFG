@@ -1952,3 +1952,27 @@ int idFixedWinding::Split( idFixedWinding* back, const idPlane& plane, const flo
 
 	return SIDE_CROSS;
 }
+
+extern "C" {
+
+idWinding* c_winding_create(int numPoints) {
+	return new idWinding(numPoints);
+}
+
+void c_winding_setNumPoints(idWinding* w, int numPoints) {
+	w->SetNumPoints(numPoints);
+}
+
+idWinding* c_winding_reverse(const idWinding* w) {
+	return w->Reverse();
+}
+
+void c_winding_destroy(idWinding* w) {
+	delete w;
+}
+
+void c_winding_getPlane(const idWinding* w, idPlane* plane) {
+	w->GetPlane(*plane);
+}
+
+}

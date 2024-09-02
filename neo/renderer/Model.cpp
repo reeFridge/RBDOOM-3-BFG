@@ -270,33 +270,33 @@ bool idRenderModelStatic::IsDefaultModel() const
 AddCubeFace
 ================
 */
-static void AddCubeFace( srfTriangles_t* tri, idVec3 v1, idVec3 v2, idVec3 v3, idVec3 v4 )
+static void AddCubeFace( srfTriangles_t* tri, idVec3 v1, idVec3 v2, idVec3 v3, idVec3 v4, int& numVerts, int& numIndexes)
 {
-	tri->verts[tri->numVerts + 0].Clear();
-	tri->verts[tri->numVerts + 0].xyz = v1 * 8;
-	tri->verts[tri->numVerts + 0].SetTexCoord( 0, 0 );
+	tri->verts[numVerts + 0].Clear();
+	tri->verts[numVerts + 0].xyz = v1 * 8;
+	tri->verts[numVerts + 0].SetTexCoord( 0, 0 );
 
-	tri->verts[tri->numVerts + 1].Clear();
-	tri->verts[tri->numVerts + 1].xyz = v2 * 8;
-	tri->verts[tri->numVerts + 1].SetTexCoord( 1, 0 );
+	tri->verts[numVerts + 1].Clear();
+	tri->verts[numVerts + 1].xyz = v2 * 8;
+	tri->verts[numVerts + 1].SetTexCoord( 1, 0 );
 
-	tri->verts[tri->numVerts + 2].Clear();
-	tri->verts[tri->numVerts + 2].xyz = v3 * 8;
-	tri->verts[tri->numVerts + 2].SetTexCoord( 1, 1 );
+	tri->verts[numVerts + 2].Clear();
+	tri->verts[numVerts + 2].xyz = v3 * 8;
+	tri->verts[numVerts + 2].SetTexCoord( 1, 1 );
 
-	tri->verts[tri->numVerts + 3].Clear();
-	tri->verts[tri->numVerts + 3].xyz = v4 * 8;
-	tri->verts[tri->numVerts + 3].SetTexCoord( 0, 1 );
+	tri->verts[numVerts + 3].Clear();
+	tri->verts[numVerts + 3].xyz = v4 * 8;
+	tri->verts[numVerts + 3].SetTexCoord( 0, 1 );
 
-	tri->indexes[tri->numIndexes + 0] = tri->numVerts + 0;
-	tri->indexes[tri->numIndexes + 1] = tri->numVerts + 1;
-	tri->indexes[tri->numIndexes + 2] = tri->numVerts + 2;
-	tri->indexes[tri->numIndexes + 3] = tri->numVerts + 0;
-	tri->indexes[tri->numIndexes + 4] = tri->numVerts + 2;
-	tri->indexes[tri->numIndexes + 5] = tri->numVerts + 3;
+	tri->indexes[numIndexes + 0] = numVerts + 0;
+	tri->indexes[numIndexes + 1] = numVerts + 1;
+	tri->indexes[numIndexes + 2] = numVerts + 2;
+	tri->indexes[numIndexes + 3] = numVerts + 0;
+	tri->indexes[numIndexes + 4] = numVerts + 2;
+	tri->indexes[numIndexes + 5] = numVerts + 3;
 
-	tri->numVerts += 4;
-	tri->numIndexes += 6;
+	numVerts += 4;
+	numIndexes += 6;
 }
 
 /*
@@ -331,14 +331,17 @@ void idRenderModelStatic::MakeDefaultModel()
 	R_AllocStaticTriSurfVerts( tri, 24 );
 	R_AllocStaticTriSurfIndexes( tri, 36 );
 
-	AddCubeFace( tri, idVec3( -1, 1, 1 ), idVec3( 1, 1, 1 ), idVec3( 1, -1, 1 ), idVec3( -1, -1, 1 ) );
-	AddCubeFace( tri, idVec3( -1, 1, -1 ), idVec3( -1, -1, -1 ), idVec3( 1, -1, -1 ), idVec3( 1, 1, -1 ) );
+	int numVerts = 0;
+	int numIndexes = 0;
 
-	AddCubeFace( tri, idVec3( 1, -1, 1 ), idVec3( 1, 1, 1 ), idVec3( 1, 1, -1 ), idVec3( 1, -1, -1 ) );
-	AddCubeFace( tri, idVec3( -1, -1, 1 ), idVec3( -1, -1, -1 ), idVec3( -1, 1, -1 ), idVec3( -1, 1, 1 ) );
+	AddCubeFace( tri, idVec3( -1, 1, 1 ), idVec3( 1, 1, 1 ), idVec3( 1, -1, 1 ), idVec3( -1, -1, 1 ), numVerts, numIndexes);
+	AddCubeFace( tri, idVec3( -1, 1, -1 ), idVec3( -1, -1, -1 ), idVec3( 1, -1, -1 ), idVec3( 1, 1, -1 ), numVerts, numIndexes);
 
-	AddCubeFace( tri, idVec3( -1, -1, 1 ), idVec3( 1, -1, 1 ), idVec3( 1, -1, -1 ), idVec3( -1, -1, -1 ) );
-	AddCubeFace( tri, idVec3( -1, 1, 1 ), idVec3( -1, 1, -1 ), idVec3( 1, 1, -1 ), idVec3( 1, 1, 1 ) );
+	AddCubeFace( tri, idVec3( 1, -1, 1 ), idVec3( 1, 1, 1 ), idVec3( 1, 1, -1 ), idVec3( 1, -1, -1 ), numVerts, numIndexes);
+	AddCubeFace( tri, idVec3( -1, -1, 1 ), idVec3( -1, -1, -1 ), idVec3( -1, 1, -1 ), idVec3( -1, 1, 1 ), numVerts, numIndexes);
+
+	AddCubeFace( tri, idVec3( -1, -1, 1 ), idVec3( 1, -1, 1 ), idVec3( 1, -1, -1 ), idVec3( -1, -1, -1 ), numVerts, numIndexes);
+	AddCubeFace( tri, idVec3( -1, 1, 1 ), idVec3( -1, 1, -1 ), idVec3( 1, 1, -1 ), idVec3( 1, 1, 1 ), numVerts, numIndexes);
 
 	tri->generateNormals = true;
 

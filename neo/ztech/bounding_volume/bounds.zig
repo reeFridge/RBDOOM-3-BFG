@@ -1,3 +1,4 @@
+const std = @import("std");
 const CVec3 = @import("../math/vector.zig").CVec3;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const PlaneSide = @import("../math/plane.zig").Side;
@@ -42,6 +43,60 @@ pub const unit_cube: Bounds = .{
     .min = Vec3(f32).fromScalar(-1),
     .max = Vec3(f32).fromScalar(1),
 };
+
+pub fn clear(bounds: *Bounds) void {
+    bounds.min = Vec3(f32).fromScalar(std.math.floatMax(f32));
+    bounds.max = Vec3(f32).fromScalar(std.math.floatMin(f32));
+}
+
+pub fn addPoint(b: *Bounds, v: Vec3(f32)) bool {
+    var expanded = false;
+
+    if (v.x() < b.min.x()) {
+        b.min.v[0] = v.x();
+        expanded = true;
+    }
+
+    if (v.x() > b.max.x()) {
+        b.max.v[0] = v.x();
+        expanded = true;
+    }
+
+    if (v.y() < b.min.y()) {
+        b.min.v[1] = v.y();
+        expanded = true;
+    }
+
+    if (v.y() > b.max.y()) {
+        b.max.v[1] = v.y();
+        expanded = true;
+    }
+
+    if (v.z() < b.min.z()) {
+        b.min.v[2] = v.z();
+        expanded = true;
+    }
+
+    if (v.z() > b.max.z()) {
+        b.max.v[2] = v.z();
+        expanded = true;
+    }
+
+    return expanded;
+}
+
+pub fn intersectsBounds(b: Bounds, a: Bounds) bool {
+    if (a.max.v[0] < b.min.v[0] or
+        a.max.v[1] < b.min.v[1] or
+        a.max.v[2] < b.min.v[2] or
+        a.min.v[0] > b.max.v[0] or
+        a.min.v[1] > b.max.v[1] or
+        a.min.v[2] > b.max.v[2])
+    {
+        return false;
+    }
+    return true;
+}
 
 pub fn eql(a: Bounds, b: Bounds) bool {
     return a.min.eql(b.min) and a.max.eql(b.max);

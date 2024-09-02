@@ -114,19 +114,12 @@ int idPVS::GetPortalCount() const
 {
 	int i, na, np;
 
-	if (gameRenderWorld)
-		na = gameRenderWorld->NumAreas();
-	else if (game_ztechRenderWorld)
-		na = ztech_renderWorld_numAreas(game_ztechRenderWorld);
+	na = gameRenderWorld->NumAreas();
 
 	np = 0;
 	for( i = 0; i < na; i++ )
 	{
-		if (gameRenderWorld)
-			np += gameRenderWorld->NumPortalsInArea( i );
-		else if (game_ztechRenderWorld) {
-			np += ztech_renderWorld_numPortalsInArea(game_ztechRenderWorld, i);
-		}
+		np += gameRenderWorld->NumPortalsInArea( i );
 	}
 	return np;
 }
@@ -928,10 +921,7 @@ void idPVS::Init()
 
 	Shutdown();
 
-	if (gameRenderWorld)
-		numAreas = gameRenderWorld->NumAreas();
-	else if (game_ztechRenderWorld)
-		numAreas = ztech_renderWorld_numAreas(game_ztechRenderWorld);
+	numAreas = gameRenderWorld->NumAreas();
 
 	if( numAreas <= 0 )
 	{
@@ -1045,17 +1035,11 @@ void idPVS::GetConnectedAreas( int srcArea, bool* areas ) const
 	for( curArea = srcArea; queueStart < queueEnd; curArea = areaQueue[++queueStart] )
 	{
 
-		if (gameRenderWorld)
-			n = gameRenderWorld->NumPortalsInArea( curArea );
-		else if (game_ztechRenderWorld)
-			n = ztech_renderWorld_numPortalsInArea(game_ztechRenderWorld, curArea);
+		n = gameRenderWorld->NumPortalsInArea( curArea );
 
 		for( i = 0; i < n; i++ )
 		{
-			if (gameRenderWorld)
-				portal = gameRenderWorld->GetPortal( curArea, i );
-			else if (game_ztechRenderWorld)
-				portal = ztech_renderWorld_getPortal(game_ztechRenderWorld, curArea, i);
+			portal = gameRenderWorld->GetPortal( curArea, i );
 
 			if( portal.blockingBits & PS_BLOCK_VIEW )
 			{
@@ -1099,10 +1083,7 @@ idPVS::GetPVSAreas
 */
 int idPVS::GetPVSAreas( const idBounds& bounds, int* areas, int maxAreas ) const
 {
-	if (gameRenderWorld)
-		return gameRenderWorld->BoundsInAreas( bounds, areas, maxAreas );
-	else if (game_ztechRenderWorld)
-		return ztech_renderWorld_boundsInAreas(game_ztechRenderWorld, areas, maxAreas);
+	return gameRenderWorld->BoundsInAreas( bounds, areas, maxAreas );
 }
 
 /*
@@ -1650,7 +1631,8 @@ bool idPVS::CheckAreasForPortalSky( const pvsHandle_t handle, const idVec3& orig
 		return false;
 	}
 
-	sourceArea = gameRenderWorld->PointInArea( origin );
+	//@f sourceArea = gameRenderWorld->PointInArea( origin );
+	sourceArea == -1;
 
 	if( sourceArea == -1 )
 	{

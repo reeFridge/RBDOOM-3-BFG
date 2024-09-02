@@ -327,6 +327,57 @@ void R_SetupDrawSurfShader( drawSurf_t* drawSurf, const idMaterial* shader, cons
 	}
 }
 
+void R_SetupDrawSurfShader2( drawSurf_t* drawSurf, const idMaterial* shader, const renderEntity_t* renderEntity, 
+		viewDef_t* viewDef)
+{
+	drawSurf->material = shader;
+	drawSurf->sort = shader->GetSort();
+
+	// process the shader expressions for conditionals / color / texcoords
+	const float*	constRegs = shader->ConstantRegisters();
+	if( likely( constRegs != NULL ) )
+	{
+		// shader only uses constant values
+		drawSurf->shaderRegisters = constRegs;
+	}
+	else
+	{
+		// by default evaluate with the entityDef's shader parms
+		const float* shaderParms = renderEntity->shaderParms;
+
+		// a reference shader will take the calculated stage color value from another shader
+		// and use that for the parm0-parm3 of the current shader, which allows a stage of
+		// a light model and light flares to pick up different flashing tables from
+		// different light shaders
+		float generatedShaderParms[MAX_ENTITY_SHADER_PARMS];
+		if( unlikely( renderEntity->referenceShader != NULL ) )
+		{
+			// evaluate the reference shader to find our shader parms
+			float refRegs[MAX_EXPRESSION_REGISTERS];
+			renderEntity->referenceShader->EvaluateRegisters( refRegs, renderEntity->shaderParms,
+					viewDef->renderView.shaderParms,
+					viewDef->renderView.time[renderEntity->timeGroup] * 0.001f, renderEntity->referenceSound );
+
+			const shaderStage_t* pStage = renderEntity->referenceShader->GetStage( 0 );
+
+			memcpy( generatedShaderParms, renderEntity->shaderParms, sizeof( generatedShaderParms ) );
+			generatedShaderParms[0] = refRegs[ pStage->color.registers[0] ];
+			generatedShaderParms[1] = refRegs[ pStage->color.registers[1] ];
+			generatedShaderParms[2] = refRegs[ pStage->color.registers[2] ];
+
+			shaderParms = generatedShaderParms;
+		}
+
+		// allocate frame memory for the shader register values
+		float* regs = ( float* )R_FrameAlloc( shader->GetNumRegisters() * sizeof( float ), FRAME_ALLOC_SHADER_REGISTER );
+		drawSurf->shaderRegisters = regs;
+
+		// process the shader expressions for conditionals / color / texcoords
+		shader->EvaluateRegisters( regs, shaderParms, viewDef->renderView.shaderParms,
+								   viewDef->renderView.time[renderEntity->timeGroup] * 0.001f, renderEntity->referenceSound );
+	}
+}
+
 /*
 ===================
 R_SetupDrawSurfJoints
@@ -762,7 +813,7 @@ extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity, 
 			baseDrawSurf->scissorRect = vEntity->scissorRect;
 			baseDrawSurf->extraGLState = 0;
 
-			R_SetupDrawSurfShader( baseDrawSurf, shader, renderEntity );
+			R_SetupDrawSurfShader2( baseDrawSurf, shader, renderEntity, viewDef);
 
 			shaderRegisters = baseDrawSurf->shaderRegisters;
 
@@ -862,7 +913,7 @@ extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity, 
 					if( shaderRegisters == NULL )
 					{
 						drawSurf_t scratchSurf;
-						R_SetupDrawSurfShader( &scratchSurf, shader, renderEntity );
+						R_SetupDrawSurfShader2( &scratchSurf, shader, renderEntity, viewDef);
 						shaderRegisters = scratchSurf.shaderRegisters;
 					}
 
@@ -1042,7 +1093,7 @@ extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity, 
 
 					if( shader->Coverage() == MC_PERFORATED )
 					{
-						R_SetupDrawSurfShader( shadowDrawSurf, shader, renderEntity );
+						R_SetupDrawSurfShader2( shadowDrawSurf, shader, renderEntity, viewDef);
 					}
 
 					R_SetupDrawSurfJoints( shadowDrawSurf, tri, shader );
