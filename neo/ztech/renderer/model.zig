@@ -6,6 +6,69 @@ const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 const Material = @import("material.zig").Material;
 const RenderModelManager = @import("render_model_manager.zig");
 
+pub const DeformInfo = extern struct {
+    numSourceVerts: c_int,
+    numOutputVerts: c_int,
+    verts: ?[*]align(16) DrawVertex,
+    vertsAlloced: c_uint,
+    numIndexes: c_int,
+    indexes: ?[*]align(16) sys_types.TriIndex,
+    indexesAlloced: c_uint,
+    silIndexes: ?[*]align(16) sys_types.TriIndex,
+    silIndexesAlloced: c_uint,
+    numMirroredVerts: c_int,
+    mirroredVerts: ?[*]align(16) c_int,
+    mirroredVertsAlloced: c_uint,
+    numDupVerts: c_int,
+    dupVerts: ?[*]align(16) c_int,
+    dupVertsAlloced: c_uint,
+    staticIndexCache: VertexCacheHandle,
+    staticAmbientCache: VertexCacheHandle,
+
+    pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!*DeformInfo {
+        const deform = try allocator.create(DeformInfo);
+        deform.* = std.mem.zeroes(DeformInfo);
+
+        return deform;
+    }
+
+    pub fn deinit(deform: *DeformInfo, allocator: std.mem.Allocator) void {
+        if (deform.verts) |verts| {
+            const verts_slice = verts[0..@intCast(deform.vertsAlloced)];
+            allocator.free(verts_slice);
+            deform.vertsAlloced = 0;
+        }
+
+        if (deform.indexes) |indexes| {
+            const indexes_slice = indexes[0..@intCast(deform.indexesAlloced)];
+            allocator.free(indexes_slice);
+            deform.indexesAlloced = 0;
+        }
+
+        if (deform.silIndexes) |sil_indexes| {
+            const indexes_slice = sil_indexes[0..@intCast(deform.silIndexesAlloced)];
+            allocator.free(indexes_slice);
+            deform.silIndexesAlloced = 0;
+        }
+
+        if (deform.mirroredVerts) |mirrored_verts| {
+            const slice = mirrored_verts[0..@intCast(deform.mirroredVertsAlloced)];
+            allocator.free(slice);
+            deform.mirroredVertsAlloced = 0;
+        }
+
+        if (deform.dupVerts) |dup_verts| {
+            const slice = dup_verts[0..@intCast(deform.dupVertsAlloced)];
+            allocator.free(slice);
+            deform.dupVertsAlloced = 0;
+        }
+
+        deform.* = std.mem.zeroes(DeformInfo);
+
+        allocator.destroy(deform);
+    }
+};
+
 pub const DominantTri = extern struct {
     v2: sys_types.TriIndex,
     v3: sys_types.TriIndex,
@@ -21,19 +84,39 @@ pub const SurfaceTriangles = extern struct {
     referencedIndexes: bool,
     numVerts: c_int,
     verts: ?[*]align(16) DrawVertex,
+    vertsAlloced: c_uint,
     numIndexes: c_int,
     indexes: ?[*]align(16) sys_types.TriIndex,
+    indexesAlloced: c_uint,
     silIndexes: ?[*]align(16) sys_types.TriIndex,
+    silIndexesAlloced: c_uint,
     numMirroredVerts: c_int,
     mirroredVerts: ?[*]align(16) c_int,
+    mirroredVertsAlloced: c_uint,
     numDupVerts: c_int,
     dupVerts: ?[*]align(16) c_int,
+    dupVertsAlloced: c_uint,
     dominantTris: ?[*]align(16) DominantTri,
+    dominantTrisAlloced: c_uint,
     ambientSurface: [*c]SurfaceTriangles,
     nextDeferredFree: [*c]SurfaceTriangles,
     staticModelWithJoints: ?*anyopaque,
     indexCache: VertexCacheHandle,
     ambientCache: VertexCacheHandle,
+
+    pub fn indexesSlice(tri: *SurfaceTriangles) []align(16) sys_types.TriIndex {
+        return if (tri.indexes) |indexes_ptr|
+            indexes_ptr[0..@intCast(tri.numIndexes)]
+        else
+            &.{};
+    }
+
+    pub fn verticesSlice(tri: *SurfaceTriangles) []align(16) DrawVertex {
+        return if (tri.verts) |vertices_ptr|
+            vertices_ptr[0..@intCast(tri.numVerts)]
+        else
+            &.{};
+    }
 
     pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!*SurfaceTriangles {
         const tris = try allocator.create(SurfaceTriangles);
@@ -49,8 +132,9 @@ pub const SurfaceTriangles = extern struct {
             if (tri.verts) |verts| {
                 // R_CreateLightTris points tri->verts at the verts of the ambient surface
                 if (@intFromPtr(tri.ambientSurface) == 0 or verts != tri.ambientSurface.*.verts) {
-                    const verts_slice = verts[0..@intCast(tri.numVerts)];
+                    const verts_slice = verts[0..@intCast(tri.vertsAlloced)];
                     allocator.free(verts_slice);
+                    tri.vertsAlloced = 0;
                 }
             }
         }
@@ -59,29 +143,34 @@ pub const SurfaceTriangles = extern struct {
             if (tri.indexes) |indexes| {
                 // if a surface is completely inside a light volume R_CreateLightTris points tri->indexes at the indexes of the ambient surface
                 if (@intFromPtr(tri.ambientSurface) == 0 or indexes != tri.ambientSurface.*.indexes) {
-                    const indexes_slice = indexes[0..@intCast(tri.numIndexes)];
+                    const indexes_slice = indexes[0..@intCast(tri.indexesAlloced)];
                     allocator.free(indexes_slice);
+                    tri.indexesAlloced = 0;
                 }
             }
 
             if (tri.silIndexes) |sil_indexes| {
-                const indexes_slice = sil_indexes[0..@intCast(tri.numIndexes)];
+                const indexes_slice = sil_indexes[0..@intCast(tri.silIndexesAlloced)];
                 allocator.free(indexes_slice);
+                tri.silIndexesAlloced = 0;
             }
 
             if (tri.dominantTris) |dominant_tris| {
-                const slice = dominant_tris[0..@intCast(tri.numVerts)];
+                const slice = dominant_tris[0..@intCast(tri.dominantTrisAlloced)];
                 allocator.free(slice);
+                tri.dominantTrisAlloced = 0;
             }
 
             if (tri.mirroredVerts) |mirrored_verts| {
-                const slice = mirrored_verts[0..@intCast(tri.numMirroredVerts)];
+                const slice = mirrored_verts[0..@intCast(tri.mirroredVertsAlloced)];
                 allocator.free(slice);
+                tri.mirroredVertsAlloced = 0;
             }
 
             if (tri.dupVerts) |dup_verts| {
-                const slice = dup_verts[0..@intCast(tri.numDupVerts * 2)];
+                const slice = dup_verts[0..@intCast(tri.dupVertsAlloced)];
                 allocator.free(slice);
+                tri.dupVertsAlloced = 0;
             }
         }
 
@@ -103,9 +192,28 @@ pub const SurfaceTriangles = extern struct {
         if (tri.verts) |verts| {
             // R_CreateLightTris points tri->verts at the verts of the ambient surface
             if (@intFromPtr(tri.ambientSurface) == 0 or verts != tri.ambientSurface.*.verts) {
-                const verts_slice = verts[0..@intCast(tri.numVerts)];
+                const verts_slice = verts[0..@intCast(tri.vertsAlloced)];
                 allocator.free(verts_slice);
+                tri.verts = null;
+                tri.vertsAlloced = 0;
             }
+        }
+    }
+
+    pub fn freeSilIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        if (tri.silIndexes) |sil_indexes| {
+            const indexes_slice = sil_indexes[0..@intCast(tri.silIndexesAlloced)];
+            allocator.free(indexes_slice);
+            tri.silIndexes = null;
+            tri.silIndexesAlloced = 0;
+        }
+    }
+
+    pub fn freeDominantTris(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        if (tri.dominantTris) |dominant_tris| {
+            const slice = dominant_tris[0..@intCast(tri.dominantTrisAlloced)];
+            allocator.free(slice);
+            tri.dominantTrisAlloced = 0;
         }
     }
 
@@ -113,67 +221,89 @@ pub const SurfaceTriangles = extern struct {
         tris: *SurfaceTriangles,
         allocator: std.mem.Allocator,
         len: usize,
-    ) error{OutOfMemory}!void {
+    ) error{OutOfMemory}![]align(16) c_int {
         std.debug.assert(tris.dupVerts == null);
         const double_len = len * 2;
         const verts = try allocator.alignedAlloc(c_int, 16, double_len);
         tris.dupVerts = verts.ptr;
-        tris.numDupVerts = @intCast(len);
+        tris.dupVertsAlloced = @intCast(verts.len);
+
+        return verts;
     }
 
     pub fn allocMirroredVertices(
         tris: *SurfaceTriangles,
         allocator: std.mem.Allocator,
         len: usize,
-    ) error{OutOfMemory}!void {
+    ) error{OutOfMemory}![]align(16) c_int {
         std.debug.assert(tris.mirroredVerts == null);
         const verts = try allocator.alignedAlloc(c_int, 16, len);
         tris.mirroredVerts = verts.ptr;
-        tris.numMirroredVerts = @intCast(verts.len);
+        tris.mirroredVertsAlloced = @intCast(verts.len);
+
+        return verts;
     }
 
     pub fn allocVertices(
         tris: *SurfaceTriangles,
         allocator: std.mem.Allocator,
         len: usize,
-    ) error{OutOfMemory}!void {
+    ) error{OutOfMemory}![]align(16) DrawVertex {
         std.debug.assert(tris.verts == null);
         const verts = try allocator.alignedAlloc(DrawVertex, 16, len);
         tris.verts = verts.ptr;
-        tris.numVerts = @intCast(verts.len);
+        tris.vertsAlloced = @intCast(verts.len);
+
+        return verts;
     }
 
-    pub fn allocIndexes(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
+    pub fn allocIndexes(
+        tris: *SurfaceTriangles,
+        allocator: std.mem.Allocator,
+        len: usize,
+    ) error{OutOfMemory}![]align(16) sys_types.TriIndex {
         std.debug.assert(tris.indexes == null);
         const indexes = try allocator.alignedAlloc(sys_types.TriIndex, 16, len);
         tris.indexes = indexes.ptr;
-        tris.numIndexes = @intCast(indexes.len);
+        tris.indexesAlloced = @intCast(indexes.len);
+
+        return indexes;
     }
 
-    pub fn allocSilIndexes(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
+    pub fn allocSilIndexes(
+        tris: *SurfaceTriangles,
+        allocator: std.mem.Allocator,
+        len: usize,
+    ) error{OutOfMemory}![]align(16) sys_types.TriIndex {
         std.debug.assert(tris.silIndexes == null);
         const indexes = try allocator.alignedAlloc(sys_types.TriIndex, 16, len);
         tris.silIndexes = indexes.ptr;
+        tris.silIndexesAlloced = @intCast(indexes.len);
+
+        return indexes;
     }
 
-    pub fn allocDominantTris(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
+    pub fn allocDominantTris(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}![]align(16) DominantTri {
         std.debug.assert(tris.dominantTris == null);
         const dominant_tris = try allocator.alignedAlloc(DominantTri, 16, len);
         tris.dominantTris = dominant_tris.ptr;
+        tris.dominantTrisAlloced = @intCast(dominant_tris.len);
+
+        return dominant_tris;
     }
 
     pub fn resizeVertices(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
         std.debug.assert(tris.verts != null);
-        const new_verts = try allocator.realloc(tris.verts.?[0..@intCast(tris.numVerts)], len);
+        const new_verts = try allocator.realloc(tris.verts.?[0..@intCast(tris.vertsAlloced)], len);
         tris.verts = new_verts.ptr;
-        tris.numVerts = @intCast(new_verts.len);
+        tris.vertsAlloced = @intCast(new_verts.len);
     }
 
     pub fn resizeIndexes(tris: *SurfaceTriangles, allocator: std.mem.Allocator, len: usize) error{OutOfMemory}!void {
         std.debug.assert(tris.indexes != null);
-        const new_indexes = try allocator.realloc(tris.indexes.?[0..@intCast(tris.numIndexes)], len);
+        const new_indexes = try allocator.realloc(tris.indexes.?[0..@intCast(tris.indexesAlloced)], len);
         tris.indexes = new_indexes.ptr;
-        tris.numIndexes = @intCast(new_indexes.len);
+        tris.indexesAlloced = @intCast(new_indexes.len);
     }
 };
 

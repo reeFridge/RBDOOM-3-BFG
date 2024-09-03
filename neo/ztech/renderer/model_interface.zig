@@ -1,9 +1,22 @@
 const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const DominantTri = @import("model.zig").DominantTri;
+const DeformInfo = @import("model.zig").DeformInfo;
 const sys_types = @import("../sys/types.zig");
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 const std = @import("std");
 const global = @import("../global.zig");
+
+export fn ztech_deformInfo_deinit(deform: *DeformInfo) void {
+    deform.deinit(global.gpa.allocator());
+}
+
+export fn ztech_deformInfo_init() *DeformInfo {
+    return DeformInfo.init(global.gpa.allocator()) catch unreachable;
+}
+
+export fn ztech_triSurf_freeDominantTris(tris: *SurfaceTriangles) void {
+    tris.freeDominantTris(global.gpa.allocator());
+}
 
 export fn ztech_triSurf_deinit(tris: *SurfaceTriangles) void {
     tris.deinit(global.gpa.allocator());
@@ -17,12 +30,16 @@ export fn ztech_triSurf_freeVertices(tris: *SurfaceTriangles) void {
     tris.freeVertices(global.gpa.allocator());
 }
 
+export fn ztech_triSurf_freeSilIndexes(tris: *SurfaceTriangles) void {
+    tris.freeSilIndexes(global.gpa.allocator());
+}
+
 export fn ztech_triSurf_allocDupVertices(
     tris: *SurfaceTriangles,
     len: usize,
 ) void {
     const allocator = global.gpa.allocator();
-    tris.allocDupVertices(allocator, len) catch unreachable;
+    _ = tris.allocDupVertices(allocator, len) catch unreachable;
 }
 
 export fn ztech_triSurf_allocMirroredVertices(
@@ -30,7 +47,7 @@ export fn ztech_triSurf_allocMirroredVertices(
     len: usize,
 ) void {
     const allocator = global.gpa.allocator();
-    tris.allocMirroredVertices(allocator, len) catch unreachable;
+    _ = tris.allocMirroredVertices(allocator, len) catch unreachable;
 }
 
 export fn ztech_triSurf_allocVertices(
@@ -38,7 +55,7 @@ export fn ztech_triSurf_allocVertices(
     len: usize,
 ) void {
     const allocator = global.gpa.allocator();
-    tris.allocVertices(allocator, len) catch unreachable;
+    _ = tris.allocVertices(allocator, len) catch unreachable;
 }
 
 export fn ztech_triSurf_allocIndexes(
@@ -46,7 +63,7 @@ export fn ztech_triSurf_allocIndexes(
     len: usize,
 ) void {
     const allocator = global.gpa.allocator();
-    tris.allocIndexes(allocator, len) catch unreachable;
+    _ = tris.allocIndexes(allocator, len) catch unreachable;
 }
 
 export fn ztech_triSurf_allocSilIndexes(
@@ -54,7 +71,7 @@ export fn ztech_triSurf_allocSilIndexes(
     len: usize,
 ) void {
     const allocator = global.gpa.allocator();
-    tris.allocSilIndexes(allocator, len) catch unreachable;
+    _ = tris.allocSilIndexes(allocator, len) catch unreachable;
 }
 
 export fn ztech_triSurf_allocDominantTris(
@@ -62,7 +79,7 @@ export fn ztech_triSurf_allocDominantTris(
     len: usize,
 ) void {
     const allocator = global.gpa.allocator();
-    tris.allocDominantTris(allocator, len) catch unreachable;
+    _ = tris.allocDominantTris(allocator, len) catch unreachable;
 }
 
 export fn ztech_triSurf_resizeVertices(

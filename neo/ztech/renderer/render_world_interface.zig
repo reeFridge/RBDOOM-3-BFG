@@ -41,7 +41,7 @@ export fn ztech_renderWorld_getInteractionRow(rw: *RenderWorldOpaque, row: usize
 
 export fn ztech_renderWorld_boundsInAreas(
     rw: *RenderWorldOpaque,
-    bounds: CBounds,
+    bounds: *const CBounds,
     areas: [*c]c_int,
     max_areas: usize,
 ) callconv(.C) usize {
@@ -172,8 +172,8 @@ export fn ztech_renderWorld_numPortalsInArea(rw: *RenderWorldOpaque, area_index:
 export fn ztech_renderWorld_numAreas(rw: *RenderWorldOpaque) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
-    return if (render_world.area_nodes) |area_nodes|
-        area_nodes.len
+    return if (render_world.portal_areas) |portal_areas|
+        portal_areas.len
     else
         0;
 }

@@ -21,9 +21,11 @@ export fn ztech_init() callconv(.C) void {
     std.debug.print("[ztech] init: OK\n", .{});
 }
 
-export fn ztech_deinit() callconv(.C) void {
+export fn ztech_entities_deinit() void {
     global.entities.deinit();
+}
 
+export fn ztech_deinit() callconv(.C) void {
     if (global.gpa.deinit() == std.heap.Check.leak) @panic("[ztech] allocator leak!");
 
     std.debug.print("[ztech] deinit: OK\n", .{});

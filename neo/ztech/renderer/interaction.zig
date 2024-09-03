@@ -201,6 +201,7 @@ pub const Interaction = extern struct {
         // create slots for each of the model's surfaces
         inter.numSurfaces = render_model.numSurfaces();
         const surfaces = try surface_allocator.alloc(SurfaceInteraction, @intCast(inter.numSurfaces));
+        //errdefer surface_allocator.free(surfaces);
         for (surfaces) |*surface| surface.* = std.mem.zeroes(SurfaceInteraction);
 
         inter.surfaces = surfaces.ptr;
@@ -458,9 +459,8 @@ fn createInteractionLightSurfaceTriangles(
         entity_def.parms.noSelfShadow or
         entity_def.parms.noShadow;
 
-    var surface_triangles = try allocator.create(SurfaceTriangles);
-    errdefer allocator.destroy(surface_triangles);
-    surface_triangles.* = std.mem.zeroes(SurfaceTriangles);
+    var surface_triangles = try SurfaceTriangles.init(allocator);
+    errdefer surface_triangles.deinit(allocator);
 
     // save a reference to the original surface
     surface_triangles.ambientSurface = tri;
@@ -468,6 +468,7 @@ fn createInteractionLightSurfaceTriangles(
     // the light surface references the verts of the ambient surface
     surface_triangles.numVerts = tri.numVerts;
     surface_triangles.verts = tri.verts;
+    surface_triangles.vertsAlloced = tri.vertsAlloced;
     var cull_info = SurfaceCullInfo.init();
     defer cull_info.deinit(allocator);
 
@@ -495,6 +496,7 @@ fn createInteractionLightSurfaceTriangles(
             // the whole surface is lit so the light surface just references the indexes of the ambient surface
             surface_triangles.indexes = tri.indexes;
             surface_triangles.indexCache = tri.indexCache;
+            surface_triangles.indexesAlloced = tri.indexesAlloced;
             num_indexes = @intCast(tri.numIndexes);
             bounds = tri.bounds.toBounds();
         } else {
@@ -502,12 +504,13 @@ fn createInteractionLightSurfaceTriangles(
 
             // the light tris indexes are going to be a subset of the original indexes so we generally
             // allocate too much memory here but we decrease the memory block when the number of indexes is known
-            const indexes = try allocator.alignedAlloc(sys_types.TriIndex, 16, @intCast(tri.numIndexes));
+            const indexes = try surface_triangles.allocIndexes(allocator, @intCast(tri.numIndexes));
+            const tri_indexes = tri.indexesSlice();
 
             // back face cull the individual triangles
             const i: usize = 0;
             const face_num: usize = 0;
-            while (i < @as(usize, @intCast(tri.numIndexes))) : ({
+            while (i < tri_indexes.len) : ({
                 i += 3;
                 face_num += 1;
             }) {
@@ -516,46 +519,50 @@ fn createInteractionLightSurfaceTriangles(
                     continue;
                 }
 
-                indexes[num_indexes + 0] = tri.indexes[i + 0];
-                indexes[num_indexes + 1] = tri.indexes[i + 1];
-                indexes[num_indexes + 2] = tri.indexes[i + 2];
+                indexes[num_indexes + 0] = tri_indexes[i + 0];
+                indexes[num_indexes + 1] = tri_indexes[i + 1];
+                indexes[num_indexes + 2] = tri_indexes[i + 2];
                 num_indexes += 3;
             }
 
-            // get bounds for the surface
-            var min: @Vector(3, f32) = @splat(std.math.floatMax(f32));
-            var max: @Vector(3, f32) = @splat(std.math.floatMin(f32));
-            for (indexes) |tri_index| {
-                const src_vec: @Vector(3, f32) = tri.verts[@intCast(tri_index)].xyz.toVec3f().v;
-                min = @min(min, src_vec);
-                max = @max(max, src_vec);
+            if (num_indexes > 0) {
+                const tri_verts = tri.verticesSlice();
+                // get bounds for the surface
+                var min: @Vector(3, f32) = @splat(std.math.floatMax(f32));
+                var max: @Vector(3, f32) = @splat(std.math.floatMin(f32));
+                for (indexes[0..num_indexes]) |tri_index| {
+                    const src_vec: @Vector(3, f32) = tri_verts[@intCast(tri_index)].xyz.toVec3f().v;
+                    min = @min(min, src_vec);
+                    max = @max(max, src_vec);
+                }
+                bounds.min.v = min;
+                bounds.max.v = max;
             }
-            bounds.min.v = min;
-            bounds.max.v = max;
 
             // decrease the size of the memory block to the size of the number of used indexes
-            const resized_indexes = try allocator.realloc(indexes, num_indexes);
-            surface_triangles.indexes = resized_indexes.ptr;
+            try surface_triangles.resizeIndexes(allocator, num_indexes);
             surface_triangles.numIndexes = @intCast(num_indexes);
         }
     } else {
         const cull_bits = cull_info.cull_bits orelse @panic("cull_bits must be calculated!");
-        const indexes = try allocator.alignedAlloc(sys_types.TriIndex, 16, @intCast(tri.numIndexes));
+        const indexes = try surface_triangles.allocIndexes(allocator, @intCast(tri.numIndexes));
+        const tri_indexes = tri.indexesSlice();
+
         var i: usize = 0;
         var face_num: usize = 0;
-        while (i < @as(usize, @intCast(tri.numIndexes))) : ({
+        while (i < tri_indexes.len) : ({
             i += 3;
             face_num += 1;
         }) {
-            const index1: usize = @intCast(tri.indexes.?[i + 0]);
-            const index2: usize = @intCast(tri.indexes.?[i + 1]);
-            const index3: usize = @intCast(tri.indexes.?[i + 2]);
+            const index1: usize = @intCast(tri_indexes[i + 0]);
+            const index2: usize = @intCast(tri_indexes[i + 1]);
+            const index3: usize = @intCast(tri_indexes[i + 2]);
 
             // if we aren't self shadowing, let back facing triangles get
             // through so the smooth shaded bump maps light all the way around
             if (!include_back_faces) {
-                // back face cull
                 const facing = cull_info.facing orelse @panic("facing must be calculated");
+                // back face cull
                 if (!facing.isSet(face_num)) {
                     //c_incBackFaced();
                     continue;
@@ -579,18 +586,20 @@ fn createInteractionLightSurfaceTriangles(
             num_indexes += 3;
         }
 
-        var min: @Vector(3, f32) = @splat(std.math.floatMax(f32));
-        var max: @Vector(3, f32) = @splat(std.math.floatMin(f32));
-        for (indexes) |tri_index| {
-            const src_vec: @Vector(3, f32) = tri.verts.?[@intCast(tri_index)].xyz.toVec3f().v;
-            min = @min(min, src_vec);
-            max = @max(max, src_vec);
+        if (num_indexes > 0) {
+            const tri_verts = tri.verticesSlice();
+            var min: @Vector(3, f32) = @splat(std.math.floatMax(f32));
+            var max: @Vector(3, f32) = @splat(std.math.floatMin(f32));
+            for (indexes[0..num_indexes]) |tri_index| {
+                const src_vec: @Vector(3, f32) = tri_verts[@intCast(tri_index)].xyz.toVec3f().v;
+                min = @min(min, src_vec);
+                max = @max(max, src_vec);
+            }
+            bounds.min.v = min;
+            bounds.max.v = max;
         }
-        bounds.min.v = min;
-        bounds.max.v = max;
 
-        const resized_indexes = try allocator.realloc(indexes, num_indexes);
-        surface_triangles.indexes = resized_indexes.ptr;
+        try surface_triangles.resizeIndexes(allocator, num_indexes);
         surface_triangles.numIndexes = @intCast(num_indexes);
     }
 

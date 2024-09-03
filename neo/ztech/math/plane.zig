@@ -6,6 +6,15 @@ pub const Plane = extern struct {
     c: f32,
     d: f32,
 
+    pub fn fromSlice(slice: []f32) Plane {
+        return .{
+            .a = slice[0],
+            .b = slice[1],
+            .c = slice[2],
+            .d = slice[3],
+        };
+    }
+
     pub fn fitThroughPoint(p: *Plane, point: Vec3(f32)) void {
         p.d = -(p.normal().dot(point));
     }

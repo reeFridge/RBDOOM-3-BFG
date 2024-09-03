@@ -1407,7 +1407,7 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		// the same idRenderWorld will be used for all games
 		// and demos, insuring that level specific models
 		// will be freed
-#ifdef USE_ZTECH_RENDER_SYSTEM
+#ifdef USE_ZTECH_RENDER_WORLD
 		renderWorld = new ztechRenderWorld();
 #else
 		renderWorld = renderSystem->AllocRenderWorld();
@@ -1518,6 +1518,7 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 idCommonLocal::Shutdown
 =================
 */
+extern "C" void ztech_deinit();
 void idCommonLocal::Shutdown()
 {
 
@@ -1555,7 +1556,7 @@ void idCommonLocal::Shutdown()
 	printf( "delete renderWorld;\n" );
 	// SRS - Call FreeRenderWorld() vs. delete, otherwise worlds list not updated on shutdown
 	if (renderWorld) {
-#ifdef USE_ZTECH_RENDER_SYSTEM
+#ifdef USE_ZTECH_RENDER_WORLD
 		delete renderWorld;
 #else
 		renderSystem->FreeRenderWorld( renderWorld );
@@ -1611,6 +1612,8 @@ void idCommonLocal::Shutdown()
 #else
 	renderSystem->Shutdown();
 #endif
+
+	ztech_deinit();
 
 	// shut down the sound system
 	// SRS - Shut down sound system after decl manager and render system so cinematic audio voices are destroyed first

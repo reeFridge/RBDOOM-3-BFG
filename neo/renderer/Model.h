@@ -78,19 +78,25 @@ struct srfTriangles_t
 
 	int							numVerts;				// number of vertices
 	idDrawVert* 				verts;					// vertices, allocated with special allocator
+    unsigned int vertsAlloced;
 
 	int							numIndexes;				// for shadows, this has both front and rear end caps and silhouette planes
 	triIndex_t* 				indexes;				// indexes, allocated with special allocator
+    unsigned int indexesAlloced;
 
 	triIndex_t* 				silIndexes;				// indexes changed to be the first vertex with same XYZ, ignoring normal and texcoords
+    unsigned int silIndexesAlloced;
 
 	int							numMirroredVerts;		// this many verts at the end of the vert list are tangent mirrors
 	int* 						mirroredVerts;			// tri->mirroredVerts[0] is the mirror of tri->numVerts - tri->numMirroredVerts + 0
+    unsigned int mirroredVertsAlloced;
 
 	int							numDupVerts;			// number of duplicate vertexes
 	int* 						dupVerts;				// pairs of the number of the first vertex and the number of the duplicate vertex
+    unsigned int dupVertsAlloced;
 
 	dominantTri_t* 				dominantTris;			// [numVerts] for deformed surface fast tangent calculation
+    unsigned int dominantTrisAlloced;
 
 	srfTriangles_t* 			ambientSurface;			// for light interactions, point back at the original surface that generated
 	// the interaction, which we will get the ambientCache from

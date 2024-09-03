@@ -125,8 +125,8 @@ const TestImageTris = struct {
     const num_indexes = 6;
     const num_verts = 4;
 
-    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
-        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
             vert.* = std.mem.zeroes(DrawVertex);
@@ -147,19 +147,15 @@ const TestImageTris = struct {
         inline for (0..num_verts) |i| {
             verts[i].color = [1]u8{0xFF} ** 4;
         }
-
-        return verts;
     }
 
-    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
-        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         const indexes_: [num_indexes]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
         for (indexes, indexes_) |*index, temp| {
             index.* = temp;
         }
-
-        return indexes;
     }
 };
 
@@ -167,8 +163,8 @@ const FullScreenTris = struct {
     const num_indexes = 6;
     const num_verts = 4;
 
-    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
-        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
             vert.* = std.mem.zeroes(DrawVertex);
@@ -193,19 +189,15 @@ const FullScreenTris = struct {
         inline for (0..num_verts) |i| {
             verts[i].color = [1]u8{0xFF} ** 4;
         }
-
-        return verts;
     }
 
-    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
-        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         const indexes_: [num_indexes]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
         for (indexes, indexes_) |*index, temp| {
             index.* = temp;
         }
-
-        return indexes;
     }
 };
 
@@ -213,8 +205,8 @@ const ZeroOneCubeTris = struct {
     const num_indexes = 36;
     const num_verts = 8;
 
-    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
-        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
             vert.* = std.mem.zeroes(DrawVertex);
@@ -243,12 +235,10 @@ const ZeroOneCubeTris = struct {
         inline for (0..num_verts) |i| {
             verts[i].color = [1]u8{0xFF} ** 4;
         }
-
-        return verts;
     }
 
-    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
-        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         for (indexes) |*index| {
             index.* = 0;
@@ -296,8 +286,6 @@ const ZeroOneCubeTris = struct {
         indexes[11 * 3 + 0] = 5;
         indexes[11 * 3 + 1] = 4;
         indexes[11 * 3 + 2] = 6;
-
-        return indexes;
     }
 };
 
@@ -308,8 +296,8 @@ const ZeroOneSphereTris = struct {
     const num_verts = rings * sectors;
     const num_indexes = ((rings - 1) * sectors) * 6;
 
-    fn makeIndexes(allocator: std.mem.Allocator) []align(16) sys_types.TriIndex {
-        const indexes = allocator.alignedAlloc(sys_types.TriIndex, 16, num_indexes) catch unreachable;
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         for (indexes) |*index| {
             index.* = 0;
@@ -337,12 +325,10 @@ const ZeroOneSphereTris = struct {
                 }
             }
         }
-
-        return indexes;
     }
 
-    fn makeVerts(allocator: std.mem.Allocator) []align(16) DrawVertex {
-        const verts = allocator.alignedAlloc(DrawVertex, 16, num_verts) catch unreachable;
+    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+        const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
             vert.* = std.mem.zeroes(DrawVertex);
@@ -373,34 +359,21 @@ const ZeroOneSphereTris = struct {
                 num_verts_ += 1;
             }
         }
-
-        return verts;
     }
 };
 
 fn initGlobalTris(params: anytype, allocator: std.mem.Allocator) *SurfaceTriangles {
-    var tri = allocator.create(SurfaceTriangles) catch unreachable;
-    tri.* = std.mem.zeroes(SurfaceTriangles);
+    var tri = SurfaceTriangles.init(allocator) catch unreachable;
     tri.numVerts = params.num_verts;
     tri.numIndexes = params.num_indexes;
-    tri.indexes = params.makeIndexes(allocator).ptr;
-    tri.verts = params.makeVerts(allocator).ptr;
+    params.makeIndexes(tri, allocator);
+    params.makeVerts(tri, allocator);
 
     return tri;
 }
 
 fn deinitGlobalTris(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
-    if (tri.indexes) |indexes| {
-        allocator.free(indexes[0..@intCast(tri.numIndexes)]);
-        tri.indexes = null;
-    }
-
-    if (tri.verts) |verts| {
-        allocator.free(verts[0..@intCast(tri.numVerts)]);
-        tri.verts = null;
-    }
-
-    allocator.destroy(tri);
+    tri.deinit(allocator);
 }
 
 command_list: nvrhi.CommandListHandle = .{},
@@ -466,6 +439,7 @@ omit_swap_buffers: bool = false,
 
 pub var instance = RenderSystem{};
 export var backend_ = std.mem.zeroes(RenderBackend);
+//pub var backend_ = std.mem.zeroes(RenderBackend);
 
 const DeviceManager = @import("../sys/device_manager.zig");
 const ImageManager = @import("image_manager.zig");

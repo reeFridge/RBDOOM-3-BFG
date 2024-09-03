@@ -2688,16 +2688,16 @@ const renderLight_t* ztechRenderWorld::GetRenderLight(qhandle_t lightHandle) con
 }
 
 qhandle_t ztechRenderWorld::AddEnvprobeDef(const renderEnvironmentProbe_t* ep) {
-	common->Printf("ztechRenderWorld::AddEnvprobeDef: method not implemented\n");
+	//common->Printf("ztechRenderWorld::AddEnvprobeDef: method not implemented\n");
 	return 0;
 }
 
 void ztechRenderWorld::UpdateEnvprobeDef(qhandle_t envprobeHandle, const renderEnvironmentProbe_t* ep) {
-	common->Printf("ztechRenderWorld::UpdateEnvprobeDef: method not implemented\n");
+	//common->Printf("ztechRenderWorld::UpdateEnvprobeDef: method not implemented\n");
 }
 
 void ztechRenderWorld::FreeEnvprobeDef(qhandle_t envprobeHandle) {
-	common->Printf("ztechRenderWorld::FreeEnvprobeDef: method not implemented\n");
+	//common->Printf("ztechRenderWorld::FreeEnvprobeDef: method not implemented\n");
 }
 
 const renderEnvironmentProbe_t* ztechRenderWorld::GetRenderEnvprobe(qhandle_t envprobeHandle) const {

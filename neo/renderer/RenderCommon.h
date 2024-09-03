@@ -1055,7 +1055,7 @@ public:
 
 
 #define USE_ZTECH_RENDER_SYSTEM
-#ifdef USE_ZTECH_RENDER_SYSTEM
+#define USE_ZTECH_RENDER_WORLD
 
 extern "C" {
 	void ztech_renderSystem_setBackendInitialized(void);
@@ -1080,7 +1080,29 @@ extern "C" {
 	void ztech_renderSystem_destroyRenderWorld(RenderWorldOpaque*);
 }
 
-#endif
+#define USE_ZTECH_TRI_SURF
+struct deformInfo_t;
+extern "C" {
+
+void ztech_triSurf_allocVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocIndexes(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocSilIndexes(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocDominantTris(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocMirroredVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_allocDupVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_resizeVertices(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_resizeIndexes(srfTriangles_t*, uintptr_t);
+void ztech_triSurf_deinit(srfTriangles_t*);
+srfTriangles_t* ztech_triSurf_init();
+void ztech_triSurf_freeVertices(srfTriangles_t*);
+void ztech_triSurf_freeSilIndexes(srfTriangles_t*);
+void ztech_triSurf_freeDominantTris(srfTriangles_t*);
+
+deformInfo_t* ztech_deformInfo_init();
+void ztech_deformInfo_deinit(deformInfo_t*);
+
+}
+
 extern idRenderSystemLocal	tr;
 extern glconfig_t			glConfig;		// outside of TR since it shouldn't be cleared during ref re-init
 
@@ -1607,6 +1629,9 @@ drawSurf_t* R_DeformDrawSurf( drawSurf_t* drawSurf );
 
 drawSurf_t* R_DeformDrawSurf( drawSurf_t* drawSurf, deform_t deformType );
 
+drawSurf_t* R_DeformDrawSurf2( drawSurf_t* drawSurf, viewDef_t* viewDef);
+drawSurf_t* R_DeformDrawSurf2( drawSurf_t* drawSurf, deform_t deformType, viewDef_t* viewDef );
+
 /*
 =============================================================
 
@@ -1699,17 +1724,22 @@ struct deformInfo_t
 	// to be busted for proper tangent spaces
 	int					numOutputVerts;
 	idDrawVert* 		verts;
+    unsigned int vertsAlloced;
 
 	int					numIndexes;
 	triIndex_t* 		indexes;
+    unsigned int indexesAlloced;
 
 	triIndex_t* 		silIndexes;				// indexes changed to be the first vertex with same XYZ, ignoring normal and texcoords
+    unsigned int silIndexesAlloced;
 
 	int					numMirroredVerts;		// this many verts at the end of the vert list are tangent mirrors
 	int* 				mirroredVerts;			// tri->mirroredVerts[0] is the mirror of tri->numVerts - tri->numMirroredVerts + 0
+    unsigned int mirroredVertsAlloced;
 
 	int					numDupVerts;			// number of duplicate vertexes
 	int* 				dupVerts;				// pairs of the number of the first vertex and the number of the duplicate vertex
+    unsigned int dupVertsAlloced;
 
 	vertCacheHandle_t	staticIndexCache;		// GL_INDEX_TYPE
 	vertCacheHandle_t	staticAmbientCache;		// idDrawVert

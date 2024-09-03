@@ -107,11 +107,15 @@ R_ShutdownFrameData
 */
 void R_ShutdownFrameData()
 {
-	frameData = NULL;
-	for( int i = 0; i < NUM_FRAME_DATA; i++ )
-	{
-		Mem_Free16( smpFrameData[i].frameMemory );
-		smpFrameData[i].frameMemory = NULL;
+	if (USE_ZTECH_FRAME_DATA) {
+		ztech_frameData_shutdown();
+	} else {
+		frameData = NULL;
+		for( int i = 0; i < NUM_FRAME_DATA; i++ )
+		{
+			Mem_Free16( smpFrameData[i].frameMemory );
+			smpFrameData[i].frameMemory = NULL;
+		}
 	}
 }
 
@@ -122,17 +126,21 @@ R_InitFrameData
 */
 void R_InitFrameData()
 {
-	R_ShutdownFrameData();
+	if (USE_ZTECH_FRAME_DATA) {
+		ztech_frameData_init();
+	} else {
+		R_ShutdownFrameData();
 
-	for( int i = 0; i < NUM_FRAME_DATA; i++ )
-	{
-		smpFrameData[i].frameMemory = ( byte* ) Mem_Alloc16( MAX_FRAME_MEMORY, TAG_RENDER );
+		for( int i = 0; i < NUM_FRAME_DATA; i++ )
+		{
+			smpFrameData[i].frameMemory = ( byte* ) Mem_Alloc16( MAX_FRAME_MEMORY, TAG_RENDER );
+		}
+
+		// must be set before calling R_ToggleSmpFrame()
+		frameData = &smpFrameData[ 0 ];
+
+		R_ToggleSmpFrame();
 	}
-
-	// must be set before calling R_ToggleSmpFrame()
-	frameData = &smpFrameData[ 0 ];
-
-	R_ToggleSmpFrame();
 }
 
 /*
@@ -645,6 +653,12 @@ void R_RenderView( viewDef_t* parms )
 	// identify all the visible portal areas, and create view lights and view entities
 	// for all the the entityDefs and lightDefs that are in the visible portal areas
 	static_cast<idRenderWorldLocal*>( parms->renderWorld )->FindViewLightsAndEntities();
+
+	int count = 0;
+	for( viewEntity_t* vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next ) {
+		count += 1;
+	}
+	common->Printf("[FindViewLightsAndEntities] ents count: %d\n", count);
 
 	// wait for any shadow volume jobs from the previous frame to finish
 	tr.frontEndJobList->Wait();

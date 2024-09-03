@@ -449,6 +449,7 @@ pub fn generateAllInteractions(render_world: *RenderWorld) !void {
                 if (opt_inter != null) continue;
 
                 var new_inter = try Interaction.allocAndLink(entity_def, light_def);
+                errdefer new_inter.unlinkAndFree(render_world.allocator);
                 try new_inter.createStaticInteraction(
                     command_list_ptr,
                     render_world.allocator,
@@ -706,7 +707,7 @@ pub fn findViewLightsAndEntities(render_world: *RenderWorld, frustum_planes: []P
             ps.next = null;
             ps.p = null;
 
-            for (&ps.portalPlanes[0..5], frustum_planes[0..5]) |*portal_plane, plane| {
+            for (ps.portalPlanes[0..5], frustum_planes[0..5]) |*portal_plane, plane| {
                 portal_plane.* = plane;
             }
 
@@ -1297,6 +1298,8 @@ pub fn pointInArea(render_world: RenderWorld, point: Vec3(f32)) PointInAreaError
 
                 break node_num;
             }
+
+            node_num = @intCast(node_num_);
         } else error.AreaNotFound;
     } else error.NotInitialized;
 }
@@ -2028,15 +2031,25 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
     return render_model;
 }
 
-fn parseNodes(_: *RenderWorld, lexer: *Lexer) !void {
-    // TODO
+fn parseNodes(render_world: *RenderWorld, lexer: *Lexer) !void {
     try lexer.expectTokenString("{");
     const num_area_nodes = try lexer.parseSize();
-    for (0..num_area_nodes) |_| {
+
+    const area_nodes = try render_world.allocator.alloc(AreaNode, num_area_nodes);
+    errdefer render_world.allocator.free(area_nodes);
+    for (area_nodes) |*node| {
+        node.* = std.mem.zeroes(AreaNode);
+    }
+
+    render_world.area_nodes = area_nodes;
+
+    for (area_nodes) |*node| {
         var vec = std.mem.zeroes([4]f32);
         try lexer.parse1DMatrix(&vec);
-        _ = try lexer.parseInt();
-        _ = try lexer.parseInt();
+
+        node.plane = Plane.fromSlice(&vec);
+        node.children[0] = try lexer.parseInt();
+        node.children[1] = try lexer.parseInt();
     }
     try lexer.expectTokenString("}");
 }
@@ -2301,7 +2314,7 @@ inline fn createModelSurface(
         }
     }
 
-    const verts = try render_world.allocator.alignedAlloc(DrawVertex, 16, num_vertices);
+    const verts = try surface_triangles.allocVertices(render_world.allocator, num_vertices);
     for (0..num_vertices) |i| {
         verts[i].xyz.x = vertices[i * 8 + 0];
         verts[i].xyz.y = vertices[i * 8 + 1];
@@ -2309,13 +2322,11 @@ inline fn createModelSurface(
         verts[i].setTexCoord(vertices[i * 8 + 3], vertices[i * 8 + 4]);
         verts[i].setNormal(vertices[i * 8 + 5], vertices[i * 8 + 6], vertices[i * 8 + 7]);
     }
-    surface_triangles.verts = verts.ptr;
 
-    const indexes = try render_world.allocator.alignedAlloc(sys_types.TriIndex, 16, indices.len);
+    const indexes = try surface_triangles.allocIndexes(render_world.allocator, indices.len);
     for (indexes, indices) |*surface_index, index| {
         surface_index.* = index;
     }
-    surface_triangles.indexes = indexes.ptr;
 
     return surface;
 }

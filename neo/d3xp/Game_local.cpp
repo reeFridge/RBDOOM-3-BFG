@@ -393,7 +393,7 @@ idGameLocal::Shutdown
   shut down the entire game
 ============
 */
-extern "C" void ztech_deinit();
+extern "C" void ztech_entities_deinit();
 void idGameLocal::Shutdown()
 {
 
@@ -425,7 +425,7 @@ void idGameLocal::Shutdown()
 
 	idClass::Shutdown();
 
-	ztech_deinit();
+	ztech_entities_deinit();
 
 	// clear list with forces
 	idForce::ClearForceList();

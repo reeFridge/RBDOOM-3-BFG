@@ -36,22 +36,6 @@ If you have questions concerning this license or the applicable additional terms
 
 idCVar r_useSilRemap( "r_useSilRemap", "1", CVAR_RENDERER | CVAR_BOOL, "consider verts with the same XYZ, but different ST the same for shadows" );
 
-extern "C" {
-
-void ztech_triSurf_allocVertices(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_allocIndexes(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_allocSilIndexes(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_allocDominantTris(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_allocMirroredVertices(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_allocDupVertices(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_resizeVertices(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_resizeIndexes(srfTriangles_t*, uintptr_t);
-void ztech_triSurf_deinit(srfTriangles_t*);
-srfTriangles_t* ztech_triSurf_init();
-void ztech_triSurf_freeVertices(srfTriangles_t*);
-
-}
-
 #if defined( DMAP )
 /*
 ==========================================================================================
@@ -187,7 +171,6 @@ is highly uneven.
 
 // instead of using the texture T vector, cross the normal and S vector for an orthogonal axis
 #define DERIVE_UNSMOOTHED_BITANGENT
-#define USE_ZTECH_TRI_SURF
 
 // SP Begin
 
@@ -565,8 +548,12 @@ R_FreeStaticTriSurfSilIndexes
 */
 void R_FreeStaticTriSurfSilIndexes( srfTriangles_t* tri )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_freeSilIndexes(tri);
+#else
 	Mem_Free( tri->silIndexes );
 	tri->silIndexes = NULL;
+#endif
 }
 
 /*
@@ -697,8 +684,7 @@ void R_CreateSilIndexes( srfTriangles_t* tri )
 
 	if( tri->silIndexes )
 	{
-		Mem_Free( tri->silIndexes );
-		tri->silIndexes = NULL;
+		R_FreeStaticTriSurfSilIndexes(tri);
 	}
 
 	remap = R_CreateSilRemap( tri );
@@ -854,12 +840,11 @@ static void	R_DuplicateMirroredVertexes( srfTriangles_t* tri )
 
 	// now create the new list
 	R_AllocStaticTriSurfMirroredVerts( tri, tri->numMirroredVerts );
-	const int oldNumVerts = tri->numVerts;
 	R_ResizeStaticTriSurfVerts( tri, totalVerts );
 
 	// create the duplicates
 	numMirror = 0;
-	for( i = 0; i < oldNumVerts; i++ )
+	for( i = 0; i < tri->numVerts; i++ )
 	{
 		j = tverts[i].negativeRemap;
 		if( j )
@@ -1901,28 +1886,41 @@ deformInfo_t* R_BuildDeformInfo( int numVerts, const idDrawVert* verts, int numI
 	}
 	R_DeriveTangents( &tri );
 
+#ifdef USE_ZTECH_TRI_SURF
+	deformInfo_t* deform = ztech_deformInfo_init();
+#else
 	deformInfo_t* deform = ( deformInfo_t* )R_ClearedStaticAlloc( sizeof( *deform ) );
+#endif
 
 	deform->numSourceVerts = numVerts;
 	deform->numOutputVerts = tri.numVerts;
 	deform->verts = tri.verts;
+	deform->vertsAlloced = tri.vertsAlloced;
 
 	deform->numIndexes = numIndexes;
 	deform->indexes = tri.indexes;
+	deform->indexesAlloced = tri.indexesAlloced;
 
 	deform->silIndexes = tri.silIndexes;
+	deform->silIndexesAlloced = tri.silIndexesAlloced;
 
 	deform->numMirroredVerts = tri.numMirroredVerts;
 	deform->mirroredVerts = tri.mirroredVerts;
+	deform->mirroredVertsAlloced = tri.mirroredVertsAlloced;
 
 	deform->numDupVerts = tri.numDupVerts;
 	deform->dupVerts = tri.dupVerts;
+	deform->dupVertsAlloced = tri.dupVertsAlloced;
 
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_triSurf_freeDominantTris(&tri);
+#else
 	if( tri.dominantTris != NULL )
 	{
 		Mem_Free( tri.dominantTris );
 		tri.dominantTris = NULL;
 	}
+#endif
 
 	// RB: moved to CreateBuffers() so we have a valid commandList
 	//R_CreateDeformStaticVertices( deform, commandList );
@@ -1951,6 +1949,9 @@ R_FreeDeformInfo
 */
 void R_FreeDeformInfo( deformInfo_t* deformInfo )
 {
+#ifdef USE_ZTECH_TRI_SURF
+	ztech_deformInfo_deinit(deformInfo);
+#else
 	if( deformInfo->verts != NULL )
 	{
 		Mem_Free( deformInfo->verts );
@@ -1972,6 +1973,7 @@ void R_FreeDeformInfo( deformInfo_t* deformInfo )
 		Mem_Free( deformInfo->dupVerts );
 	}
 	R_StaticFree( deformInfo );
+#endif
 }
 
 /*

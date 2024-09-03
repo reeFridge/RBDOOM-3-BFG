@@ -821,7 +821,7 @@ extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity, 
 			const deform_t shaderDeform = shader->Deform();
 			if( shaderDeform != DFRM_NONE )
 			{
-				drawSurf_t* deformDrawSurf = R_DeformDrawSurf( baseDrawSurf );
+				drawSurf_t* deformDrawSurf = R_DeformDrawSurf2( baseDrawSurf, viewDef);
 				if( deformDrawSurf != NULL )
 				{
 					// any deforms may have created multiple draw surfaces

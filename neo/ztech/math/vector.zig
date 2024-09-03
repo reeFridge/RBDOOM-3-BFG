@@ -145,7 +145,8 @@ pub fn Vec3(comptime T: type) type {
         }
 
         pub inline fn dot(a: Self, b: Self) T {
-            return @reduce(.Add, (a.v * b.v));
+            //return @reduce(.Add, (a.v * b.v));
+            return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
         }
 
         pub fn scale(a: Self, factor: T) Self {

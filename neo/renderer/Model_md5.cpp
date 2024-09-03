@@ -789,7 +789,11 @@ bool idRenderModelMD5::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTime
 		file->ReadBigArray( meshes[i].meshJoints, meshes[i].numMeshJoints );
 		file->ReadBig( meshes[i].maxJointVertDist );
 
+#ifdef USE_ZTECH_TRI_SURF
+		meshes[i].deformInfo = ztech_deformInfo_init();
+#else
 		meshes[i].deformInfo = ( deformInfo_t* )R_ClearedStaticAlloc( sizeof( deformInfo_t ) );
+#endif
 		deformInfo_t& deform = *meshes[i].deformInfo;
 
 		file->ReadBig( deform.numSourceVerts );
@@ -808,6 +812,7 @@ bool idRenderModelMD5::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTime
 		{
 			R_AllocStaticTriSurfVerts( &tri, deform.numOutputVerts );
 			deform.verts = tri.verts;
+			deform.vertsAlloced = tri.vertsAlloced;
 			file->ReadBigArray( deform.verts, deform.numOutputVerts );
 		}
 
@@ -816,7 +821,9 @@ bool idRenderModelMD5::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTime
 			R_AllocStaticTriSurfIndexes( &tri, deform.numIndexes );
 			R_AllocStaticTriSurfSilIndexes( &tri, deform.numIndexes );
 			deform.indexes = tri.indexes;
+			deform.indexesAlloced = tri.indexesAlloced;
 			deform.silIndexes = tri.silIndexes;
+			deform.silIndexesAlloced = tri.silIndexesAlloced;
 			file->ReadBigArray( deform.indexes, deform.numIndexes );
 			file->ReadBigArray( deform.silIndexes, deform.numIndexes );
 		}
@@ -825,6 +832,7 @@ bool idRenderModelMD5::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTime
 		{
 			R_AllocStaticTriSurfMirroredVerts( &tri, deform.numMirroredVerts );
 			deform.mirroredVerts = tri.mirroredVerts;
+			deform.mirroredVertsAlloced = tri.mirroredVertsAlloced;
 			file->ReadBigArray( deform.mirroredVerts, deform.numMirroredVerts );
 		}
 
@@ -832,6 +840,7 @@ bool idRenderModelMD5::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTime
 		{
 			R_AllocStaticTriSurfDupVerts( &tri, deform.numDupVerts );
 			deform.dupVerts = tri.dupVerts;
+			deform.dupVertsAlloced = tri.dupVertsAlloced;
 			file->ReadBigArray( deform.dupVerts, deform.numDupVerts * 2 );
 		}
 // jmarshall - compatibility
