@@ -193,6 +193,110 @@ void idGuiModel::EmitSurfaces( float modelMatrix[16], float modelViewMatrix[16],
 	}
 }
 
+void idGuiModel::EmitSurfacesToView( float modelMatrix[16], float modelViewMatrix[16],
+							   bool depthHack, bool allowFullScreenStereoDepth, bool linkAsEntity, viewDef_t* viewDef )
+{
+
+	viewEntity_t* guiSpace = ( viewEntity_t* )R_ClearedFrameAlloc( sizeof( *guiSpace ), FRAME_ALLOC_VIEW_ENTITY );
+	memcpy( guiSpace->modelMatrix, modelMatrix, sizeof( guiSpace->modelMatrix ) );
+	memcpy( guiSpace->modelViewMatrix, modelViewMatrix, sizeof( guiSpace->modelViewMatrix ) );
+	guiSpace->weaponDepthHack = depthHack;
+	guiSpace->isGuiSurface = true;
+
+	// If this is an in-game gui, we need to be able to find the matrix again for head mounted
+	// display bypass matrix fixup.
+	if( linkAsEntity )
+	{
+		guiSpace->next = viewDef->viewEntitys;
+		viewDef->viewEntitys = guiSpace;
+	}
+
+	//---------------------------
+	// make a tech5 renderMatrix
+	//---------------------------
+	idRenderMatrix viewMat;
+	idRenderMatrix::Transpose( *( idRenderMatrix* )modelViewMatrix, viewMat );
+	idRenderMatrix::Multiply( viewDef->projectionRenderMatrix, viewMat, guiSpace->mvp );
+	if( depthHack )
+	{
+		idRenderMatrix::ApplyDepthHack( guiSpace->mvp );
+	}
+
+	// to allow 3D-TV effects in the menu system, we define surface flags to set
+	// depth fractions between 0=screen and 1=infinity, which directly modulate the
+	// screenSeparation parameter for an X offset.
+	// The value is stored in the drawSurf sort value, which adjusts the matrix in the
+	// backend.
+	float defaultStereoDepth = stereoRender_defaultGuiDepth.GetFloat();	// default to at-screen
+
+	// add the surfaces to this view
+	for( int i = 0; i < surfaces.Num(); i++ )
+	{
+		const guiModelSurface_t& guiSurf = surfaces[i];
+		if( guiSurf.numIndexes == 0 )
+		{
+			continue;
+		}
+
+		const idMaterial* shader = guiSurf.material;
+		drawSurf_t* drawSurf = ( drawSurf_t* )R_FrameAlloc( sizeof( *drawSurf ), FRAME_ALLOC_DRAW_SURFACE );
+
+		drawSurf->numIndexes = guiSurf.numIndexes;
+		drawSurf->ambientCache = vertexBlock;
+		// build a vertCacheHandle_t that points inside the allocated block
+		drawSurf->indexCache = indexBlock + ( ( int64 )( guiSurf.firstIndex * sizeof( triIndex_t ) ) << VERTCACHE_OFFSET_SHIFT );
+		drawSurf->jointCache = 0;
+		drawSurf->frontEndGeo = NULL;
+		drawSurf->space = guiSpace;
+		drawSurf->material = shader;
+		drawSurf->extraGLState = guiSurf.glState;
+		drawSurf->scissorRect = viewDef->scissor;
+		if( !guiSurf.clipRect.IsEmpty() )
+		{
+			drawSurf->scissorRect.Intersect( guiSurf.clipRect );
+		}
+		drawSurf->sort = shader->GetSort();
+
+		// process the shader expressions for conditionals / color / texcoords
+		const float*	constRegs = shader->ConstantRegisters();
+		if( constRegs )
+		{
+			// shader only uses constant values
+			drawSurf->shaderRegisters = constRegs;
+		}
+		else
+		{
+			float* regs = ( float* )R_FrameAlloc( shader->GetNumRegisters() * sizeof( float ), FRAME_ALLOC_SHADER_REGISTER );
+			drawSurf->shaderRegisters = regs;
+			shader->EvaluateRegisters( regs, shaderParms, viewDef->renderView.shaderParms, viewDef->renderView.time[1] * 0.001f, NULL );
+		}
+
+		R_LinkDrawSurfToView( drawSurf, viewDef );
+		if( allowFullScreenStereoDepth )
+		{
+			// override sort with the stereoDepth
+			//drawSurf->sort = stereoDepth;
+
+			switch( guiSurf.stereoType )
+			{
+				case STEREO_DEPTH_TYPE_NEAR:
+					drawSurf->sort = STEREO_DEPTH_NEAR;
+					break;
+				case STEREO_DEPTH_TYPE_MID:
+					drawSurf->sort = STEREO_DEPTH_MID;
+					break;
+				case STEREO_DEPTH_TYPE_FAR:
+					drawSurf->sort = STEREO_DEPTH_FAR;
+					break;
+				case STEREO_DEPTH_TYPE_NONE:
+				default:
+					drawSurf->sort = defaultStereoDepth;
+					break;
+			}
+		}
+	}
+}
+
 /*
 ====================
 EmitToCurrentView
@@ -205,6 +309,22 @@ void idGuiModel::EmitToCurrentView( float modelMatrix[16], bool depthHack )
 	R_MatrixMultiply( modelMatrix, tr.viewDef->worldSpace.modelViewMatrix, modelViewMatrix );
 
 	EmitSurfaces( modelMatrix, modelViewMatrix, depthHack, false /* stereoDepthSort */, true /* link as entity */ );
+}
+
+void idGuiModel::EmitToView( float modelMatrix[16], bool depthHack, viewDef_t* viewDef )
+{
+	float	modelViewMatrix[16];
+
+	R_MatrixMultiply( modelMatrix, viewDef->worldSpace.modelViewMatrix, modelViewMatrix );
+
+	EmitSurfacesToView(
+			modelMatrix,
+			modelViewMatrix,
+			depthHack,
+			false /* stereoDepthSort */,
+			true /* link as entity */,
+			viewDef
+			);
 }
 
 // DG: move function declaration here (=> out of EmitFullScreen() method) because it confused clang

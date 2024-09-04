@@ -2454,11 +2454,11 @@ void idWeapon::AlertMonsters()
 	if( tr.fraction < 1.0f )
 	{
 		ent = gameLocal.GetTraceEntity( tr );
-		if( ent && ent->IsType( idAI::Type ) )
+		if( ent->IsType( idAI::Type ) )
 		{
 			static_cast<idAI*>( ent )->TouchedByFlashlight( owner );
 		}
-		else if( ent && ent->IsType( idTrigger::Type ) )
+		else if( ent->IsType( idTrigger::Type ) )
 		{
 			ent->Signal( SIG_TOUCH );
 			ent->ProcessEvent( &EV_Touch, owner, &tr );
@@ -2478,11 +2478,11 @@ void idWeapon::AlertMonsters()
 	if( tr.fraction < 1.0f )
 	{
 		ent = gameLocal.GetTraceEntity( tr );
-		if( ent && ent->IsType( idAI::Type ) )
+		if( ent->IsType( idAI::Type ) )
 		{
 			static_cast<idAI*>( ent )->TouchedByFlashlight( owner );
 		}
-		else if( ent && ent->IsType( idTrigger::Type ) )
+		else if( ent->IsType( idTrigger::Type ) )
 		{
 			ent->Signal( SIG_TOUCH );
 			ent->ProcessEvent( &EV_Touch, owner, &tr );
@@ -4498,9 +4498,6 @@ void idWeapon::Event_StopWeaponLight( const char* name )
 		}
 	}
 }
-
-extern "C" void ztech_entityApplyImpulse(external_entity_handle_t, idVec3, idVec3);
-
 /*
 =====================
 idWeapon::Event_Melee
@@ -4548,13 +4545,6 @@ void idWeapon::Event_Melee()
 
 		bool hit = false;
 		const char* hitSound = meleeDef->dict.GetString( "snd_miss" );
-
-		if (tr.c.entityNum == -1) {
-			float push = meleeDef->dict.GetFloat( "push" );
-			idVec3 impulse = -push * owner->PowerUpModifier( SPEED ) * tr.c.normal;
-
-			ztech_entityApplyImpulse(tr.c.externalEntityHandle, tr.c.point, impulse);
-		}
 
 		if( ent != NULL )
 		{

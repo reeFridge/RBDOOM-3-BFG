@@ -41,6 +41,18 @@ pub const Plane = extern struct {
         p.c = normal_vec.z();
     }
 
+    pub fn side(p: Plane, v: Vec3(f32)) Side {
+        const dist = p.distance(v);
+        const epsilon: f32 = 0.1;
+
+        return if (dist > epsilon)
+            .front
+        else if (dist < -epsilon)
+            .back
+        else
+            .on;
+    }
+
     pub fn distance(p: Plane, v: Vec3(f32)) f32 {
         return p.a * v.x() + p.b * v.y() + p.c * v.z() + p.d;
     }

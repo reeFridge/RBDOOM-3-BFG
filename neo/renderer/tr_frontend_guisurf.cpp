@@ -192,12 +192,69 @@ static void R_RenderGuiSurf( idUserInterface* gui, const drawSurf_t* drawSurf )
 	tr.guiRecursionLevel--;
 }
 
+static void R_RenderGuiSurf2( idUserInterface* gui, const drawSurf_t* drawSurf, viewDef_t* viewDef, idGuiModel* guiModel )
+{
+	SCOPED_PROFILE_EVENT( "R_RenderGuiSurf" );
+
+	// for testing the performance hit
+	if( r_skipGuiShaders.GetInteger() == 1 )
+	{
+		return;
+	}
+
+	// don't allow an infinite recursion loop
+	if( ztech_renderSystem_getGuiRecursionLevel() == 4 )
+	{
+		return;
+	}
+
+	// create the new matrix to draw on this surface
+	idVec3 origin, axis[3];
+	R_SurfaceToTextureAxis( drawSurf->frontEndGeo, origin, axis );
+
+	float guiModelMatrix[16];
+	float modelMatrix[16];
+
+	guiModelMatrix[0 * 4 + 0] = axis[0][0] * ( 1.0f / SCREEN_WIDTH );
+	guiModelMatrix[1 * 4 + 0] = axis[1][0] * ( 1.0f / SCREEN_HEIGHT );
+	guiModelMatrix[2 * 4 + 0] = axis[2][0];
+	guiModelMatrix[3 * 4 + 0] = origin[0];
+
+	guiModelMatrix[0 * 4 + 1] = axis[0][1] * ( 1.0f / SCREEN_WIDTH );
+	guiModelMatrix[1 * 4 + 1] = axis[1][1] * ( 1.0f / SCREEN_HEIGHT );
+	guiModelMatrix[2 * 4 + 1] = axis[2][1];
+	guiModelMatrix[3 * 4 + 1] = origin[1];
+
+	guiModelMatrix[0 * 4 + 2] = axis[0][2] * ( 1.0f / SCREEN_WIDTH );
+	guiModelMatrix[1 * 4 + 2] = axis[1][2] * ( 1.0f / SCREEN_HEIGHT );
+
+	guiModelMatrix[2 * 4 + 2] = axis[2][2];
+	guiModelMatrix[3 * 4 + 2] = origin[2];
+
+	guiModelMatrix[0 * 4 + 3] = 0.0f;
+	guiModelMatrix[1 * 4 + 3] = 0.0f;
+	guiModelMatrix[2 * 4 + 3] = 0.0f;
+	guiModelMatrix[3 * 4 + 3] = 1.0f;
+
+	R_MatrixMultiply( guiModelMatrix, drawSurf->space->modelMatrix, modelMatrix );
+
+	ztech_renderSystem_incGuiRecursionLevel();
+
+	// call the gui, which will call the 2D drawing functions
+	guiModel->Clear();
+	//TODO: gui->Redraw( viewDef->renderView.time[0] );
+	guiModel->EmitToView( modelMatrix, drawSurf->space->weaponDepthHack, viewDef );
+	guiModel->Clear();
+
+	ztech_renderSystem_decGuiRecursionLevel();
+}
+
 /*
 ================
 R_AddInGameGuis
 ================
 */
-extern "C" void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs )
+void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs )
 {
 	SCOPED_PROFILE_EVENT( "R_AddInGameGuis" );
 
@@ -227,6 +284,40 @@ extern "C" void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int 
 			// did we ever use this to forward an entity color to a gui that didn't set color?
 			//	memcpy( tr.guiShaderParms, shaderParms, sizeof( tr.guiShaderParms ) );
 			R_RenderGuiSurf( gui, drawSurf );
+		}
+	}
+}
+
+void R_AddInGameGuis2( const drawSurf_t* const drawSurfs[], const int numDrawSurfs, viewDef_t* viewDef, idGuiModel* guiModel )
+{
+	SCOPED_PROFILE_EVENT( "R_AddInGameGuis" );
+
+	// check for gui surfaces
+	for( int i = 0; i < numDrawSurfs; i++ )
+	{
+		const drawSurf_t* drawSurf = drawSurfs[i];
+		idUserInterface* gui = drawSurf->material->GlobalGui();
+
+		int guiNum = drawSurf->material->GetEntityGui() - 1;
+		if( guiNum >= 0 && guiNum < MAX_RENDERENTITY_GUI )
+		{
+			if( drawSurf->space->entityDef != NULL )
+			{
+				gui = drawSurf->space->entityDef->parms.gui[guiNum];
+			}
+		}
+
+		if( gui == NULL )
+		{
+			continue;
+		}
+
+		idBounds ndcBounds;
+		if( !R_PreciseCullSurface2( drawSurf, ndcBounds, viewDef ) )
+		{
+			// did we ever use this to forward an entity color to a gui that didn't set color?
+			//	memcpy( tr.guiShaderParms, shaderParms, sizeof( tr.guiShaderParms ) );
+			R_RenderGuiSurf2( gui, drawSurf, viewDef, guiModel );
 		}
 	}
 }

@@ -111,7 +111,6 @@ void idSmokeParticles::Shutdown()
 	if( renderEntityHandle != -1 )
 	{
 		gameRenderWorld->FreeEntityDef( renderEntityHandle );
-
 		renderEntityHandle = -1;
 	}
 	if( renderEntity.hModel != NULL )

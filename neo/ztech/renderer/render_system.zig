@@ -572,9 +572,10 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
 
 pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     for (render_system.worlds.items) |world_ptr| {
-        allocator.destroy(world_ptr);
         world_ptr.deinit();
+        allocator.destroy(world_ptr);
     }
+
     render_system.worlds.deinit();
     render_system.fonts.deinit(); // destroy items
     render_system.envprobe_jobs.deinit();

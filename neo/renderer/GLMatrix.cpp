@@ -241,6 +241,36 @@ void R_GlobalToNormalizedDeviceCoordinates( const idVec3& global, idVec3& ndc )
 	ndc[1] = clip[1] * invW;
 	ndc[2] = clip[2] * invW;		// NOTE: in D3D this is in the range [0,1]
 }
+
+void R_GlobalToNormalizedDeviceCoordinates2( const idVec3& global, idVec3& ndc, viewDef_t* viewDef_ )
+{
+	idPlane	view;
+	idPlane	clip;
+
+	// _D3XP use tr.primaryView when there is no tr.viewDef
+	const viewDef_t* viewDef = viewDef_;
+
+	for( int i = 0; i < 4; i ++ )
+	{
+		view[i] = 	viewDef->worldSpace.modelViewMatrix[i + 0 * 4] * global[0] +
+					viewDef->worldSpace.modelViewMatrix[i + 1 * 4] * global[1] +
+					viewDef->worldSpace.modelViewMatrix[i + 2 * 4] * global[2] +
+					viewDef->worldSpace.modelViewMatrix[i + 3 * 4];
+	}
+
+	for( int i = 0; i < 4; i ++ )
+	{
+		clip[i] = 	viewDef->projectionMatrix[i + 0 * 4] * view[0] +
+					viewDef->projectionMatrix[i + 1 * 4] * view[1] +
+					viewDef->projectionMatrix[i + 2 * 4] * view[2] +
+					viewDef->projectionMatrix[i + 3 * 4] * view[3];
+	}
+
+	const float invW = 1.0f / clip[3];
+	ndc[0] = clip[0] * invW;
+	ndc[1] = clip[1] * invW;
+	ndc[2] = clip[2] * invW;		// NOTE: in D3D this is in the range [0,1]
+}
 #endif
 
 /*

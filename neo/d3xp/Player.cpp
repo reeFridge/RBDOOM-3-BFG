@@ -3051,8 +3051,6 @@ void idPlayer::ServerSpectate( bool spectate )
 	}
 }
 
-extern "C" bool ztech_getSpawnTransform(idVec3*, idMat3*);
-
 /*
 ===========
 idPlayer::SelectInitialSpawnPoint
@@ -3068,32 +3066,18 @@ void idPlayer::SelectInitialSpawnPoint( idVec3& origin, idAngles& angles )
 
 	spot = gameLocal.SelectInitialSpawnPoint( this );
 
-	if (spot != NULL) {
-		// set the player skin from the spawn location
-		if( spot->spawnArgs.GetString( "skin", NULL, skin ) )
-		{
-			spawnArgs.Set( "spawn_skin", skin );
-		}
-
-		// activate the spawn locations targets
-		spot->PostEventMS( &EV_ActivateTargets, 0, this );
-
-		origin = spot->GetPhysics()->GetOrigin();
-		origin[2] += 4.0f + CM_BOX_EPSILON;		// move up to make sure the player is at least an epsilon above the floor
-		angles = spot->GetPhysics()->GetAxis().ToAngles();
-	} else {
-		idVec3 spot_origin;
-		idMat3 spot_axis;
-
-		bool found = ztech_getSpawnTransform(&spot_origin, &spot_axis);
-		if (!found) {
-			gameLocal.Error("Spawn spot not found -> exit");
-		}
-
-		origin = spot_origin;
-		origin[2] += 4.0f + CM_BOX_EPSILON;		// move up to make sure the player is at least an epsilon above the floor
-		angles = spot_axis.ToAngles();
+	// set the player skin from the spawn location
+	if( spot->spawnArgs.GetString( "skin", NULL, skin ) )
+	{
+		spawnArgs.Set( "spawn_skin", skin );
 	}
+
+	// activate the spawn locations targets
+	spot->PostEventMS( &EV_ActivateTargets, 0, this );
+
+	origin = spot->GetPhysics()->GetOrigin();
+	origin[2] += 4.0f + CM_BOX_EPSILON;		// move up to make sure the player is at least an epsilon above the floor
+	angles = spot->GetPhysics()->GetAxis().ToAngles();
 }
 
 /*
@@ -6636,11 +6620,6 @@ void idPlayer::UpdateFocus()
 	for( i = 0; i < listedClipModels; i++ )
 	{
 		clip = clipModelList[ i ];
-
-		if (clip->external) {
-			continue;
-		}
-
 		ent = clip->GetEntity();
 
 		if( ent->IsHidden() )

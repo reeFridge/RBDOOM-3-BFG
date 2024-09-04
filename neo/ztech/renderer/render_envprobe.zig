@@ -3,6 +3,7 @@ const CVec3 = @import("../math/vector.zig").CVec3;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const render_entity = @import("render_entity.zig");
 const RenderWorld = @import("render_world.zig");
+const RenderSystem = @import("render_system.zig");
 const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 
 pub const RenderEnvironmentProbe = extern struct {
@@ -56,4 +57,58 @@ pub const RenderEnvprobeLocal = extern struct {
     // if == tr.viewCount, the envprobe is on the viewDef->viewEnvprobes list
     viewCount: c_int,
     viewEnvprobe: ?*ViewEnvprobe,
+
+    extern fn R_DeriveEnvprobeData2(*RenderEnvprobeLocal, [*]const u8, c_int) callconv(.C) void;
+
+    fn deriveData(probe: *RenderEnvprobeLocal) !void {
+        const render_world = probe.world orelse return;
+
+        // determine the areaNum for the envprobe origin, which may let us
+        // cull the envprobe if it is behind a closed door
+        if (probe.areaNum != -1) {
+            // HACK: this should be in the gamecode and set by the entity properties
+            const bounds = try render_world.areaBounds(@intCast(probe.areaNum));
+            probe.globalProbeBounds = CBounds.fromBounds(bounds);
+        } else {
+            var bounds = probe.globalProbeBounds.toBounds();
+            bounds.clear();
+            probe.globalProbeBounds = CBounds.fromBounds(bounds);
+        }
+
+        R_DeriveEnvprobeData2(probe, render_world.map_name.ptr, probe.areaNum);
+    }
+
+    pub fn createRefs(probe: *RenderEnvprobeLocal) !void {
+        const render_world = probe.world orelse return;
+        const area_nodes = render_world.area_nodes orelse return;
+        const portal_areas = render_world.portal_areas orelse return;
+
+        if (render_world.pointInArea(probe.parms.origin.toVec3f())) |area_num| {
+            probe.areaNum = @intCast(area_num);
+        } else |_| {
+            probe.areaNum = -1;
+        }
+
+        try probe.deriveData();
+
+        RenderSystem.instance.incViewCount();
+        try render_world.pushEnvprobeIntoTree_r(probe, 0, area_nodes, portal_areas);
+    }
+
+    pub fn freeDerivedData(probe: *RenderEnvprobeLocal) void {
+        const render_world = probe.world orelse return;
+
+        var opt_ref = probe.references;
+        var next: ?*AreaReference = null;
+        while (opt_ref) |ref| : (opt_ref = next) {
+            next = ref.ownerNext;
+
+            ref.areaNext.?.areaPrev = ref.areaPrev;
+            ref.areaPrev.?.areaNext = ref.areaNext;
+
+            render_world.area_reference_allocator.destroy(ref);
+        }
+
+        probe.references = null;
+    }
 };

@@ -21,6 +21,7 @@ const RenderSystem = @import("render_system.zig");
 const fs = @import("../fs.zig");
 const Image = @import("image.zig").Image;
 const RenderModelManager = @import("render_model_manager.zig");
+const GuiModel = @import("gui_model.zig").GuiModel;
 
 pub const RenderView = extern struct {
     viewID: c_int,
@@ -191,6 +192,7 @@ generate_all_interactions_called: bool = false,
 const global = @import("../global.zig");
 const RenderEntity = @import("render_entity.zig").RenderEntity;
 const RenderLight = @import("render_light.zig").RenderLight;
+const RenderEnvironmentProbe = @import("render_envprobe.zig").RenderEnvironmentProbe;
 
 pub const DefIndexAccessError = error{
     OutOfRange,
@@ -307,7 +309,7 @@ pub fn updateLightDef(
         render_world.light_defs.items[light_index] = light_def;
 
         light_def.index = @intCast(light_index);
-        light_def.world = @ptrCast(render_world);
+        light_def.world = render_world;
         break :light light_def;
     };
 
@@ -344,8 +346,71 @@ inline fn freeEntityDef(render_world: *RenderWorld, def: *RenderEntityLocal, ent
     render_world.entity_defs.items[entity_index] = null;
 }
 
+pub fn addEnvprobeDef(render_world: *RenderWorld, envprobe: RenderEnvironmentProbe) !usize {
+    // try reuse a free slot
+    const index = for (render_world.envprobe_defs.items, 0..) |item, item_index| {
+        if (item == null) break item_index;
+    } else index: {
+        try render_world.envprobe_defs.append(null);
+        const new_len = render_world.envprobe_defs.items.len;
+
+        break :index new_len - 1;
+    };
+
+    try render_world.updateEnvprobeDef(index, envprobe);
+
+    return index;
+}
+
+pub fn updateEnvprobeDef(
+    render_world: *RenderWorld,
+    envprobe_index: usize,
+    envprobe: RenderEnvironmentProbe,
+) !void {
+    // create new slots if needed
+    while (envprobe_index >= render_world.envprobe_defs.items.len)
+        try render_world.envprobe_defs.append(null);
+
+    var just_update = false;
+    var probe = if (render_world.envprobe_defs.items[envprobe_index]) |def| probe: {
+        if (envprobe.origin.toVec3f().eql(def.parms.origin.toVec3f())) {
+            just_update = true;
+        } else {
+            def.envprobeHasMoved = true;
+            def.freeDerivedData();
+        }
+
+        break :probe def;
+    } else probe: {
+        // create a new one
+        var def = try render_world.allocator.create(RenderEnvprobeLocal);
+        def.* = std.mem.zeroes(RenderEnvprobeLocal);
+        def.world = render_world;
+        def.index = @intCast(envprobe_index);
+        def.viewCount = 0;
+
+        render_world.envprobe_defs.items[envprobe_index] = def;
+
+        break :probe def;
+    };
+
+    probe.parms = envprobe;
+    probe.lastModifiedFrameNum = @intCast(RenderSystem.instance.frameCount());
+
+    if (!just_update)
+        try probe.createRefs();
+}
+
+pub fn freeEnvprobeDefByIndex(render_world: *RenderWorld, envprobe_index: usize) DefIndexAccessError!void {
+    if (envprobe_index >= render_world.envprobe_defs.items.len) return error.OutOfRange;
+
+    if (render_world.envprobe_defs.items[envprobe_index]) |def| {
+        render_world.freeEnvprobeDef(def, envprobe_index);
+    } else return error.SlotIsNull;
+}
+
 inline fn freeEnvprobeDef(render_world: *RenderWorld, def: *RenderEnvprobeLocal, index: usize) void {
-    // TODO: FreeEnvprobeDefDerivedData
+    def.freeDerivedData();
     render_world.allocator.destroy(def);
     render_world.envprobe_defs.items[index] = null;
 }
@@ -472,7 +537,7 @@ extern fn R_SetupViewMatrix(*ViewDef) callconv(.C) void;
 extern fn R_SetupProjectionMatrix(*ViewDef, bool) callconv(.C) void;
 extern fn R_SetupUnprojection(*ViewDef) callconv(.C) void;
 extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
-extern fn R_AddInGameGuis([*]*DrawSurface, c_int) callconv(.C) void;
+extern fn R_AddInGameGuis2([*]*DrawSurface, c_int, *ViewDef, *GuiModel) callconv(.C) void;
 extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
 extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
 
@@ -566,7 +631,12 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
     render_world.addModels();
 
     if (view_def.drawSurfs) |draw_surfs| {
-        R_AddInGameGuis(draw_surfs, view_def.numDrawSurfs);
+        R_AddInGameGuis2(
+            draw_surfs,
+            view_def.numDrawSurfs,
+            view_def,
+            RenderSystem.instance.gui_model,
+        );
     }
 
     R_OptimizeViewLightsList(view_def);
@@ -1099,7 +1169,7 @@ pub fn updateEntityDef(
         render_world.entity_defs.items[entity_index] = entity_def;
 
         entity_def.index = @intCast(entity_index);
-        entity_def.world = @ptrCast(render_world);
+        entity_def.world = render_world;
         break :def entity_def;
     };
 
@@ -1221,6 +1291,71 @@ fn pushFrustumIntoTree_r(
                 def,
                 light,
                 corners,
+                node_num_,
+                area_nodes,
+                portal_areas,
+            );
+    }
+}
+
+pub fn pushEnvprobeIntoTree_r(
+    render_world: *RenderWorld,
+    opt_def: ?*RenderEnvprobeLocal,
+    node_num: c_int,
+    area_nodes: []AreaNode,
+    portal_areas: []PortalArea,
+) !void {
+    if (node_num < 0) {
+        const area_num: usize = @intCast(-1 - node_num);
+        var area = &portal_areas[area_num];
+
+        // already added a reference here
+        if (area.viewCount == RenderSystem.instance.viewCount()) return;
+
+        area.viewCount = @intCast(RenderSystem.instance.viewCount());
+
+        if (opt_def) |render_entity|
+            try render_world.addEnvprobeRefToArea(render_entity, area);
+
+        return;
+    }
+
+    const node = area_nodes[@intCast(node_num)];
+
+    const r_use_node_common_children = true;
+
+    // if we know that all possible children nodes only touch an area
+    // we have already marked, we can early out
+    if (node.commonChildrenArea != AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS and
+        r_use_node_common_children)
+    {
+        // note that we do NOT try to set a reference in this area
+        // yet, because the test volume may yet wind up being in the
+        // solid part, which would cause bounds slightly poked into
+        // a wall to show up in the next room
+        if (portal_areas[@intCast(node.commonChildrenArea)].viewCount == RenderSystem.instance.viewCount())
+            return;
+    }
+
+    const def = opt_def orelse return;
+    const cull = node.plane.side(def.parms.origin.toVec3f());
+
+    if (cull != .back) {
+        const node_num_ = node.children[0];
+        if (node_num_ != 0) // 0 = solid
+            try render_world.pushEnvprobeIntoTree_r(
+                def,
+                node_num_,
+                area_nodes,
+                portal_areas,
+            );
+    }
+
+    if (cull != .front) {
+        const node_num_ = node.children[1];
+        if (node_num_ != 0) // 0 = solid
+            try render_world.pushEnvprobeIntoTree_r(
+                def,
                 node_num_,
                 area_nodes,
                 portal_areas,
@@ -1819,7 +1954,7 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         };
 
         def.index = @intCast(index);
-        def.world = @ptrCast(render_world);
+        def.world = render_world;
 
         const model_name = try std.fmt.allocPrintZ(string_allocator, "_area{d}", .{area_index});
         const model_ptr = try RenderModelManager.instance.findModel(model_name);
@@ -1848,6 +1983,31 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
 
         area.globalBounds = def.globalReferenceBounds;
     }
+}
+
+pub fn addEnvprobeRefToArea(
+    render_world: *RenderWorld,
+    def: *RenderEnvprobeLocal,
+    area: *PortalArea,
+) error{OutOfMemory}!void {
+    {
+        var opt_ref = def.references;
+        while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+            if (ref.area == area) return;
+        }
+    }
+
+    var ref = try render_world.area_reference_allocator.create();
+    ref.* = AreaReference{};
+    ref.envprobe = def;
+    ref.area = area;
+    ref.ownerNext = def.references;
+    def.references = ref;
+
+    area.envprobeRefs.areaNext.?.areaPrev = ref;
+    ref.areaNext = area.envprobeRefs.areaNext;
+    ref.areaPrev = &area.envprobeRefs;
+    area.envprobeRefs.areaNext = ref;
 }
 
 pub fn addLightRefToArea(

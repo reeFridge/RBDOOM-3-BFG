@@ -1419,7 +1419,6 @@ void idEntity::FreeModelDef()
 	if( modelDefHandle != -1 )
 	{
 		gameRenderWorld->FreeEntityDef( modelDefHandle );
-
 		modelDefHandle = -1;
 	}
 }
@@ -1770,7 +1769,7 @@ void idEntity::Present()
 	// add to refresh list
 	if( modelDefHandle == -1 )
 	{
-		modelDefHandle = gameRenderWorld->AddEntityDef(&renderEntity);
+		modelDefHandle = gameRenderWorld->AddEntityDef( &renderEntity );
 	}
 	else
 	{

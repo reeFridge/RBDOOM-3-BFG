@@ -48,6 +48,7 @@ void R_MatrixMultiply( const float* a, const float* b, float* out );
 void R_TransformModelToClip( const idVec3& src, const float* modelMatrix, const float* projectionMatrix, idPlane& eye, idPlane& dst );
 void R_TransformClipToDevice( const idPlane& clip, idVec3& ndc );
 void R_GlobalToNormalizedDeviceCoordinates( const idVec3& global, idVec3& ndc );
+void R_GlobalToNormalizedDeviceCoordinates2( const idVec3& global, idVec3& ndc, viewDef_t* viewDef_ );
 
 // note that these assume a normalized matrix, and will not work with scaled axis
 void R_GlobalPointToLocal( const float modelMatrix[16], const idVec3& in, idVec3& out );

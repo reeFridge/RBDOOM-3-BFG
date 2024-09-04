@@ -832,6 +832,88 @@ void R_DeriveEnvprobeData( RenderEnvprobeLocal* probe )
 	//idRenderMatrix::ProjectedBounds( probe->globalProbeBounds, probe->inverseBaseProbeProject, bounds_unitCube, false );
 }
 
+extern "C" void R_DeriveEnvprobeData2( RenderEnvprobeLocal* probe, const uint8_t* mapName, int areaNum)
+{
+	idStr basename = (const char*)mapName;
+	basename.StripFileExtension();
+
+	idStr fullname;
+
+	// the probe index and entity name are bad indicators to cache the light data
+	// use the snapped world position instead
+	idVec3 point = probe->parms.origin;
+	point.SnapInt();
+
+	// load preconvolved cubemaps as mipmap chain packed octahedrons
+	fullname.Format( "env/%s/area%i_envprobe_%i_%i_%i_amb", basename.c_str(), areaNum, int( point.x ), int( point.y ), int( point.z ) );
+	fullname.ReplaceChar( '-', '_' );
+
+	probe->irradianceImage = globalImages->ImageFromFile( fullname, TF_LINEAR, TR_CLAMP, TD_R11G11B10F, CF_2D_PACKED_MIPCHAIN );
+
+	fullname.Format( "env/%s/area%i_envprobe_%i_%i_%i_spec", basename.c_str(), areaNum, int( point.x ), int( point.y ), int( point.z ) );
+	fullname.ReplaceChar( '-', '_' );
+
+	probe->radianceImage = globalImages->ImageFromFile( fullname, TF_DEFAULT, TR_CLAMP, TD_R11G11B10F, CF_2D_PACKED_MIPCHAIN );
+
+	// ------------------------------------
+	// compute the probe projection matrix
+	// ------------------------------------
+
+
+
+	idMat3 axis;
+	axis.Identity();
+
+	idRenderMatrix modelRenderMatrix;
+	idRenderMatrix::CreateFromOriginAxis( vec3_origin, axis, modelRenderMatrix );
+
+	// render from mins to maxs for debug rendering
+	//idRenderMatrix::CreateFromOriginAxis( probe->globalProbeBounds[0], axis, modelRenderMatrix );
+
+	idRenderMatrix inverseModelMatrix;
+	if( !idRenderMatrix::Inverse( modelRenderMatrix, inverseModelMatrix ) )
+	{
+		idLib::Warning( "lightMatrix invert failed" );
+	}
+
+	// move local bounds to center
+	idBounds localBounds;
+
+#if 0
+	idVec3 corners[8];
+	probe->globalProbeBounds.ToPoints( corners );
+
+	idVec3 corners2[8];
+	for( int i = 0; i < 8; i++ )
+	{
+		idVec4 p( corners[i].x, corners[i].y, corners[i].z, 1.0f );
+		idVec4 o;
+
+		inverseModelMatrix.TransformPoint( p, o );
+
+		corners2[i].Set( o.x, o.y, o.z );
+	}
+
+	localBounds.FromPoints( corners2, 8 );
+#else
+	//idVec3 center = probe->globalProbeBounds.GetCenter();
+
+	// offset it so it sits on 0 0 0
+	//center += center;
+
+	localBounds[0] = probe->globalProbeBounds[0] * 2;
+	localBounds[1] = probe->globalProbeBounds[1] * 2;
+
+	//idRenderMatrix::CreateFromOriginAxis( -probe->globalProbeBounds[0] * 2, axis, modelRenderMatrix );
+#endif
+
+	// calculate the matrix that transforms the unit cube to exactly cover the model in world space
+	idRenderMatrix::OffsetScaleForBounds( modelRenderMatrix, localBounds, probe->inverseBaseProbeProject );
+
+	// calculate the global model bounds by inverse projecting the unit cube with the 'inverseBaseModelProject'
+	//idRenderMatrix::ProjectedBounds( probe->globalProbeBounds, probe->inverseBaseProbeProject, bounds_unitCube, false );
+}
+
 void R_CreateEnvprobeRefs( RenderEnvprobeLocal* probe )
 {
 	// derive envprobe data

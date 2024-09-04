@@ -2,26 +2,51 @@ const global = @import("../global.zig");
 const std = @import("std");
 const RenderWorld = @import("render_world.zig");
 const RenderView = @import("render_world.zig").RenderView;
+const PortalArea = @import("render_world.zig").PortalArea;
 const Interaction = @import("interaction.zig").Interaction;
 const RenderEntity = @import("render_entity.zig").RenderEntity;
+const RenderEntityLocal = @import("render_entity.zig").RenderEntityLocal;
 const RenderLight = @import("render_light.zig").RenderLight;
+const RenderEnvironmentProbe = @import("render_envprobe.zig").RenderEnvironmentProbe;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const RenderSystem = @import("render_system.zig");
 
 pub const RenderWorldOpaque = opaque {};
 
-export fn ztech_renderWorld_getPortalsCount(rw: *RenderWorldOpaque) callconv(.C) usize {
+export fn ztech_renderWorld_getPortalArea(rw: *RenderWorldOpaque, index: c_int) callconv(.C) ?*PortalArea {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+
+    return if (render_world.portal_areas) |portal_areas|
+        &portal_areas[@intCast(index)]
+    else
+        null;
+}
+
+export fn ztech_renderWorld_getEntityDef(rw: *RenderWorldOpaque, index: c_int) callconv(.C) ?*RenderEntityLocal {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+    return render_world.entity_defs.items[@intCast(index)];
+}
+
+export fn ztech_renderWorld_getPortalsCount(
+    rw: *RenderWorldOpaque,
+) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     return if (render_world.double_portals) |portals| portals.len else 0;
 }
 
-export fn ztech_renderWorld_getEntityDefsCount(rw: *RenderWorldOpaque) callconv(.C) usize {
+export fn ztech_renderWorld_getEntityDefsCount(
+    rw: *RenderWorldOpaque,
+) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     return render_world.entity_defs.items.len;
 }
 
-export fn ztech_renderWorld_getInteractionEntry(rw: *RenderWorldOpaque, row: usize, column: usize) callconv(.C) ?*Interaction {
+export fn ztech_renderWorld_getInteractionEntry(
+    rw: *RenderWorldOpaque,
+    row: usize,
+    column: usize,
+) callconv(.C) ?*Interaction {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     const table = render_world.interaction_table orelse return null;
 
@@ -30,7 +55,10 @@ export fn ztech_renderWorld_getInteractionEntry(rw: *RenderWorldOpaque, row: usi
     return entry;
 }
 
-export fn ztech_renderWorld_getInteractionRow(rw: *RenderWorldOpaque, row: usize) ?[*]?*Interaction {
+export fn ztech_renderWorld_getInteractionRow(
+    rw: *RenderWorldOpaque,
+    row: usize,
+) ?[*]?*Interaction {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     const table = render_world.interaction_table orelse return null;
     const row_start = row * render_world.interaction_table_width;
@@ -50,12 +78,17 @@ export fn ztech_renderWorld_boundsInAreas(
     return render_world.boundsInAreas(bounds.toBounds(), areas[0..max_areas]);
 }
 
-export fn ztech_renderWorld_renderScene(rw: *RenderWorldOpaque, view: *const RenderView) callconv(.C) void {
+export fn ztech_renderWorld_renderScene(
+    rw: *RenderWorldOpaque,
+    view: *const RenderView,
+) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
     render_world.renderScene(view.*);
 }
 
-export fn ztech_renderWorld_generateAllInteractions(rw: *RenderWorldOpaque) callconv(.C) void {
+export fn ztech_renderWorld_generateAllInteractions(
+    rw: *RenderWorldOpaque,
+) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.generateAllInteractions() catch {
@@ -63,7 +96,10 @@ export fn ztech_renderWorld_generateAllInteractions(rw: *RenderWorldOpaque) call
     };
 }
 
-export fn ztech_renderWorld_areaBounds(rw: *RenderWorldOpaque, int_area_num: c_int) callconv(.C) CBounds {
+export fn ztech_renderWorld_areaBounds(
+    rw: *RenderWorldOpaque,
+    int_area_num: c_int,
+) callconv(.C) CBounds {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     if (int_area_num < 0) @panic("ztech_renderWorld_areaBounds: bad area_num");
@@ -75,7 +111,10 @@ export fn ztech_renderWorld_areaBounds(rw: *RenderWorldOpaque, int_area_num: c_i
     return CBounds.fromBounds(bounds);
 }
 
-export fn ztech_renderWorld_pointInArea(rw: *RenderWorldOpaque, point: *const CVec3) callconv(.C) c_int {
+export fn ztech_renderWorld_pointInArea(
+    rw: *RenderWorldOpaque,
+    point: *const CVec3,
+) callconv(.C) c_int {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     const index = render_world.pointInArea(point.toVec3f()) catch return -1;
@@ -97,7 +136,10 @@ export fn ztech_renderWorld_areasAreConnected(
     };
 }
 
-export fn ztech_renderWorld_freeLightDef(rw: *RenderWorldOpaque, light_index: c_int) callconv(.C) void {
+export fn ztech_renderWorld_freeLightDef(
+    rw: *RenderWorldOpaque,
+    light_index: c_int,
+) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.freeLightDefByIndex(@intCast(light_index)) catch |err| {
@@ -105,7 +147,10 @@ export fn ztech_renderWorld_freeLightDef(rw: *RenderWorldOpaque, light_index: c_
     };
 }
 
-export fn ztech_renderWorld_addLightDef(rw: *RenderWorldOpaque, def: *const RenderLight) callconv(.C) c_int {
+export fn ztech_renderWorld_addLightDef(
+    rw: *RenderWorldOpaque,
+    def: *const RenderLight,
+) callconv(.C) c_int {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     const index = render_world.addLightDef(def.*) catch {
@@ -115,7 +160,11 @@ export fn ztech_renderWorld_addLightDef(rw: *RenderWorldOpaque, def: *const Rend
     return @intCast(index);
 }
 
-export fn ztech_renderWorld_updateLightDef(rw: *RenderWorldOpaque, light_index: c_int, def: *const RenderLight) callconv(.C) void {
+export fn ztech_renderWorld_updateLightDef(
+    rw: *RenderWorldOpaque,
+    light_index: c_int,
+    def: *const RenderLight,
+) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.updateLightDef(@intCast(light_index), def.*) catch {
@@ -123,7 +172,10 @@ export fn ztech_renderWorld_updateLightDef(rw: *RenderWorldOpaque, light_index: 
     };
 }
 
-export fn ztech_renderWorld_addEntityDef(rw: *RenderWorldOpaque, def: *const RenderEntity) callconv(.C) c_int {
+export fn ztech_renderWorld_addEntityDef(
+    rw: *RenderWorldOpaque,
+    def: *const RenderEntity,
+) callconv(.C) c_int {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     const index = render_world.addEntityDef(def.*) catch {
@@ -133,7 +185,24 @@ export fn ztech_renderWorld_addEntityDef(rw: *RenderWorldOpaque, def: *const Ren
     return @intCast(index);
 }
 
-export fn ztech_renderWorld_updateEntityDef(rw: *RenderWorldOpaque, entity_index: c_int, def: *const RenderEntity) callconv(.C) void {
+export fn ztech_renderWorld_addEnvprobeDef(
+    rw: *RenderWorldOpaque,
+    def: *const RenderEnvironmentProbe,
+) callconv(.C) c_int {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+
+    const index = render_world.addEnvprobeDef(def.*) catch {
+        @panic("ztech_renderWorld_addEnvprobeDef: fail to add envprobe");
+    };
+
+    return @intCast(index);
+}
+
+export fn ztech_renderWorld_updateEntityDef(
+    rw: *RenderWorldOpaque,
+    entity_index: c_int,
+    def: *const RenderEntity,
+) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.updateEntityDef(@intCast(entity_index), def.*) catch {
@@ -141,11 +210,37 @@ export fn ztech_renderWorld_updateEntityDef(rw: *RenderWorldOpaque, entity_index
     };
 }
 
-export fn ztech_renderWorld_freeEntityDef(rw: *RenderWorldOpaque, entity_index: c_int) callconv(.C) void {
+export fn ztech_renderWorld_updateEnvprobeDef(
+    rw: *RenderWorldOpaque,
+    envprobe_index: c_int,
+    def: *const RenderEnvironmentProbe,
+) callconv(.C) void {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+
+    render_world.updateEnvprobeDef(@intCast(envprobe_index), def.*) catch {
+        @panic("ztech_renderWorld_updateEnvprobeDef: fail to update envprobe");
+    };
+}
+
+export fn ztech_renderWorld_freeEntityDef(
+    rw: *RenderWorldOpaque,
+    entity_index: c_int,
+) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     render_world.freeEntityDefByIndex(@intCast(entity_index)) catch |err| {
         std.debug.print("ztech_renderWorld_freeEntityDef: fails, err = {}\n", .{err});
+    };
+}
+
+export fn ztech_renderWorld_freeEnvprobeDef(
+    rw: *RenderWorldOpaque,
+    envprobe_index: c_int,
+) callconv(.C) void {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+
+    render_world.freeEnvprobeDefByIndex(@intCast(envprobe_index)) catch |err| {
+        std.debug.print("ztech_renderWorld_freeEnvprobeDef: fails, err = {}\n", .{err});
     };
 }
 
@@ -161,7 +256,10 @@ export fn ztech_renderWorld_getPortal(
     };
 }
 
-export fn ztech_renderWorld_numPortalsInArea(rw: *RenderWorldOpaque, area_index: usize) callconv(.C) usize {
+export fn ztech_renderWorld_numPortalsInArea(
+    rw: *RenderWorldOpaque,
+    area_index: usize,
+) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
     return render_world.numPortalsInArea(area_index) catch {
@@ -178,7 +276,10 @@ export fn ztech_renderWorld_numAreas(rw: *RenderWorldOpaque) callconv(.C) usize 
         0;
 }
 
-export fn ztech_renderWorld_initFromMap(rw: *RenderWorldOpaque, c_map_name: [*c]const u8) callconv(.C) bool {
+export fn ztech_renderWorld_initFromMap(
+    rw: *RenderWorldOpaque,
+    c_map_name: [*c]const u8,
+) callconv(.C) bool {
     const render_world_ptr: *RenderWorld = @alignCast(@ptrCast(rw));
     const map_name: [:0]const u8 = std.mem.span(c_map_name);
 

@@ -1631,8 +1631,7 @@ bool idPVS::CheckAreasForPortalSky( const pvsHandle_t handle, const idVec3& orig
 		return false;
 	}
 
-	//@f sourceArea = gameRenderWorld->PointInArea( origin );
-	sourceArea == -1;
+	sourceArea = gameRenderWorld->PointInArea( origin );
 
 	if( sourceArea == -1 )
 	{

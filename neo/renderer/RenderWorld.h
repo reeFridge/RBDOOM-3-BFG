@@ -495,6 +495,10 @@ int ztech_renderWorld_addLightDef(RenderWorldOpaque*, const renderLight_t*);
 void ztech_renderWorld_updateLightDef(RenderWorldOpaque*, int, const renderLight_t*);
 void ztech_renderWorld_freeLightDef(RenderWorldOpaque*, int);
 
+int ztech_renderWorld_addEnvprobeDef(RenderWorldOpaque*, const renderEnvironmentProbe_t*);
+void ztech_renderWorld_updateEnvprobeDef(RenderWorldOpaque*, int, const renderEnvironmentProbe_t*);
+void ztech_renderWorld_freeEnvprobeDef(RenderWorldOpaque*, int);
+
 exitPortal_t ztech_renderWorld_getPortal(RenderWorldOpaque*, int, int);
 size_t ztech_renderWorld_boundsInAreas(RenderWorldOpaque*, const idBounds*, int*, size_t);
 size_t ztech_renderWorld_numAreas(RenderWorldOpaque*);

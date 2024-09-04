@@ -14,6 +14,18 @@ const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderWorldOpaque = @import("render_world_interface.zig").RenderWorldOpaque;
 const RenderWorld = @import("render_world.zig");
 
+export fn ztech_renderSystem_getGuiRecursionLevel() usize {
+    return RenderSystem.instance.gui_recursion_level;
+}
+
+export fn ztech_renderSystem_incGuiRecursionLevel() void {
+    RenderSystem.instance.gui_recursion_level += 1;
+}
+
+export fn ztech_renderSystem_decGuiRecursionLevel() void {
+    RenderSystem.instance.gui_recursion_level -= 1;
+}
+
 export fn ztech_renderSystem_getViewCount() callconv(.C) c_int {
     return @intCast(RenderSystem.instance.view_count);
 }

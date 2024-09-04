@@ -1074,6 +1074,9 @@ extern "C" {
 	void ztech_renderSystem_initBackend();
 	void ztech_renderSystem_setColor(idVec4);
 	void ztech_renderSystem_drawStretchPicture(const idVec4*, const idVec4*, const idVec4*, const idVec4*, const idMaterial*, float z);
+	uintptr_t ztech_renderSystem_getGuiRecursionLevel();
+	void ztech_renderSystem_incGuiRecursionLevel();
+	void ztech_renderSystem_decGuiRecursionLevel();
 
 	typedef void RenderWorldOpaque;
 	RenderWorldOpaque* ztech_renderSystem_createRenderWorld();
@@ -1641,7 +1644,8 @@ TR_FRONTEND_GUISURF
 */
 
 void R_SurfaceToTextureAxis( const srfTriangles_t* tri, idVec3& origin, idVec3 axis[3] );
-extern "C" void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs );
+void R_AddInGameGuis( const drawSurf_t* const drawSurfs[], const int numDrawSurfs );
+extern "C" void R_AddInGameGuis2( const drawSurf_t* const drawSurfs[], const int numDrawSurfs, viewDef_t* viewDef, idGuiModel* guiModel );
 extern "C" void R_SortDrawSurfs( drawSurf_t** drawSurfs, const int numDrawSurfs );
 
 /*
@@ -1653,6 +1657,7 @@ TR_FRONTEND_SUBVIEW
 */
 
 bool R_PreciseCullSurface( const drawSurf_t* drawSurf, idBounds& ndcBounds );
+bool R_PreciseCullSurface2( const drawSurf_t* drawSurf, idBounds& ndcBounds, viewDef_t* viewDef );
 bool R_GenerateSubViews( const drawSurf_t* const drawSurfs[], const int numDrawSurfs );
 
 /*

@@ -2688,16 +2688,15 @@ const renderLight_t* ztechRenderWorld::GetRenderLight(qhandle_t lightHandle) con
 }
 
 qhandle_t ztechRenderWorld::AddEnvprobeDef(const renderEnvironmentProbe_t* ep) {
-	//common->Printf("ztechRenderWorld::AddEnvprobeDef: method not implemented\n");
-	return 0;
+	return ztech_renderWorld_addEnvprobeDef(game_ztechRenderWorld, ep);
 }
 
 void ztechRenderWorld::UpdateEnvprobeDef(qhandle_t envprobeHandle, const renderEnvironmentProbe_t* ep) {
-	//common->Printf("ztechRenderWorld::UpdateEnvprobeDef: method not implemented\n");
+	ztech_renderWorld_updateEnvprobeDef(game_ztechRenderWorld, envprobeHandle, ep);
 }
 
 void ztechRenderWorld::FreeEnvprobeDef(qhandle_t envprobeHandle) {
-	//common->Printf("ztechRenderWorld::FreeEnvprobeDef: method not implemented\n");
+	ztech_renderWorld_freeEnvprobeDef(game_ztechRenderWorld, envprobeHandle);
 }
 
 const renderEnvironmentProbe_t* ztechRenderWorld::GetRenderEnvprobe(qhandle_t envprobeHandle) const {
@@ -2790,12 +2789,247 @@ guiPoint_t ztechRenderWorld::GuiTrace(qhandle_t entityHandle, const idVec3 start
 	common->Printf("ztechRenderWorld::GuiTrace: method not implemented\n");
 }
 
+extern "C" idRenderEntityLocal* ztech_renderWorld_getEntityDef(void*, int);
+extern "C" portalArea_t* ztech_renderWorld_getPortalArea(void*, int);
 bool ztechRenderWorld::ModelTrace(modelTrace_t& trace, qhandle_t entityHandle, const idVec3& start, const idVec3& end, const float radius) const {
-	common->Printf("ztechRenderWorld::ModelTrace: method not implemented\n");
+	memset( &trace, 0, sizeof( trace ) );
+	trace.fraction = 1.0f;
+	trace.point = end;
+
+	const uintptr_t defsCount = ztech_renderWorld_getEntityDefsCount(game_ztechRenderWorld);
+	if( entityHandle < 0 || entityHandle >= defsCount )
+	{
+		return false;
+	}
+
+	idRenderEntityLocal*	def = ztech_renderWorld_getEntityDef(game_ztechRenderWorld, entityHandle);
+	if( def == NULL )
+	{
+		return false;
+	}
+
+	renderEntity_t* refEnt = &def->parms;
+
+	idRenderModel* model = R_EntityDefDynamicModel( def );
+	if( model == NULL )
+	{
+		return false;
+	}
+
+	// transform the points into local space
+	float modelMatrix[16];
+	idVec3 localStart;
+	idVec3 localEnd;
+	R_AxisToModelMatrix( refEnt->axis, refEnt->origin, modelMatrix );
+	R_GlobalPointToLocal( modelMatrix, start, localStart );
+	R_GlobalPointToLocal( modelMatrix, end, localEnd );
+
+	// if we have explicit collision surfaces, only collide against them
+	// (FIXME, should probably have a parm to control this)
+	bool collisionSurface = false;
+	for( int i = 0; i < model->NumBaseSurfaces(); i++ )
+	{
+		const modelSurface_t* surf = model->Surface( i );
+
+		const idMaterial* shader = R_RemapShaderBySkin( surf->shader, def->parms.customSkin, def->parms.customShader );
+
+		if( shader->GetSurfaceFlags() & SURF_COLLISION )
+		{
+			collisionSurface = true;
+			break;
+		}
+	}
+
+	// only use baseSurfaces, not any overlays
+	for( int i = 0; i < model->NumBaseSurfaces(); i++ )
+	{
+		const modelSurface_t* surf = model->Surface( i );
+
+		const idMaterial* shader = R_RemapShaderBySkin( surf->shader, def->parms.customSkin, def->parms.customShader );
+
+		if( surf->geometry == NULL || shader == NULL )
+		{
+			continue;
+		}
+
+		if( collisionSurface )
+		{
+			// only trace vs collision surfaces
+			if( ( shader->GetSurfaceFlags() & SURF_COLLISION ) == 0 )
+			{
+				continue;
+			}
+		}
+		else
+		{
+			// skip if not drawn or translucent
+			if( !shader->IsDrawn() || ( shader->Coverage() != MC_OPAQUE && shader->Coverage() != MC_PERFORATED ) )
+			{
+				continue;
+			}
+		}
+
+		localTrace_t localTrace = R_LocalTrace( localStart, localEnd, radius, surf->geometry );
+
+		if( localTrace.fraction < trace.fraction )
+		{
+			trace.fraction = localTrace.fraction;
+			R_LocalPointToGlobal( modelMatrix, localTrace.point, trace.point );
+			trace.normal = localTrace.normal * refEnt->axis;
+			trace.material = shader;
+			trace.entity = &def->parms;
+			trace.jointNumber = refEnt->hModel->NearestJoint( i, localTrace.indexes[0], localTrace.indexes[1], localTrace.indexes[2] );
+		}
+	}
+
+	return ( trace.fraction < 1.0f );
 }
 
 bool ztechRenderWorld::Trace(modelTrace_t& trace, const idVec3& start, const idVec3& end, const float radius, bool skipDynamic, bool skipPlayer) const {
-	common->Printf("ztechRenderWorld::Trace: method not implemented\n");
+	trace.fraction = 1.0f;
+	trace.point = end;
+
+	// bounds for the whole trace
+	idBounds traceBounds;
+	traceBounds.Clear();
+	traceBounds.AddPoint( start );
+	traceBounds.AddPoint( end );
+
+	// get the world areas the trace is in
+	int areas[128];
+	int numAreas = BoundsInAreas( traceBounds, areas, 128 );
+
+	int numSurfaces = 0;
+
+	// check all areas for models
+	for( int i = 0; i < numAreas; i++ )
+	{
+
+		portalArea_t* area = ztech_renderWorld_getPortalArea(game_ztechRenderWorld, areas[i]);
+
+		// check all models in this area
+		for( areaReference_t* ref = area->entityRefs.areaNext; ref != &area->entityRefs; ref = ref->areaNext )
+		{
+			idRenderEntityLocal* def = ref->entity;
+
+			idRenderModel* model = def->parms.hModel;
+			if( model == NULL )
+			{
+				continue;
+			}
+
+			if( model->IsDynamicModel() != DM_STATIC )
+			{
+				if( skipDynamic )
+				{
+					continue;
+				}
+
+#if 1	/* _D3XP addition. could use a cleaner approach */
+				if( skipPlayer )
+				{
+					bool exclude = false;
+					for( int k = 0; playerModelExcludeList[k] != NULL; k++ )
+					{
+						if( idStr::Cmp( model->Name(), playerModelExcludeList[k] ) == 0 )
+						{
+							exclude = true;
+							break;
+						}
+					}
+					if( exclude )
+					{
+						continue;
+					}
+				}
+#endif
+
+				model = R_EntityDefDynamicModel( def );
+				if( !model )
+				{
+					continue;	// can happen with particle systems, which don't instantiate without a valid view
+				}
+			}
+
+			idBounds bounds;
+			bounds.FromTransformedBounds( model->Bounds( &def->parms ), def->parms.origin, def->parms.axis );
+
+			// if the model bounds do not overlap with the trace bounds
+			if( !traceBounds.IntersectsBounds( bounds ) || !bounds.LineIntersection( start, trace.point ) )
+			{
+				continue;
+			}
+
+			// check all model surfaces
+			for( int j = 0; j < model->NumSurfaces(); j++ )
+			{
+				const modelSurface_t* surf = model->Surface( j );
+
+				const idMaterial* shader = R_RemapShaderBySkin( surf->shader, def->parms.customSkin, def->parms.customShader );
+
+				// if no geometry or no shader
+				if( surf->geometry == NULL || shader == NULL )
+				{
+					continue;
+				}
+
+#if 1 /* _D3XP addition. could use a cleaner approach */
+				if( skipPlayer )
+				{
+					bool exclude = false;
+					for( int k = 0; playerMaterialExcludeList[k] != NULL; k++ )
+					{
+						if( idStr::Cmp( shader->GetName(), playerMaterialExcludeList[k] ) == 0 )
+						{
+							exclude = true;
+							break;
+						}
+					}
+					if( exclude )
+					{
+						continue;
+					}
+				}
+#endif
+
+				const srfTriangles_t* tri = surf->geometry;
+
+				bounds.FromTransformedBounds( tri->bounds, def->parms.origin, def->parms.axis );
+
+				// if triangle bounds do not overlap with the trace bounds
+				if( !traceBounds.IntersectsBounds( bounds ) || !bounds.LineIntersection( start, trace.point ) )
+				{
+					continue;
+				}
+
+				numSurfaces++;
+
+				// transform the points into local space
+				float modelMatrix[16];
+				idVec3 localStart, localEnd;
+				R_AxisToModelMatrix( def->parms.axis, def->parms.origin, modelMatrix );
+				R_GlobalPointToLocal( modelMatrix, start, localStart );
+				R_GlobalPointToLocal( modelMatrix, end, localEnd );
+
+				localTrace_t localTrace = R_LocalTrace( localStart, localEnd, radius, surf->geometry );
+
+				if( localTrace.fraction < trace.fraction )
+				{
+					trace.fraction = localTrace.fraction;
+					R_LocalPointToGlobal( modelMatrix, localTrace.point, trace.point );
+					trace.normal = localTrace.normal * def->parms.axis;
+					trace.material = shader;
+					trace.entity = &def->parms;
+					trace.jointNumber = model->NearestJoint( j, localTrace.indexes[0], localTrace.indexes[1], localTrace.indexes[2] );
+
+					traceBounds.Clear();
+					traceBounds.AddPoint( start );
+					traceBounds.AddPoint( start + trace.fraction * ( end - start ) );
+				}
+			}
+		}
+	}
+	return ( trace.fraction < 1.0f );
 }
 
 bool ztechRenderWorld::FastWorldTrace(modelTrace_t& trace, const idVec3& start, const idVec3& end) const {

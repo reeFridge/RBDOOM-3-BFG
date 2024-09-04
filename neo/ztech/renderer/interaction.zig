@@ -129,7 +129,10 @@ pub const Interaction = extern struct {
         render_world.interaction_allocator.destroy(inter);
     }
 
-    pub fn allocAndLink(entity_def: *RenderEntityLocal, light_def: *RenderLightLocal) error{ OutOfMemory, NotInitialized }!*Interaction {
+    pub fn allocAndLink(
+        entity_def: *RenderEntityLocal,
+        light_def: *RenderLightLocal,
+    ) error{ OutOfMemory, NotInitialized }!*Interaction {
         var render_world = entity_def.world orelse return error.NotInitialized;
         var inter = try render_world.interaction_allocator.create();
 
@@ -172,7 +175,11 @@ pub const Interaction = extern struct {
         return inter;
     }
 
-    pub fn createStaticInteraction(inter: *Interaction, command_list: *nvrhi.ICommandList, surface_allocator: std.mem.Allocator) error{OutOfMemory}!void {
+    pub fn createStaticInteraction(
+        inter: *Interaction,
+        command_list: *nvrhi.ICommandList,
+        surface_allocator: std.mem.Allocator,
+    ) error{OutOfMemory}!void {
         const entity_def = inter.entityDef orelse return;
         const light_def = inter.lightDef orelse return;
 
@@ -201,13 +208,18 @@ pub const Interaction = extern struct {
         // create slots for each of the model's surfaces
         inter.numSurfaces = render_model.numSurfaces();
         const surfaces = try surface_allocator.alloc(SurfaceInteraction, @intCast(inter.numSurfaces));
-        //errdefer surface_allocator.free(surfaces);
         for (surfaces) |*surface| surface.* = std.mem.zeroes(SurfaceInteraction);
 
         inter.surfaces = surfaces.ptr;
 
         var interaction_generated = false;
-        defer if (!interaction_generated) inter.makeEmpty();
+        defer {
+            if (!interaction_generated) {
+                surface_allocator.free(surfaces);
+                inter.surfaces = null;
+                inter.makeEmpty();
+            }
+        }
 
         // check each surface in the model
 

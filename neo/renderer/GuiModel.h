@@ -56,8 +56,11 @@ public:
 	void		BeginFrame();
 
 	void		EmitToCurrentView( float modelMatrix[16], bool depthHack );
+
+	void		EmitToView( float modelMatrix[16], bool depthHack, viewDef_t* viewDef );
 	void		EmitFullScreen( Framebuffer* renderTarget = nullptr );
 	void		EmitSurfaces( float modelMatrix[16], float modelViewMatrix[16], bool depthHack, bool allowFullScreenStereoDepth, bool linkAsEntity );
+	void		EmitSurfacesToView( float modelMatrix[16], float modelViewMatrix[16], bool depthHack, bool allowFullScreenStereoDepth, bool linkAsEntity, viewDef_t* viewDef );
 
 	// RB
 	void		EmitImGui( ImDrawData* drawData );
