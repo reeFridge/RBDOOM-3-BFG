@@ -584,10 +584,11 @@ void idRenderWorldLocal::AddAreaToView( int areaNum, const portalStack_t* ps )
 
 extern "C" idScreenRect c_screenRectFromWinding(
 		const idWinding* w,
-		const float spaceModelMatrix[16]
+		const float spaceModelMatrix[16],
+		const viewDef_t* viewDef
 ) {
-	const float viewWidth = ( float ) tr.viewDef->viewport.x2 - ( float ) tr.viewDef->viewport.x1;
-	const float viewHeight = ( float ) tr.viewDef->viewport.y2 - ( float ) tr.viewDef->viewport.y1;
+	const float viewWidth = ( float ) viewDef->viewport.x2 - ( float ) viewDef->viewport.x1;
+	const float viewHeight = ( float ) viewDef->viewport.y2 - ( float ) viewDef->viewport.y1;
 
 	idScreenRect r;
 	r.Clear();
@@ -596,7 +597,7 @@ extern "C" idScreenRect c_screenRectFromWinding(
 		idVec3 v;
 		idVec3 ndc;
 		R_LocalPointToGlobal( spaceModelMatrix, ( *w )[i].ToVec3(), v );
-		R_GlobalToNormalizedDeviceCoordinates( v, ndc );
+		R_GlobalToNormalizedDeviceCoordinates2( v, ndc, viewDef );
 
 		float windowX = ( ndc[0] * 0.5f + 0.5f ) * viewWidth;
 		float windowY = ( ndc[1] * 0.5f + 0.5f ) * viewHeight;

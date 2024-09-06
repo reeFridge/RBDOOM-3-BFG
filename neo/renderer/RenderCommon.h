@@ -1053,7 +1053,7 @@ public:
 	bool					omitSwapBuffers;
 };
 
-
+#define USE_ZTECH_RENDER_BACKEND
 #define USE_ZTECH_RENDER_SYSTEM
 #define USE_ZTECH_RENDER_WORLD
 

@@ -36,8 +36,8 @@ struct external_entity_handle_t {
 	uint32_t id;
 };
 
-#define USE_ZTECH_GAME
-#define USE_ZTECH
+//#define USE_ZTECH_GAME
+//#define USE_ZTECH
 
 #include "sys/sys_defines.h"
 #include "sys/sys_builddefines.h"

@@ -38,7 +38,6 @@ If you have questions concerning this license or the applicable additional terms
 #include <sys/DeviceManager.h>
 extern DeviceManager* deviceManager;
 
-#define USE_ZTECH_RENDER_BACKEND
 #ifndef USE_ZTECH_RENDER_BACKEND
 idRenderBackend backend_;
 #endif

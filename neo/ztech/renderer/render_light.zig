@@ -175,7 +175,7 @@ pub const RenderLightLocal = extern struct {
             const area = light_ref.area orelse continue;
             var opt_portal = area.portals;
             while (opt_portal) |portal| : (opt_portal = portal.next) {
-                var dp = portal.doublePortal orelse continue;
+                var dp = portal.doublePortal;
 
                 // we only handle a single fog volume covering a portal
                 // this will never cause incorrect drawing, but it may

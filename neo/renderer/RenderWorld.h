@@ -505,6 +505,7 @@ size_t ztech_renderWorld_numAreas(RenderWorldOpaque*);
 size_t ztech_renderWorld_numPortalsInArea(RenderWorldOpaque*, size_t);
 size_t ztech_renderWorld_getPortalsCount(RenderWorldOpaque*);
 int ztech_renderWorld_pointInArea(RenderWorldOpaque*, const idVec3*);
+int ztech_renderWorld_checkAreaForPortalSky(RenderWorldOpaque*, int);
 bool ztech_renderWorld_areasAreConnected(RenderWorldOpaque*, int, int, portalConnection_t);
 idBounds ztech_renderWorld_areaBounds(RenderWorldOpaque*, int);
 int ztech_renderWorld_findPortal(RenderWorldOpaque*, idBounds);

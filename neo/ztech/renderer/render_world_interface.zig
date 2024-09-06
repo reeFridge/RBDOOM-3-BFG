@@ -14,6 +14,13 @@ const RenderSystem = @import("render_system.zig");
 
 pub const RenderWorldOpaque = opaque {};
 
+export fn ztech_renderWorld_checkAreaForPortalSky(rw: *RenderWorldOpaque, index: c_int) callconv(.C) bool {
+    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
+    std.debug.assert(index >= 0);
+
+    return render_world.checkAreaForPortalSky(@intCast(index));
+}
+
 export fn ztech_renderWorld_getPortalArea(rw: *RenderWorldOpaque, index: c_int) callconv(.C) ?*PortalArea {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 

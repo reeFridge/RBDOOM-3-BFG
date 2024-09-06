@@ -103,7 +103,7 @@ pub const Portal = extern struct {
     plane: Plane,
     // next portal of the area
     next: ?*Portal,
-    doublePortal: ?*DoublePortal,
+    doublePortal: *DoublePortal,
 };
 
 pub const ExitPortal = extern struct {
@@ -684,7 +684,15 @@ fn findClosestEnvironmentProbes(_: RenderWorld, view_def: *ViewDef) void {
     // TODO: continue
 }
 
+/// If we need to render another view to complete the current view,
+/// generate it first.
+/// It is important to do this after all drawSurfs for the current
+/// view have been generated, because it may create a subview which
+/// would change tr.viewCount.
 fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
+    const skip_subviews = false;
+    if (skip_subviews) return;
+
     for (draw_surfs) |surf_ptr| {
         const surf_material = surf_ptr.material orelse continue;
         if (!surf_material.hasSubview()) continue;
@@ -784,7 +792,11 @@ pub fn findViewLightsAndEntities(render_world: *RenderWorld, frustum_planes: []P
             ps.numPortalPlanes = 5;
             ps.rect = view_def.scissor;
 
-            render_world.addAreaToView(@intCast(view_def.areaNum), &ps);
+            const portal_areas = render_world.portal_areas orelse unreachable;
+            render_world.addAreaToView(
+                portal_areas[@intCast(view_def.areaNum)],
+                &ps,
+            );
         }
     } else {
         render_world.flowViewThroughPortals(
@@ -810,6 +822,7 @@ fn flowViewThroughPortals(
 ) void {
     std.debug.assert(planes.len <= MAX_PORTAL_PLANES);
     const view_def = RenderSystem.instance.getView() orelse return;
+    const portal_areas = render_world.portal_areas orelse return;
 
     var ps = std.mem.zeroes(PortalStack);
     ps.next = null;
@@ -823,25 +836,35 @@ fn flowViewThroughPortals(
     ps.rect = view_def.scissor;
 
     if (view_def.areaNum < 0) {
-        for (render_world.area_screen_rect.?, 0..) |*rect, i| {
-            rect.* = view_def.scissor;
-            render_world.addAreaToView(i, &ps);
+        if (render_world.area_screen_rect) |screen_rects| {
+            for (screen_rects, 0..) |*rect, i| {
+                rect.* = view_def.scissor;
+                addAreaToView(&portal_areas[i], &ps);
+            }
         }
     } else {
-        render_world.floodViewThroughArea_r(origin, @intCast(view_def.areaNum), &ps);
+        render_world.floodViewThroughArea_r(
+            view_def,
+            origin,
+            @intCast(view_def.areaNum),
+            &ps,
+        );
     }
 }
 
-extern fn c_screenRectFromWinding(*const CWinding, [*]const f32) callconv(.C) ScreenRect;
+extern fn c_screenRectFromWinding(*const CWinding, [*]const f32, *const ViewDef) callconv(.C) ScreenRect;
 
 fn floodViewThroughArea_r(
     render_world: *RenderWorld,
+    view_def: *const ViewDef,
     origin: Vec3(f32),
     area_num: usize,
     ps: *const PortalStack,
 ) void {
-    const area = &render_world.portal_areas.?[area_num];
-    render_world.addAreaToView(area_num, ps);
+    const portal_areas = render_world.portal_areas orelse return;
+    const area = &portal_areas[area_num];
+
+    addAreaToView(area, ps);
 
     if (render_world.area_screen_rect) |rects| {
         if (rects[area_num].isEmpty()) {
@@ -853,7 +876,7 @@ fn floodViewThroughArea_r(
 
     var opt_portal: ?*Portal = area.portals;
     while (opt_portal) |portal| : (opt_portal = portal.next) {
-        if ((portal.doublePortal.?.blockingBits & PS_BLOCK_VIEW) > 0)
+        if ((portal.doublePortal.blockingBits & PS_BLOCK_VIEW) > 0)
             continue;
 
         const d = portal.plane.distance(origin);
@@ -871,7 +894,12 @@ fn floodViewThroughArea_r(
             var new_ps = ps.*;
             new_ps.p = portal;
             new_ps.next = ps;
-            render_world.floodViewThroughArea_r(origin, @intCast(portal.intoArea), &new_ps);
+            render_world.floodViewThroughArea_r(
+                view_def,
+                origin,
+                @intCast(portal.intoArea),
+                &new_ps,
+            );
             continue;
         }
 
@@ -889,6 +917,7 @@ fn floodViewThroughArea_r(
         new_ps.rect = c_screenRectFromWinding(
             @ptrCast(&w),
             (&RenderSystem.instance.identity_space).ptr,
+            view_def,
         );
         new_ps.rect.intersect(ps.rect);
 
@@ -900,12 +929,13 @@ fn floodViewThroughArea_r(
         new_ps.numPortalPlanes = 0;
 
         for (0..add_planes) |i| {
-            const j = if (i + 1 == @as(usize, @intCast(w.numPoints))) 0 else i + 1;
+            const num_points: usize = @intCast(w.numPoints);
+            const j = if (i + 1 == num_points) 0 else i + 1;
 
             const v1 = origin.subtract(w.p[i].toVec3().toVec3f());
             const v2 = origin.subtract(w.p[j].toVec3().toVec3f());
             var portal_plane = &new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)];
-            portal_plane.setNormal(Vec3(f32).cross(v1, v2));
+            portal_plane.setNormal(Vec3(f32).cross(v2, v1));
 
             if (portal_plane.normalize(true) < 0.01) continue;
 
@@ -916,37 +946,39 @@ fn floodViewThroughArea_r(
         new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)] = portal.plane;
         new_ps.numPortalPlanes += 1;
 
-        render_world.floodViewThroughArea_r(origin, @intCast(portal.intoArea), &new_ps);
+        render_world.floodViewThroughArea_r(
+            view_def,
+            origin,
+            @intCast(portal.intoArea),
+            &new_ps,
+        );
     }
 }
 
 fn portalIsFoggedOut(_: RenderWorld, portal: Portal) bool {
-    _ = portal.doublePortal.?.fogLight orelse return false;
+    _ = portal.doublePortal.fogLight orelse return false;
 
     // TODO: convert
     return false;
 }
 
 fn addAreaToView(
-    render_world: *RenderWorld,
-    area_num: usize,
+    area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    render_world.portal_areas.?[area_num].viewCount = @intCast(RenderSystem.instance.viewCount());
+    area.viewCount = @intCast(RenderSystem.instance.viewCount());
 
-    render_world.addAreaViewEntities(area_num, ps);
-    render_world.addAreaViewLights(area_num, ps);
-    render_world.addAreaViewEnvprobes(area_num, ps);
+    addAreaViewEntities(area, ps);
+    addAreaViewLights(area, ps);
+    addAreaViewEnvprobes(area, ps);
 }
 
 extern fn c_cullEntityByPortals(*const RenderMatrix, *const PortalStack) callconv(.C) bool;
 
 fn addAreaViewEntities(
-    render_world: *RenderWorld,
-    area_num: usize,
+    area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    const area = &render_world.portal_areas.?[area_num];
     var opt_ref: ?*AreaReference = area.entityRefs.areaNext;
     while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
         if (ref == &area.entityRefs) break;
@@ -1007,11 +1039,9 @@ fn setEntityDefViewEntity(def: *RenderEntityLocal) *ViewEntity {
 extern fn c_cullLightByPortals(*const RenderMatrix, *const RenderMatrix, *const PortalStack) callconv(.C) bool;
 
 fn addAreaViewLights(
-    render_world: *RenderWorld,
-    area_num: usize,
+    area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    const area = &render_world.portal_areas.?[area_num];
     var opt_ref: ?*AreaReference = area.lightRefs.areaNext;
     while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
         if (ref == &area.lightRefs) break;
@@ -1045,11 +1075,9 @@ fn setLightDefViewLight(light: *RenderLightLocal) *ViewLight {
 }
 
 fn addAreaViewEnvprobes(
-    render_world: *RenderWorld,
-    area_num: usize,
+    area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    const area = &render_world.portal_areas.?[area_num];
     var opt_ref: ?*AreaReference = area.envprobeRefs.areaNext;
     while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
         if (ref == &area.envprobeRefs) break;
@@ -1093,24 +1121,41 @@ fn buildConnectedAreas(render_world: *RenderWorld, view_def: *ViewDef) void {
         return;
     }
 
-    render_world.buildConnectedAreas_r(view_def, view_def.areaNum);
+    const portal_areas = render_world.portal_areas orelse return;
+    buildConnectedAreas_r(portal_areas, connected_areas, @intCast(view_def.areaNum));
 }
 
 const PS_BLOCK_VIEW: c_int = 1;
 
-fn buildConnectedAreas_r(render_world: *RenderWorld, view_def: *ViewDef, area_num: c_int) void {
-    const connected_state = &view_def.connectedAreas.?[@intCast(area_num)];
+fn buildConnectedAreas_r(
+    portal_areas: []PortalArea,
+    connected_areas: []bool,
+    area_num: usize,
+) void {
+    if (connected_areas[area_num]) return;
+    connected_areas[area_num] = true;
 
-    if (connected_state.*) return;
-
-    connected_state.* = true;
-
-    var opt_portal: ?*Portal = render_world.portal_areas.?[@intCast(area_num)].portals;
+    var opt_portal: ?*Portal = portal_areas[area_num].portals;
     while (opt_portal) |portal| : (opt_portal = portal.next) {
-        if ((portal.doublePortal.?.blockingBits & PS_BLOCK_VIEW) == 0) {
-            render_world.buildConnectedAreas_r(view_def, portal.intoArea);
+        if ((portal.doublePortal.blockingBits & PS_BLOCK_VIEW) == 0) {
+            buildConnectedAreas_r(portal_areas, connected_areas, @intCast(portal.intoArea));
         }
     }
+}
+
+pub fn checkAreaForPortalSky(render_world: *RenderWorld, area_num: usize) bool {
+    const portal_areas = render_world.portal_areas orelse return false;
+    std.debug.assert(area_num < portal_areas.len);
+
+    var opt_ref = portal_areas[area_num].entityRefs.areaNext;
+    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
+        const ref_entity = ref.entity orelse break;
+        std.debug.assert(ref.area == &portal_areas[area_num]);
+
+        if (ref_entity.needsPortalSky) return true;
+    }
+
+    return false;
 }
 
 pub fn updateEntityDef(
@@ -1390,7 +1435,7 @@ pub fn getPortal(render_world: RenderWorld, area_num: usize, portal_num: usize) 
             ret.areas[1] = portal.intoArea;
             ret.w = portal.w;
 
-            const double_portal = portal.doublePortal orelse return error.NoDoublePortal;
+            const double_portal = portal.doublePortal;
             ret.blockingBits = double_portal.blockingBits;
             for (double_portals, 0..) |*double_portal_ptr, i| {
                 if (double_portal_ptr == double_portal) {
@@ -2097,15 +2142,13 @@ fn floodConnectedAreas(
 
     var opt_portal: ?*Portal = area.portals;
     while (opt_portal) |portal| : (opt_portal = portal.next) {
-        if (portal.doublePortal) |double_portal| {
-            const attribute_mask = @as(c_int, 1) << @intCast(portal_attribute_index);
-            if ((double_portal.blockingBits & attribute_mask) == 0) {
-                render_world.floodConnectedAreas(
-                    portal_areas,
-                    &portal_areas[@intCast(portal.intoArea)],
-                    portal_attribute_index,
-                );
-            }
+        const attribute_mask = @as(c_int, 1) << @intCast(portal_attribute_index);
+        if ((portal.doublePortal.blockingBits & attribute_mask) == 0) {
+            render_world.floodConnectedAreas(
+                portal_areas,
+                &portal_areas[@intCast(portal.intoArea)],
+                portal_attribute_index,
+            );
         }
     }
 }
@@ -2256,27 +2299,39 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
         for (0..num_points) |j| {
             const vec = @as([*]f32, @ptrCast(&w.p[j]))[0..3];
             try lexer.parse1DMatrix(vec);
+
+            w.p[j].s = 0;
+            w.p[j].t = 0;
         }
 
-        const p1 = try render_world.allocator.create(Portal);
-        errdefer render_world.allocator.destroy(p1);
-        p1.intoArea = @intCast(a2);
-        p1.doublePortal = &double_portals[i];
-        p1.w = w;
-        p1.plane = w.getPlane();
-        p1.next = portal_areas[a1].portals;
-        portal_areas[a1].portals = p1;
-        double_portals[i].portals[0] = p1;
+        {
+            const portal = try render_world.allocator.create(Portal);
+            errdefer render_world.allocator.destroy(portal);
+            portal.* = .{
+                .intoArea = @intCast(a2),
+                .doublePortal = &double_portals[i],
+                .w = w,
+                .plane = w.getPlane(),
+                .next = portal_areas[a1].portals,
+            };
+            portal_areas[a1].portals = portal;
+            double_portals[i].portals[0] = portal;
+        }
 
-        const p2 = try render_world.allocator.create(Portal);
-        errdefer render_world.allocator.destroy(p2);
-        p2.intoArea = @intCast(a1);
-        p2.doublePortal = &double_portals[i];
-        p2.w = w.reverse();
-        p2.plane = w.getPlane();
-        p2.next = portal_areas[a2].portals;
-        portal_areas[a2].portals = p2;
-        double_portals[i].portals[1] = p2;
+        {
+            const w_reversed = w.reverse();
+            const portal = try render_world.allocator.create(Portal);
+            errdefer render_world.allocator.destroy(portal);
+            portal.* = .{
+                .intoArea = @intCast(a1),
+                .doublePortal = &double_portals[i],
+                .w = w_reversed,
+                .plane = w_reversed.getPlane(),
+                .next = portal_areas[a2].portals,
+            };
+            portal_areas[a2].portals = portal;
+            double_portals[i].portals[1] = portal;
+        }
     }
 
     try lexer.expectTokenString("}");

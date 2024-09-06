@@ -2705,8 +2705,7 @@ const renderEnvironmentProbe_t* ztechRenderWorld::GetRenderEnvprobe(qhandle_t en
 }
 
 bool ztechRenderWorld::CheckAreaForPortalSky(int areaNum) {
-	common->Printf("ztechRenderWorld::CheckAreaForPortalSky: method not implemented\n");
-	return false;
+	return ztech_renderWorld_checkAreaForPortalSky(game_ztechRenderWorld, areaNum);
 }
 
 void ztechRenderWorld::GenerateAllInteractions() {

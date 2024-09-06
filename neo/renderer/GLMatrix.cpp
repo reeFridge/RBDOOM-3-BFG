@@ -242,7 +242,7 @@ void R_GlobalToNormalizedDeviceCoordinates( const idVec3& global, idVec3& ndc )
 	ndc[2] = clip[2] * invW;		// NOTE: in D3D this is in the range [0,1]
 }
 
-void R_GlobalToNormalizedDeviceCoordinates2( const idVec3& global, idVec3& ndc, viewDef_t* viewDef_ )
+void R_GlobalToNormalizedDeviceCoordinates2( const idVec3& global, idVec3& ndc, const viewDef_t* viewDef_ )
 {
 	idPlane	view;
 	idPlane	clip;
