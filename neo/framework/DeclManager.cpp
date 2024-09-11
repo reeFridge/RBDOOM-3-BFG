@@ -1827,10 +1827,6 @@ void idDeclManagerLocal::WritePrecacheCommands( idFile* f )
 	}
 }
 
-extern "C" const idMaterial* c_declManager_findMaterial(uint8_t const * const name, bool makeDefault) {
-	return declManager->FindMaterial((const char*)name, makeDefault);
-}
-
 /********************************************************************/
 
 const idMaterial* idDeclManagerLocal::FindMaterial( const char* name, bool makeDefault )
@@ -4941,4 +4937,16 @@ idDeclLocal::EverReferenced
 bool idDeclLocal::EverReferenced() const
 {
 	return everReferenced;
+}
+
+extern "C" {
+
+const idMaterial* c_declManager_findMaterial(idDeclManagerLocal* manager, uint8_t const * const name, bool makeDefault) {
+	return manager->FindMaterial((const char*)name, makeDefault);
+}
+
+const idDecl* c_declManager_findType(idDeclManagerLocal* manager, declType_t type, uint8_t const * const name, bool makeDefault) {
+	return manager->FindType(type, (const char*)name, makeDefault);
+}
+
 }

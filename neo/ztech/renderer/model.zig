@@ -337,6 +337,11 @@ pub const RenderModel = opaque {
     extern fn c_renderModel_isDefaultModel(*const RenderModel) callconv(.C) bool;
     extern fn c_renderModel_isStaticWorldModel(*const RenderModel) callconv(.C) bool;
     extern fn c_renderModel_isDynamicModel(*const RenderModel) callconv(.C) c_int;
+    extern fn c_renderModel_reset(*RenderModel) void;
+
+    pub fn reset(model: *RenderModel) void {
+        c_renderModel_reset(model);
+    }
 
     pub fn initEmpty(name: []const u8) !*RenderModel {
         const ptr = RenderModelManager.instance.allocModel();

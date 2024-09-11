@@ -1,5 +1,5 @@
 const Physics = @import("../../physics/physics.zig").Physics;
-const Impact = @import("../../types.zig").Impact;
+const Impact = @import("../../entity_types/moveable_object.zig").Impact;
 
 pub const Query = struct {
     physics: Physics,

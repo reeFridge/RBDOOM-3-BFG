@@ -14,6 +14,7 @@ const ViewEntity = @import("common.zig").ViewEntity;
 const RenderSystem = @import("render_system.zig");
 const RenderModelManager = @import("render_model_manager.zig");
 const RenderView = @import("render_world.zig").RenderView;
+const JointMat = @import("../anim/animator.zig").JointMat;
 
 pub const MAX_ENTITY_SHADER_PARMS: usize = 12;
 pub const MAX_RENDERENTITY_GUI: usize = 3;
@@ -87,7 +88,7 @@ pub const RenderEntity = extern struct {
     numJoints: c_int = 0,
     // array of joints that will modify vertices.
     // NULL if non-deformable model.  NOT freed by renderer
-    joints: ?*anyopaque = null,
+    joints: ?[*]align(16) JointMat = null,
 
     // squash depth range so particle effects don't clip into walls
     modelDepthHack: bool = false,

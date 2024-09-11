@@ -352,7 +352,7 @@ private:
 	void						CopyDecl( const idDeclModelDef* decl );
 	bool						ParseAnim( idLexer& src, int numDefaultAnims, const idStr& defaultCommands );
 
-private:
+public:
 	idVec3						offset;
 	idList<jointInfo_t, TAG_ANIM>			joints;
 	idList<int, TAG_ANIM>					jointParents;
@@ -372,7 +372,7 @@ private:
 
 class idAnimBlend
 {
-private:
+public:
 	const class idDeclModelDef*	modelDef;
 	int							starttime;
 	int							endtime;

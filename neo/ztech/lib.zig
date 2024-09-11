@@ -4,7 +4,9 @@ const Game = @import("game.zig");
 const global = @import("global.zig");
 const CVec3 = @import("math/vector.zig").CVec3;
 const CMat3 = @import("math/matrix.zig").CMat3;
-const types = @import("types.zig");
+const entity_types = @import("entity_types/index.zig");
+const PlayerSpawn = @import("entity_types/player_spawn.zig");
+const Player = @import("entity_types/player.zig");
 const RenderSystem = @import("renderer/render_system.zig");
 
 usingnamespace @import("renderer/model_interface.zig");
@@ -63,11 +65,11 @@ extern fn c_copy_dict_to_zig(*anyopaque, *const fn ([*c]const u8, [*c]const u8) 
 export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
     std.debug.print("Spawn Player: {d}\n", .{client_num});
 
-    const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
+    const spots = global.entities.getByType(PlayerSpawn).field_storage.items(.transform);
 
     if (spots.len == 0) return false;
 
-    _ = global.entities.register(types.Player.init(@intCast(client_num), spots[0])) catch |err| {
+    _ = global.entities.register(Player.init(@intCast(client_num), spots[0])) catch |err| {
         std.debug.print("[error] {?}\n", .{err});
         return false;
     };
@@ -78,11 +80,11 @@ export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
 const pvs = @import("pvs.zig");
 
 export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) callconv(.C) bool {
-    const len = global.entities.getByType(types.Player).field_storage.len;
+    const len = global.entities.getByType(Player).field_storage.len;
 
     if (len == 0) return false;
 
-    const handle = global.Entities.EntityHandle.fromType(types.Player, 0);
+    const handle = global.Entities.EntityHandle.fromType(Player, 0);
     c_handle.* = .{
         .id = handle.id,
         .type = @intFromEnum(handle.type),
@@ -94,7 +96,7 @@ export fn ztech_getPlayerHandle(c_handle: *global.Entities.ExternEntityHandle) c
 const RenderView = @import("renderer/render_world.zig").RenderView;
 
 export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C) bool {
-    const spots = global.entities.getByType(types.PlayerSpawn).field_storage.items(.transform);
+    const spots = global.entities.getByType(PlayerSpawn).field_storage.items(.transform);
 
     if (spots.len == 0) return false;
 

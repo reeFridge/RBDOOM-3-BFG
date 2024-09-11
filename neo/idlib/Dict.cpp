@@ -468,6 +468,12 @@ extern "C" idVec3 c_parseVector(uint8_t const * const s) {
 	return res;
 }
 
+extern "C" idAngles c_parseAngles(uint8_t const * const s) {
+	idAngles res;
+	sscanf( (const char*)s, "%f %f %f", &res.pitch, &res.yaw, &res.roll );
+	return res;
+}
+
 extern "C" idMat3 c_parseMatrix(uint8_t const * const s) {
 	idMat3 res;
 

@@ -44,6 +44,11 @@ pub const unit_cube: Bounds = .{
     .max = Vec3(f32).fromScalar(1),
 };
 
+pub const cleared: Bounds = .{
+    .min = Vec3(f32).fromScalar(std.math.floatMax(f32)),
+    .max = Vec3(f32).fromScalar(std.math.floatMin(f32)),
+};
+
 pub fn clear(bounds: *Bounds) void {
     bounds.min = Vec3(f32).fromScalar(std.math.floatMax(f32));
     bounds.max = Vec3(f32).fromScalar(std.math.floatMin(f32));

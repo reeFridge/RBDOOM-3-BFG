@@ -1,6 +1,6 @@
 const Physics = @import("../../physics/physics.zig").Physics;
 const ClipModel = @import("../../physics/clip_model.zig").ClipModel;
-const Contacts = @import("../../types.zig").Contacts;
+const Contacts = @import("../../entity_types/moveable_object.zig").Contacts;
 
 pub const Query = struct {
     physics: Physics,

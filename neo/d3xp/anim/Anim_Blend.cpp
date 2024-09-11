@@ -3960,6 +3960,61 @@ const idVec3& idDeclModelDef::GetVisualOffset() const
 	return offset;
 }
 
+extern "C" {
+
+void c_animator_printAnims(const idDeclModelDef* decl) {
+	for(int i = 0; i < decl->anims.Num(); i++ )
+	{
+		common->Printf("[%d] %s\n", i, decl->anims[i]->FullName());
+	}
+}
+
+bool c_declModelDef_hasAnim(const idDeclModelDef* decl, int index) {
+	return decl->GetAnim(index) != NULL;
+}
+
+idRenderModel* c_declModelDef_modelHandle(const idDeclModelDef* decl) {
+	return decl->ModelHandle();
+}
+
+void c_declModelDef_touch(const idDeclModelDef* decl) {
+	decl->Touch();
+}
+
+const idJointQuat* c_declModelDef_getDefaultPose(const idDeclModelDef* decl, uintptr_t* len)
+{
+	*len = static_cast<uintptr_t>(decl->NumJoints());
+	return decl->GetDefaultPose();
+}
+
+const idList<jointInfo_t, TAG_ANIM>* c_declModelDef_getJointsList(const idDeclModelDef* decl) {
+	return &decl->joints;
+}
+
+bool c_animBlend_blendAnim(idAnimBlend* blend, int currentTime, int channel, int numJoints, idJointQuat* blendFrame, float* blendWeight, bool removeOriginOffset, bool overrideBlend, bool printInfo) {
+	return blend->BlendAnim(currentTime, channel, numJoints, blendFrame, *blendWeight, removeOriginOffset, overrideBlend, printInfo);
+}
+
+void c_animBlend_playAnim(idAnimBlend* blend, const idDeclModelDef* modelDef, int _animNum, int currentTime, int blendTime) {
+	blend->PlayAnim(modelDef, _animNum, currentTime, blendTime);
+}
+
+void c_animBlend_cycleAnim(idAnimBlend* blend, const idDeclModelDef* modelDef, int _animNum, int currentTime, int blendTime) {
+	blend->CycleAnim(modelDef, _animNum, currentTime, blendTime);
+}
+
+idVec3 c_declModelDef_getVisualOffset(const idDeclModelDef* decl) {
+	return decl->GetVisualOffset();
+}
+
+const int* c_declModelDef_jointParents(const idDeclModelDef* decl, uintptr_t* len)
+{
+	*len = static_cast<uintptr_t>(decl->jointParents.Num());
+	return decl->JointParents();
+}
+
+}
+
 #endif // #if !defined( DMAP )
 
 /***********************************************************************

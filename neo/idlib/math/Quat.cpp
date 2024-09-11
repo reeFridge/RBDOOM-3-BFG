@@ -336,3 +336,11 @@ idQuat Slerp( const idQuat& from, const idQuat& to, const float t )
 {
 	return idQuat().Slerp( from, to, t );
 }
+
+extern "C" {
+
+void c_quat_slerp(idQuat* q, idQuat from, idQuat to, float t) {
+	q->Slerp(from, to, t);
+}
+
+}

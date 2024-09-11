@@ -63,6 +63,10 @@ extern "C" void c_renderModel_free(idRenderModel* model) {
 	delete model;
 }
 
+extern "C" void c_renderModel_reset(idRenderModel* model) {
+	model->Reset();
+}
+
 extern "C" int c_renderModel_numSurfaces(const idRenderModel* model) {
 	return model->NumSurfaces();
 }

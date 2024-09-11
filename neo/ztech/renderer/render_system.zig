@@ -7,6 +7,7 @@ const ParallelJobList = @import("parallel_job_list.zig").ParallelJobList;
 const VertexCache = @import("vertex_cache.zig");
 const DrawSurface = @import("common.zig").DrawSurface;
 const ResolutionScale = @import("resolution_scale.zig");
+const DeclManager = @import("../framework/decl_manager.zig");
 
 pub const VENDOR_NVIDIA: c_int = 0;
 pub const VENDOR_AMD: c_int = 1;
@@ -533,13 +534,13 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
     Framebuffer.init();
 
     // init materials
-    render_system.default_material = global.DeclManager.findMaterial("_default") orelse
+    render_system.default_material = DeclManager.instance.findMaterial("_default") orelse
         @panic("Default Material not found!");
-    render_system.default_point_light = global.DeclManager.findMaterialDefault("lights/defaultPointLight");
-    render_system.default_projected_light = global.DeclManager.findMaterialDefault("lights/defaultProjectedLight");
-    render_system.white_material = global.DeclManager.findMaterial("_white");
-    render_system.char_set_material = global.DeclManager.findMaterial("textures/bigchars");
-    render_system.imgui_material = global.DeclManager.findMaterialDefault("_imguiFont");
+    render_system.default_point_light = DeclManager.instance.findMaterialDefault("lights/defaultPointLight");
+    render_system.default_projected_light = DeclManager.instance.findMaterialDefault("lights/defaultProjectedLight");
+    render_system.white_material = DeclManager.instance.findMaterial("_white");
+    render_system.char_set_material = DeclManager.instance.findMaterial("textures/bigchars");
+    render_system.imgui_material = DeclManager.instance.findMaterialDefault("_imguiFont");
 
     c_renderSystem_initImgui(render_system.imgui_material);
 

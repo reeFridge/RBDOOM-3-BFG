@@ -2,6 +2,20 @@ const std = @import("std");
 const Mat3 = @import("matrix.zig").Mat3;
 const math = @import("math.zig");
 
+pub const CAngles = extern struct {
+    pitch: f32,
+    yaw: f32,
+    roll: f32,
+
+    pub fn toAngles(angles: CAngles) Angles {
+        return .{
+            .pitch = angles.pitch,
+            .yaw = angles.yaw,
+            .roll = angles.roll,
+        };
+    }
+};
+
 const Angles = @This();
 
 pitch: f32 = 0,

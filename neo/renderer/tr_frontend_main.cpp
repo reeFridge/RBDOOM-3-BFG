@@ -654,12 +654,6 @@ void R_RenderView( viewDef_t* parms )
 	// for all the the entityDefs and lightDefs that are in the visible portal areas
 	static_cast<idRenderWorldLocal*>( parms->renderWorld )->FindViewLightsAndEntities();
 
-	int count = 0;
-	for( viewEntity_t* vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next ) {
-		count += 1;
-	}
-	common->Printf("[FindViewLightsAndEntities] ents count: %d\n", count);
-
 	// wait for any shadow volume jobs from the previous frame to finish
 	tr.frontEndJobList->Wait();
 

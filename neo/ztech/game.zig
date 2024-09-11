@@ -2,7 +2,7 @@ const std = @import("std");
 const RenderWorld = @import("renderer/render_world.zig");
 const RenderSystem = @import("renderer/render_system.zig");
 const global = @import("global.zig");
-const types = @import("types.zig");
+const Player = @import("entity_types/player.zig");
 const idlib = @import("idlib.zig");
 
 pub const DeclEntityDef = extern struct {
@@ -59,7 +59,7 @@ pub var instance: Game = .{};
 
 pub fn draw(game: *Game) bool {
     const render_world = game.render_world orelse return false;
-    const players = global.entities.getByType(types.Player).field_storage;
+    const players = global.entities.getByType(Player).field_storage;
     if (players.len == 0) return false;
 
     const player_view = &players.items(.view)[0];
@@ -88,7 +88,7 @@ pub fn runFrame(game: *Game) void {
     game.frame += 1;
     game.time = frameToMsec(game.frame);
 
-    const players = global.entities.getByType(types.Player).field_storage;
+    const players = global.entities.getByType(Player).field_storage;
     if (players.len > 0) {
         // set render_view for current render_world
         const player_view = &players.items(.view)[0];
@@ -102,7 +102,7 @@ pub fn runFrame(game: *Game) void {
     game.freePlayerPvs();
 }
 
-fn setupPlayerPvs(game: *Game, player_areas: *types.PVSAreas) void {
+fn setupPlayerPvs(game: *Game, player_areas: *Player.PVSAreas) void {
     game.player_pvs = c_getClientPvs(&player_areas.ids, player_areas.len);
     game.player_connected_areas = c_getClientPvs(&player_areas.ids, player_areas.len);
 }
@@ -126,6 +126,7 @@ const UpdatePhysicsClip = @import("update/physics/clip.zig");
 const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
 const UpdatePhysicsImpact = @import("update/physics/impact.zig");
 const UpdatePhysicsTransform = @import("update/physics/transform.zig");
+const UpdateAnimation = @import("update/animation.zig");
 
 fn processEntities(game: *Game) void {
     if (!game.new_frame) return;
@@ -134,12 +135,14 @@ fn processEntities(game: *Game) void {
 
     ents.process(UpdatePlayer.handleInput);
     ents.process(UpdatePlayer.updateTransformByInput);
-    ents.processWithQuery(types.Player, UpdatePlayer.update);
+    ents.processWithQuery(Player, UpdatePlayer.update);
 
     ents.processWithQuery(UpdatePhysicsClip.Query, UpdatePhysicsClip.update);
     ents.processWithQuery(UpdatePhysicsContacts.Query, UpdatePhysicsContacts.update);
     ents.processWithQuery(UpdatePhysicsImpact.Query, UpdatePhysicsImpact.update);
     ents.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
+
+    ents.processWithQuery(UpdateAnimation.Query, UpdateAnimation.update);
 
     ents.process(UpdateRenderLight.fromTransform);
     ents.process(UpdateRenderLight.present);

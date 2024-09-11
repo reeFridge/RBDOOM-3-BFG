@@ -190,6 +190,7 @@ interaction_table_height: usize = 0,
 generate_all_interactions_called: bool = false,
 
 const global = @import("../global.zig");
+const DeclManager = @import("../framework/decl_manager.zig");
 const RenderEntity = @import("render_entity.zig").RenderEntity;
 const RenderLight = @import("render_light.zig").RenderLight;
 const RenderEnvironmentProbe = @import("render_envprobe.zig").RenderEnvironmentProbe;
@@ -2437,7 +2438,7 @@ inline fn createModelSurface(
     surface_triangles.numVerts = @intCast(num_vertices);
     surface_triangles.numIndexes = @intCast(indices.len);
 
-    const opt_material_ptr = global.DeclManager.findMaterial(meterial_name);
+    const opt_material_ptr = DeclManager.instance.findMaterial(meterial_name);
     if (opt_material_ptr) |material_ptr| material_ptr.addReference();
 
     const surface: model.ModelSurface = .{

@@ -36,6 +36,18 @@ pub const CVec3 = extern struct {
     pub fn toVec3f(cvec: CVec3) Vec3f {
         return .{ .v = .{ cvec.x, cvec.y, cvec.z } };
     }
+
+    pub fn lerp(v: *CVec3, v1: CVec3, v2: CVec3, l: f32) void {
+        if (l <= 0) {
+            v.* = v1;
+        } else if (l >= 1) {
+            v.* = v2;
+        } else {
+            const v1f = v1.toVec3f();
+            const v2f = v2.toVec3f();
+            v.* = CVec3.fromVec3f(v1f.add(v2f.subtract(v1f).scale(l)));
+        }
+    }
 };
 
 pub const CVec4 = extern struct {
