@@ -9,6 +9,8 @@ const common = @import("common.zig");
 const RenderEntity = @import("../renderer/render_entity.zig").RenderEntity;
 const Physics = @import("../physics/physics.zig").Physics;
 const ClipModel = @import("../physics/clip_model.zig").ClipModel;
+const global = @import("../global.zig");
+const EntityHandle = global.Entities.EntityHandle;
 
 pub const Impact = struct {
     apply: bool = false,
@@ -65,7 +67,7 @@ pub fn spawn(
     allocator: std.mem.Allocator,
     spawn_args: SpawnArgs,
     c_dict_ptr: ?*anyopaque,
-) !MoveableObject {
+) !EntityHandle {
     var c_render_entity = RenderEntity{};
     if (c_dict_ptr) |ptr| {
         c_render_entity.initFromSpawnArgs(ptr);
@@ -81,7 +83,7 @@ pub fn spawn(
 
     const transform = .{ .origin = c_render_entity.origin.toVec3f() };
 
-    return .{
+    return try global.entities.register(MoveableObject{
         .transform = transform,
         .render_entity = c_render_entity,
         .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
@@ -94,5 +96,5 @@ pub fn spawn(
         .clip_model = clip_model,
         .contacts = Contacts.init(allocator),
         .impact = .{},
-    };
+    });
 }

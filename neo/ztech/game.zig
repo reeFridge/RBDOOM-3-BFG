@@ -127,6 +127,8 @@ const UpdatePhysicsContacts = @import("update/physics/contacts.zig");
 const UpdatePhysicsImpact = @import("update/physics/impact.zig");
 const UpdatePhysicsTransform = @import("update/physics/transform.zig");
 const UpdateAnimation = @import("update/animation.zig");
+const UpdateBoundedJointTransform = @import("update/joint_bounded.zig");
+const CopyJointsToChild = @import("update/copy_joints.zig");
 
 fn processEntities(game: *Game) void {
     if (!game.new_frame) return;
@@ -143,6 +145,8 @@ fn processEntities(game: *Game) void {
     ents.processWithQuery(UpdatePhysicsTransform.Query, UpdatePhysicsTransform.update);
 
     ents.processWithQuery(UpdateAnimation.Query, UpdateAnimation.update);
+    ents.processWithQuery(UpdateBoundedJointTransform.Query, UpdateBoundedJointTransform.update);
+    ents.processWithQuery(CopyJointsToChild.Query, CopyJointsToChild.update);
 
     ents.process(UpdateRenderLight.fromTransform);
     ents.process(UpdateRenderLight.present);

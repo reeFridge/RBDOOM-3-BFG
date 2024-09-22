@@ -5,6 +5,8 @@ const Transform = @import("../physics/physics.zig").Transform;
 const RenderLight = @import("../renderer/render_light.zig").RenderLight;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
+const global = @import("../global.zig");
+const EntityHandle = global.Entities.EntityHandle;
 
 const Light = @This();
 
@@ -12,7 +14,7 @@ transform: Transform,
 light_def_handle: c_int = -1,
 render_light: RenderLight,
 
-pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !Light {
+pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !EntityHandle {
     var c_render_light = std.mem.zeroes(RenderLight);
     if (c_dict_ptr) |ptr| {
         c_render_light.initFromSpawnArgs(ptr);
@@ -28,8 +30,8 @@ pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaqu
     else
         Mat3(f32).identity();
 
-    return .{
+    return try global.entities.register(Light{
         .transform = .{ .origin = origin, .axis = rotation },
         .render_light = c_render_light,
-    };
+    });
 }

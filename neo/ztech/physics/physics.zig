@@ -14,7 +14,7 @@ pub const ImpactInfo = extern struct {
 };
 
 pub const Transform = struct {
-    origin: Vec3(f32),
+    origin: Vec3(f32) = .{},
     axis: Mat3(f32) = Mat3(f32).identity(),
 };
 

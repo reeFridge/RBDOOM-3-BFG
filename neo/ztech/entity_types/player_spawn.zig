@@ -5,6 +5,8 @@ const Transform = @import("../physics/physics.zig").Transform;
 const game = @import("../game.zig");
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
+const global = @import("../global.zig");
+const EntityHandle = global.Entities.EntityHandle;
 
 const PlayerSpawn = @This();
 
@@ -15,7 +17,7 @@ pub fn spawn(
     _: std.mem.Allocator,
     spawn_args: SpawnArgs,
     _: ?*anyopaque,
-) !PlayerSpawn {
+) !EntityHandle {
     const classname = spawn_args.get("classname") orelse return error.EntityDefIsUndefined;
     const decl = game.c_findEntityDef(classname.ptr) orelse return error.EntityDefIsUndefined;
 
@@ -29,11 +31,11 @@ pub fn spawn(
     else
         Mat3(f32).identity();
 
-    return .{
+    return try global.entities.register(PlayerSpawn{
         .def = common.EntityDef{ .index = decl.index() },
         .transform = .{
             .axis = rotation,
             .origin = origin,
         },
-    };
+    });
 }

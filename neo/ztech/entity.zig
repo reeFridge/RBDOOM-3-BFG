@@ -3,6 +3,30 @@ const std = @import("std");
 pub const EntityId = u32;
 pub const SpawnArgs = std.StringHashMap([]const u8);
 
+pub fn findEntryMatchedPrefix(
+    spawn_args: *const SpawnArgs,
+    prefix: []const u8,
+    last_index: *?usize,
+) ?SpawnArgs.Entry {
+    var iterator = spawn_args.iterator();
+
+    var index: usize = 0;
+    while (iterator.next()) |entry| : (index += 1) {
+        if (last_index.*) |last| {
+            if (index <= last) continue;
+        }
+
+        if (entry.key_ptr.*.len < prefix.len) continue;
+
+        if (std.mem.eql(u8, entry.key_ptr.*[0..prefix.len], prefix)) {
+            last_index.* = index;
+            return entry;
+        }
+    }
+
+    return null;
+}
+
 pub inline fn assertFields(comptime Required: type, comptime T: type) bool {
     inline for (std.meta.fields(Required)) |field_info| {
         if (std.meta.fieldIndex(T, field_info.name)) |field_index| {
@@ -320,21 +344,15 @@ pub fn Entities(comptime archetypes: anytype) type {
         pub fn spawn(self: *@This(), type_name: []const u8, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !EntityHandle {
             const info = @typeInfo(U).Union;
 
-            inline for (info.fields, 0..) |field_info, i| {
+            inline for (info.fields) |field_info| {
                 if (std.mem.eql(u8, type_name, field_info.name)) {
                     const Archetype = field_info.type.Type;
                     if (!std.meta.hasMethod(Archetype, "spawn")) return EntityError.NoSpawnMethod;
-                    const entities = self.getByType(Archetype);
-
-                    const id = try entities.add(try Archetype.spawn(self.allocator, spawn_args, c_dict_ptr));
-                    const handle: EntityHandle = .{
-                        .id = id,
-                        .type = @as(E, @enumFromInt(i)),
-                    };
-
-                    entities.initFields(handle);
-
-                    return handle;
+                    return try Archetype.spawn(
+                        self.allocator,
+                        spawn_args,
+                        c_dict_ptr,
+                    );
                 }
             }
 

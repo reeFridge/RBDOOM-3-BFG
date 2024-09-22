@@ -5,6 +5,7 @@ const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 const Material = @import("material.zig").Material;
 const RenderModelManager = @import("render_model_manager.zig");
+const JointHandle = @import("../anim/animator.zig").JointHandle;
 
 pub const DeformInfo = extern struct {
     numSourceVerts: c_int,
@@ -338,6 +339,12 @@ pub const RenderModel = opaque {
     extern fn c_renderModel_isStaticWorldModel(*const RenderModel) callconv(.C) bool;
     extern fn c_renderModel_isDynamicModel(*const RenderModel) callconv(.C) c_int;
     extern fn c_renderModel_reset(*RenderModel) void;
+    extern fn c_renderModel_getJointHandle(*const RenderModel, [*]const u8) JointHandle;
+
+    pub fn getJointHandle(model: *const RenderModel, joint_name: []const u8) ?JointHandle {
+        const joint_handle = c_renderModel_getJointHandle(model, joint_name.ptr);
+        return if (joint_handle == -1) null else joint_handle;
+    }
 
     pub fn reset(model: *RenderModel) void {
         c_renderModel_reset(model);

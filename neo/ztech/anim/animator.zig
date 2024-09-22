@@ -1,11 +1,14 @@
 const std = @import("std");
 const CMat3 = @import("../math/matrix.zig").CMat3;
+const Mat3 = @import("../math/matrix.zig").Mat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
+const Vec3 = @import("../math/vector.zig").Vec3;
 const Quat = @import("../math/quat.zig").Quat;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const idList = @import("../idlib.zig").idList;
 const RenderModel = @import("../renderer/model.zig").RenderModel;
 const DeclManager = @import("../framework/decl_manager.zig");
+const Transform = @import("../physics/physics.zig").Transform;
 
 const num_anim_channels: usize = 5;
 const max_anims_per_channel: usize = 3;
@@ -209,6 +212,82 @@ pub const JointMat = extern struct {
         j.mat[2 * 4 + 3] = t.z;
     }
 
+    pub fn divideJoint(j: *JointMat, a: JointMat) void {
+        var tmp = std.mem.zeroes([3]f32);
+
+        j.mat[0 * 4 + 3] -= a.mat[0 * 4 + 3];
+        j.mat[1 * 4 + 3] -= a.mat[1 * 4 + 3];
+        j.mat[2 * 4 + 3] -= a.mat[2 * 4 + 3];
+
+        tmp[0] =
+            j.mat[0 * 4 + 0] * a.mat[0 * 4 + 0] +
+            j.mat[1 * 4 + 0] * a.mat[1 * 4 + 0] +
+            j.mat[2 * 4 + 0] * a.mat[2 * 4 + 0];
+        tmp[1] =
+            j.mat[0 * 4 + 0] * a.mat[0 * 4 + 1] +
+            j.mat[1 * 4 + 0] * a.mat[1 * 4 + 1] +
+            j.mat[2 * 4 + 0] * a.mat[2 * 4 + 1];
+        tmp[2] =
+            j.mat[0 * 4 + 0] * a.mat[0 * 4 + 2] +
+            j.mat[1 * 4 + 0] * a.mat[1 * 4 + 2] +
+            j.mat[2 * 4 + 0] * a.mat[2 * 4 + 2];
+
+        j.mat[0 * 4 + 0] = tmp[0];
+        j.mat[1 * 4 + 0] = tmp[1];
+        j.mat[2 * 4 + 0] = tmp[2];
+
+        tmp[0] =
+            j.mat[0 * 4 + 1] * a.mat[0 * 4 + 0] +
+            j.mat[1 * 4 + 1] * a.mat[1 * 4 + 0] +
+            j.mat[2 * 4 + 1] * a.mat[2 * 4 + 0];
+        tmp[1] =
+            j.mat[0 * 4 + 1] * a.mat[0 * 4 + 1] +
+            j.mat[1 * 4 + 1] * a.mat[1 * 4 + 1] +
+            j.mat[2 * 4 + 1] * a.mat[2 * 4 + 1];
+        tmp[2] =
+            j.mat[0 * 4 + 1] * a.mat[0 * 4 + 2] +
+            j.mat[1 * 4 + 1] * a.mat[1 * 4 + 2] +
+            j.mat[2 * 4 + 1] * a.mat[2 * 4 + 2];
+
+        j.mat[0 * 4 + 1] = tmp[0];
+        j.mat[1 * 4 + 1] = tmp[1];
+        j.mat[2 * 4 + 1] = tmp[2];
+
+        tmp[0] =
+            j.mat[0 * 4 + 2] * a.mat[0 * 4 + 0] +
+            j.mat[1 * 4 + 2] * a.mat[1 * 4 + 0] +
+            j.mat[2 * 4 + 2] * a.mat[2 * 4 + 0];
+        tmp[1] =
+            j.mat[0 * 4 + 2] * a.mat[0 * 4 + 1] +
+            j.mat[1 * 4 + 2] * a.mat[1 * 4 + 1] +
+            j.mat[2 * 4 + 2] * a.mat[2 * 4 + 1];
+        tmp[2] =
+            j.mat[0 * 4 + 2] * a.mat[0 * 4 + 2] +
+            j.mat[1 * 4 + 2] * a.mat[1 * 4 + 2] +
+            j.mat[2 * 4 + 2] * a.mat[2 * 4 + 2];
+
+        j.mat[0 * 4 + 2] = tmp[0];
+        j.mat[1 * 4 + 2] = tmp[1];
+        j.mat[2 * 4 + 2] = tmp[2];
+
+        tmp[0] =
+            j.mat[0 * 4 + 3] * a.mat[0 * 4 + 0] +
+            j.mat[1 * 4 + 3] * a.mat[1 * 4 + 0] +
+            j.mat[2 * 4 + 3] * a.mat[2 * 4 + 0];
+        tmp[1] =
+            j.mat[0 * 4 + 3] * a.mat[0 * 4 + 1] +
+            j.mat[1 * 4 + 3] * a.mat[1 * 4 + 1] +
+            j.mat[2 * 4 + 3] * a.mat[2 * 4 + 1];
+        tmp[2] =
+            j.mat[0 * 4 + 3] * a.mat[0 * 4 + 2] +
+            j.mat[1 * 4 + 3] * a.mat[1 * 4 + 2] +
+            j.mat[2 * 4 + 3] * a.mat[2 * 4 + 2];
+
+        j.mat[0 * 4 + 3] = tmp[0];
+        j.mat[1 * 4 + 3] = tmp[1];
+        j.mat[2 * 4 + 3] = tmp[2];
+    }
+
     pub fn multiplyJoint(j: *JointMat, a: JointMat) void {
         var tmp = std.mem.zeroes([3]f32);
 
@@ -294,7 +373,7 @@ const JointInfo = extern struct {
 
 const DeclModelDef = opaque {
     extern fn c_declModelDef_getDefaultPose(*const DeclModelDef, *usize) ?[*]const JointQuat;
-    extern fn c_declModelDef_getJointsList(*const DeclModelDef) *const idList(JointInfo);
+    extern fn c_declModelDef_getJointsList(*const DeclModelDef) *idList(JointInfo);
     extern fn c_declModelDef_getVisualOffset(*const DeclModelDef) CVec3;
     extern fn c_declModelDef_jointParents(*const DeclModelDef, *usize) [*]const c_int;
     extern fn c_declModelDef_modelHandle(*const DeclModelDef) ?*RenderModel;
@@ -320,7 +399,7 @@ const DeclModelDef = opaque {
         return if (opt_ptr) |ptr| ptr[0..joints_len] else null;
     }
 
-    pub fn joints(def: *const DeclModelDef) *const idList(JointInfo) {
+    pub fn joints(def: *const DeclModelDef) *idList(JointInfo) {
         return c_declModelDef_getJointsList(def);
     }
 
@@ -335,10 +414,10 @@ const DeclModelDef = opaque {
     }
 };
 
-const JointHandle = c_int;
+pub const JointHandle = c_int;
 
-const JointMod = extern struct {
-    const JointModTransform = enum(c_int) {
+pub const JointMod = extern struct {
+    pub const JointModTransform = enum(c_int) {
         none,
         local,
         local_override,
@@ -384,6 +463,9 @@ pub fn init(allocator: std.mem.Allocator) Animator {
 
 fn freeData(animator: *Animator) void {
     animator.resetChannels();
+    for (animator.joint_mods.items) |ptr| {
+        animator.allocator.destroy(ptr);
+    }
     animator.joint_mods.clearAndFree();
 
     if (animator.joints) |joints| {
@@ -538,6 +620,149 @@ pub fn printAnims(animator: *const Animator) void {
     if (animator.model_def) |model_def| {
         c_animator_printAnims(model_def);
     }
+}
+
+pub fn getJointHandle(animator: *const Animator, joint_name: []const u8) ?JointHandle {
+    const model_def = animator.model_def orelse return null;
+    const render_model: *RenderModel = model_def.modelHandle() orelse return null;
+
+    return render_model.getJointHandle(joint_name);
+}
+
+pub fn setJointPos(
+    animator: *Animator,
+    joint_handle: JointHandle,
+    transform_type: JointMod.JointModTransform,
+    pos: Vec3(f32),
+) error{OutOfMemory}!void {
+    const model_def = animator.model_def orelse return;
+    if (joint_handle >= model_def.joints().num) {
+        return;
+    }
+
+    var opt_joint_mod: ?*JointMod = null;
+    var i: usize = 0;
+    for (animator.joint_mods.items) |joint_mod_ptr| {
+        if (joint_mod_ptr.jointnum == joint_handle) {
+            opt_joint_mod = joint_mod_ptr;
+            break;
+        } else if (joint_mod_ptr.jointnum > joint_handle) {
+            break;
+        }
+
+        i += 1;
+    }
+
+    var joint_mod = opt_joint_mod orelse joint_mod: {
+        var mod = try animator.allocator.create(JointMod);
+        errdefer animator.allocator.destroy(mod);
+        mod.jointnum = joint_handle;
+        mod.mat = CMat3{};
+        mod.transform_axis = .none;
+
+        try animator.joint_mods.resize(animator.joint_mods.items.len);
+        try animator.joint_mods.insert(i, mod);
+
+        break :joint_mod mod;
+    };
+
+    joint_mod.pos = CVec3.fromVec3f(pos);
+    joint_mod.transform_pos = transform_type;
+}
+
+pub fn setJointAxis(
+    animator: *Animator,
+    joint_handle: JointHandle,
+    transform_type: JointMod.JointModTransform,
+    axis: Mat3(f32),
+) error{OutOfMemory}!void {
+    const model_def = animator.model_def orelse return;
+    if (joint_handle >= model_def.joints().num) {
+        return;
+    }
+
+    var opt_joint_mod: ?*JointMod = null;
+    var i: usize = 0;
+    for (animator.joint_mods.items) |joint_mod_ptr| {
+        if (joint_mod_ptr.jointnum == joint_handle) {
+            opt_joint_mod = joint_mod_ptr;
+            break;
+        } else if (joint_mod_ptr.jointnum > joint_handle) {
+            break;
+        }
+
+        i += 1;
+    }
+
+    var joint_mod = opt_joint_mod orelse joint_mod: {
+        var mod = try animator.allocator.create(JointMod);
+        errdefer animator.allocator.destroy(mod);
+        mod.jointnum = joint_handle;
+        mod.pos = CVec3{};
+        mod.transform_pos = .none;
+
+        try animator.joint_mods.resize(animator.joint_mods.items.len);
+        try animator.joint_mods.insert(i, mod);
+
+        break :joint_mod mod;
+    };
+
+    joint_mod.mat = CMat3.fromMat3f(axis);
+    joint_mod.transform_axis = transform_type;
+}
+
+pub fn getJointLocalTransform(
+    animator: *Animator,
+    joint_handle: JointHandle,
+    current_time: usize,
+) error{OutOfMemory}!?Transform {
+    const model_def = animator.model_def orelse return null;
+    if (joint_handle >= model_def.joints().num) {
+        return null;
+    }
+
+    _ = try animator.createFrame(current_time);
+    const joints = animator.joints orelse return null;
+
+    var transform = Transform{};
+    // @fridge TODO
+    // RB: long neck GCC compiler bug workaround from dhewm3 ...
+    if (joint_handle == 0) {
+        transform.origin = joints[@intCast(joint_handle)].toVec3().toVec3f();
+        transform.axis = joints[@intCast(joint_handle)].toMat3().toMat3f();
+
+        return transform;
+    }
+
+    var m = joints[@intCast(joint_handle)];
+    const model_joints = model_def.joints().slice();
+    const parent_handle = model_joints[@intCast(joint_handle)].parentNum;
+    m.divideJoint(joints[@intCast(parent_handle)]);
+    transform.origin = m.toVec3().toVec3f();
+    transform.axis = m.toMat3().toMat3f();
+
+    return transform;
+}
+
+/// Transform relative to master
+pub fn getJointTransform(
+    animator: *Animator,
+    joint_handle: JointHandle,
+    current_time: usize,
+) error{OutOfMemory}!?Transform {
+    const model_def = animator.model_def orelse return null;
+    if (joint_handle >= model_def.joints().num) {
+        return null;
+    }
+
+    _ = try animator.createFrame(current_time);
+    const joints = animator.joints orelse return null;
+
+    var transform = Transform{};
+    transform.origin = joints[@intCast(joint_handle)].toVec3().toVec3f();
+    transform.axis = joints[@intCast(joint_handle)].toMat3().toMat3f();
+
+    return transform;
 }
 
 pub fn createFrame(
@@ -757,7 +982,8 @@ fn transformJoints(
     first: usize,
     last: usize,
 ) void {
-    for (first..last + 1) |i| {
+    var i = first;
+    while (i <= last) : (i += 1) {
         std.debug.assert(parents[i] < i);
         joint_mats[i].multiplyJoint(joint_mats[@intCast(parents[i])]);
     }

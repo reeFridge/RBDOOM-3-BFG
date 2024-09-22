@@ -6,6 +6,8 @@ const RenderEntity = @import("../renderer/render_entity.zig").RenderEntity;
 const ClipModel = @import("../physics/clip_model.zig").ClipModel;
 const SpawnArgs = @import("../entity.zig").SpawnArgs;
 const PhysicsStatic = @import("../physics/static.zig");
+const global = @import("../global.zig");
+const EntityHandle = global.Entities.EntityHandle;
 
 const StaticObject = @This();
 
@@ -17,7 +19,11 @@ model_def_handle: c_int = -1,
 physics: Physics,
 clip_model: ClipModel,
 
-pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !StaticObject {
+pub fn spawn(
+    _: std.mem.Allocator,
+    spawn_args: SpawnArgs,
+    c_dict_ptr: ?*anyopaque,
+) !EntityHandle {
     var c_render_entity = RenderEntity{};
     if (c_dict_ptr) |ptr| {
         c_render_entity.initFromSpawnArgs(ptr);
@@ -34,7 +40,7 @@ pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaqu
         .origin = c_render_entity.origin.toVec3f(),
     };
 
-    return .{
+    return try global.entities.register(StaticObject{
         .transform = transform,
         .render_entity = c_render_entity,
         .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
@@ -42,5 +48,5 @@ pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaqu
             .static = PhysicsStatic.init(transform),
         },
         .clip_model = clip_model,
-    };
+    });
 }

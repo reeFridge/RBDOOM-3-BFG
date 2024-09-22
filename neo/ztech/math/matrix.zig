@@ -112,19 +112,22 @@ pub fn Mat3(comptime T: type) type {
         pub fn multiply(a: Self, b: Self) Self {
             var result = Self.identity();
             for (0..result.v.len) |row| {
-                const sum_x = a.v[row].x() * b.v[0].x() +
+                const sum_x =
+                    a.v[row].x() * b.v[0].x() +
                     a.v[row].y() * b.v[1].x() +
                     a.v[row].z() * b.v[2].x();
 
                 result.v[row].v[0] = sum_x;
 
-                const sum_y = a.v[row].x() * b.v[0].y() +
+                const sum_y =
+                    a.v[row].x() * b.v[0].y() +
                     a.v[row].y() * b.v[1].y() +
                     a.v[row].z() * b.v[2].y();
 
                 result.v[row].v[1] = sum_y;
 
-                const sum_z = a.v[row].x() * b.v[0].z() +
+                const sum_z =
+                    a.v[row].x() * b.v[0].z() +
                     a.v[row].y() * b.v[1].z() +
                     a.v[row].z() * b.v[2].z();
 
