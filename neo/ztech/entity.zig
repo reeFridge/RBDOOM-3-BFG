@@ -152,6 +152,12 @@ pub fn TypedEntities(comptime Archetype: type, comptime EntityHandle: type) type
             return @intCast(index);
         }
 
+        pub fn addUndefined(self: *@This()) error{OutOfMemory}!EntityId {
+            const index = try self.field_storage.addOne(self.allocator);
+
+            return @intCast(index);
+        }
+
         pub fn clear(self: *@This()) void {
             self.deinitFields();
             self.field_storage.shrinkAndFree(self.allocator, 0);
@@ -171,11 +177,6 @@ pub fn TypedEntities(comptime Archetype: type, comptime EntityHandle: type) type
                 if (std.meta.hasMethod(field_info.type, "component_init")) {
                     const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
                     field_slice[handle.id].component_init();
-                }
-
-                if (std.meta.hasMethod(field_info.type, "component_handleUpdate")) {
-                    const field_slice = slices.items(@as(StorageType.Field, @enumFromInt(field_index)));
-                    field_slice[handle.id].component_handleUpdate(handle);
                 }
             }
         }
@@ -341,18 +342,36 @@ pub fn Entities(comptime archetypes: anytype) type {
             };
         }
 
-        pub fn spawn(self: *@This(), type_name: []const u8, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !EntityHandle {
+        pub fn spawn(
+            self: *@This(),
+            type_name: []const u8,
+            spawn_args: SpawnArgs,
+            c_dict_ptr: ?*anyopaque,
+        ) anyerror!EntityHandle {
             const info = @typeInfo(U).Union;
 
             inline for (info.fields) |field_info| {
                 if (std.mem.eql(u8, type_name, field_info.name)) {
                     const Archetype = field_info.type.Type;
                     if (!std.meta.hasMethod(Archetype, "spawn")) return EntityError.NoSpawnMethod;
-                    return try Archetype.spawn(
+
+                    const entities = self.getByType(Archetype);
+                    const id = try entities.addUndefined();
+                    errdefer {
+                        _ = entities.field_storage.pop();
+                    }
+                    const handle = EntityHandle.fromType(Archetype, id);
+
+                    entities.field_storage.set(id, try Archetype.spawn(
+                        handle,
                         self.allocator,
                         spawn_args,
                         c_dict_ptr,
-                    );
+                    ));
+
+                    entities.initFields(handle);
+
+                    return handle;
                 }
             }
 

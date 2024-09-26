@@ -99,13 +99,6 @@ pub const ClipModel = extern struct {
         c_linkClipModelUpdated(self, self.id, CVec3.fromVec3f(origin), CMat3.fromMat3f(axis));
     }
 
-    pub fn component_handleUpdate(self: *ClipModel, handle: Entities.EntityHandle) void {
-        self.externalEntityHandle = .{
-            .type = @intFromEnum(handle.type),
-            .id = handle.id,
-        };
-    }
-
     pub fn component_init(self: *ClipModel) void {
         self.link();
     }

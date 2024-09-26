@@ -3973,6 +3973,10 @@ bool c_declModelDef_hasAnim(const idDeclModelDef* decl, int index) {
 	return decl->GetAnim(index) != NULL;
 }
 
+int c_declModelDef_getAnim(const idDeclModelDef* decl, uint8_t const * const name) {
+	return decl->GetAnim((const char*)name);
+}
+
 idRenderModel* c_declModelDef_modelHandle(const idDeclModelDef* decl) {
 	return decl->ModelHandle();
 }
@@ -4001,6 +4005,10 @@ void c_animBlend_playAnim(idAnimBlend* blend, const idDeclModelDef* modelDef, in
 
 void c_animBlend_cycleAnim(idAnimBlend* blend, const idDeclModelDef* modelDef, int _animNum, int currentTime, int blendTime) {
 	blend->CycleAnim(modelDef, _animNum, currentTime, blendTime);
+}
+
+void c_animBlend_setFrame(idAnimBlend* blend, const idDeclModelDef* modelDef, int _animNum, int frame, int currentTime, int blendTime) {
+	blend->SetFrame(modelDef, _animNum, frame, currentTime, blendTime);
 }
 
 idVec3 c_declModelDef_getVisualOffset(const idDeclModelDef* decl) {

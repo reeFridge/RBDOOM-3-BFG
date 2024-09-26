@@ -15,6 +15,7 @@ const max_anims_per_channel: usize = 3;
 const max_synced_anims: usize = 3;
 
 pub const animchannel_all: usize = 0;
+pub const ik_anim: []const u8 = "ik_pose";
 
 const AnimBlend = extern struct {
     modelDef: ?*const DeclModelDef,
@@ -56,6 +57,15 @@ const AnimBlend = extern struct {
     extern fn c_animBlend_cycleAnim(
         *AnimBlend,
         *const DeclModelDef,
+        c_int,
+        c_int,
+        c_int,
+    ) void;
+
+    extern fn c_animBlend_setFrame(
+        *AnimBlend,
+        *const DeclModelDef,
+        c_int,
         c_int,
         c_int,
         c_int,
@@ -162,6 +172,24 @@ const AnimBlend = extern struct {
             blend,
             model_def,
             @intCast(anim_num),
+            @intCast(current_time),
+            @intCast(blend_time),
+        );
+    }
+
+    pub fn setFrame(
+        blend: *AnimBlend,
+        model_def: *const DeclModelDef,
+        anim_num: usize,
+        frame: usize,
+        current_time: usize,
+        blend_time: usize,
+    ) void {
+        c_animBlend_setFrame(
+            blend,
+            model_def,
+            @intCast(anim_num),
+            @intCast(frame),
             @intCast(current_time),
             @intCast(blend_time),
         );
@@ -379,6 +407,11 @@ const DeclModelDef = opaque {
     extern fn c_declModelDef_modelHandle(*const DeclModelDef) ?*RenderModel;
     extern fn c_declModelDef_touch(*const DeclModelDef) void;
     extern fn c_declModelDef_hasAnim(*const DeclModelDef, c_int) bool;
+    extern fn c_declModelDef_getAnim(*const DeclModelDef, [*]const u8) c_int;
+
+    pub fn getAnim(def: *const DeclModelDef, name: []const u8) usize {
+        return @intCast(c_declModelDef_getAnim(def, name.ptr));
+    }
 
     pub fn hasAnim(def: *const DeclModelDef, index: usize) bool {
         return c_declModelDef_hasAnim(def, @intCast(index));
@@ -543,6 +576,62 @@ pub fn deinit(animator: *Animator) void {
     animator.joint_mods.deinit();
     animator.af_pose_joint_frame.deinit();
     animator.af_pose_joints.deinit();
+}
+
+pub fn getAnim(animator: *const Animator, name: []const u8) usize {
+    const model_def = animator.model_def orelse return 0;
+
+    return model_def.getAnim(name);
+}
+
+pub fn clearAllAnims(
+    animator: *Animator,
+    current_time: usize,
+    clear_time: usize,
+) void {
+    for (0..num_anim_channels) |i| {
+        animator.clearChannel(i, current_time, clear_time);
+    }
+
+    // TODO: clearAFPose();
+}
+
+pub fn clearChannel(
+    animator: *Animator,
+    channel_num: usize,
+    current_time: usize,
+    clear_time: usize,
+) void {
+    for (0..max_anims_per_channel) |i| {
+        animator.channels[channel_num][i].clear(current_time, clear_time);
+    }
+}
+
+pub fn setFrame(
+    animator: *Animator,
+    channel_num: usize,
+    anim_num: usize,
+    frame: usize,
+    current_time: usize,
+    blend_time: usize,
+) void {
+    const model_def = animator.model_def orelse return;
+    const has_anim = model_def.hasAnim(anim_num);
+    if (!has_anim) return;
+
+    animator.pushAnims(
+        model_def,
+        channel_num,
+        current_time,
+        blend_time,
+    );
+    animator.channels[channel_num][0].setFrame(
+        model_def,
+        anim_num,
+        frame,
+        current_time,
+        blend_time,
+    );
 }
 
 pub fn playAnim(
@@ -714,14 +803,12 @@ pub fn setJointAxis(
 pub fn getJointLocalTransform(
     animator: *Animator,
     joint_handle: JointHandle,
-    current_time: usize,
-) error{OutOfMemory}!?Transform {
+) ?Transform {
     const model_def = animator.model_def orelse return null;
     if (joint_handle >= model_def.joints().num) {
         return null;
     }
 
-    _ = try animator.createFrame(current_time);
     const joints = animator.joints orelse return null;
 
     var transform = Transform{};
@@ -748,14 +835,12 @@ pub fn getJointLocalTransform(
 pub fn getJointTransform(
     animator: *Animator,
     joint_handle: JointHandle,
-    current_time: usize,
-) error{OutOfMemory}!?Transform {
+) ?Transform {
     const model_def = animator.model_def orelse return null;
     if (joint_handle >= model_def.joints().num) {
         return null;
     }
 
-    _ = try animator.createFrame(current_time);
     const joints = animator.joints orelse return null;
 
     var transform = Transform{};
@@ -768,10 +853,11 @@ pub fn getJointTransform(
 pub fn createFrame(
     animator: *Animator,
     current_time: usize,
+    force_update: bool,
 ) error{OutOfMemory}!bool {
     const model_def = animator.model_def orelse return false;
 
-    if (animator.last_transform_time == current_time) return false;
+    if (!force_update and animator.last_transform_time == current_time) return false;
 
     animator.last_transform_time = current_time;
 

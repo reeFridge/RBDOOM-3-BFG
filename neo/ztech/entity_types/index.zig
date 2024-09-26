@@ -5,6 +5,8 @@ const Player = @import("player.zig");
 const Light = @import("light.zig");
 const Animated = @import("animated.zig");
 const AnimatedHead = @import("animated_head.zig");
+const AnimatedWithHead = @import("animated_with_head.zig");
+const AttachableItem = @import("attachable_item.zig");
 
 pub const ExportedTypes = .{
     StaticObject,
@@ -14,4 +16,6 @@ pub const ExportedTypes = .{
     Light,
     Animated,
     AnimatedHead,
+    AnimatedWithHead,
+    AttachableItem,
 };

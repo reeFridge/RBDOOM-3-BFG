@@ -39,7 +39,7 @@ export fn ztech_clearEntities() callconv(.C) void {
     std.debug.print("[ztech] clear: OK\n", .{});
 }
 
-const CopySpawnArgs = struct {
+pub const CopySpawnArgs = struct {
     var target: *entity.SpawnArgs = undefined;
     var dict_ptr: *anyopaque = undefined;
 
@@ -50,12 +50,12 @@ const CopySpawnArgs = struct {
         target.put(key, value) catch return;
     }
 
-    fn init(b: *anyopaque, a: *entity.SpawnArgs) void {
+    pub fn init(b: *anyopaque, a: *entity.SpawnArgs) void {
         CopySpawnArgs.target = a;
         CopySpawnArgs.dict_ptr = b;
     }
 
-    fn copy() void {
+    pub fn copy() void {
         c_copy_dict_to_zig(dict_ptr, CopySpawnArgs.putKeyValue);
     }
 };

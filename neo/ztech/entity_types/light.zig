@@ -14,7 +14,12 @@ transform: Transform,
 light_def_handle: c_int = -1,
 render_light: RenderLight,
 
-pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaque) !EntityHandle {
+pub fn spawn(
+    _: EntityHandle,
+    _: std.mem.Allocator,
+    spawn_args: SpawnArgs,
+    c_dict_ptr: ?*anyopaque,
+) !Light {
     var c_render_light = std.mem.zeroes(RenderLight);
     if (c_dict_ptr) |ptr| {
         c_render_light.initFromSpawnArgs(ptr);
@@ -30,8 +35,8 @@ pub fn spawn(_: std.mem.Allocator, spawn_args: SpawnArgs, c_dict_ptr: ?*anyopaqu
     else
         Mat3(f32).identity();
 
-    return try global.entities.register(Light{
+    return .{
         .transform = .{ .origin = origin, .axis = rotation },
         .render_light = c_render_light,
-    });
+    };
 }

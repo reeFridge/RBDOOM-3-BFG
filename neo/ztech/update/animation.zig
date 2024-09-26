@@ -9,6 +9,7 @@ pub fn update(list: anytype) void {
     var s = list.slice();
 
     for (s.items(.animator)) |*animator| {
-        _ = animator.createFrame(Game.instance.time) catch @panic("createFrame failed!");
+        const force_update = false;
+        _ = animator.createFrame(Game.instance.time, force_update) catch @panic("createFrame failed!");
     }
 }

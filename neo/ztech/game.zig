@@ -6,6 +6,7 @@ const Player = @import("entity_types/player.zig");
 const idlib = @import("idlib.zig");
 
 pub const DeclEntityDef = extern struct {
+    vptr: *anyopaque,
     base: *anyopaque,
     dict: idlib.idDict,
 

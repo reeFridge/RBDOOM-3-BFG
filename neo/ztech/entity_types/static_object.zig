@@ -20,10 +20,11 @@ physics: Physics,
 clip_model: ClipModel,
 
 pub fn spawn(
+    handle: EntityHandle,
     _: std.mem.Allocator,
     spawn_args: SpawnArgs,
     c_dict_ptr: ?*anyopaque,
-) !EntityHandle {
+) !StaticObject {
     var c_render_entity = RenderEntity{};
     if (c_dict_ptr) |ptr| {
         c_render_entity.initFromSpawnArgs(ptr);
@@ -35,12 +36,16 @@ pub fn spawn(
         return error.ClipModelIsUndefined;
 
     clip_model.origin = c_render_entity.origin;
+    clip_model.externalEntityHandle = .{
+        .type = @intFromEnum(handle.type),
+        .id = handle.id,
+    };
 
     const transform = .{
         .origin = c_render_entity.origin.toVec3f(),
     };
 
-    return try global.entities.register(StaticObject{
+    return .{
         .transform = transform,
         .render_entity = c_render_entity,
         .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
@@ -48,5 +53,5 @@ pub fn spawn(
             .static = PhysicsStatic.init(transform),
         },
         .clip_model = clip_model,
-    });
+    };
 }

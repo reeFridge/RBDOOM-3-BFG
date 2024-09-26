@@ -28,15 +28,18 @@ pub fn update(list: anytype) void {
             parent_link,
             struct { transform: Capture.value(Transform) },
         )) |result| {
-            const local_offset = bind_joint.toVec3().toVec3f();
-            const local_axis = bind_joint.toMat3().toMat3f();
+            const joint_offset = bind_joint.toVec3().toVec3f();
+            const joint_axis = bind_joint.toMat3().toMat3f();
 
             const parent_transform = result.transform;
-            const local_to_parent_axis = local_axis.multiply(parent_transform.axis);
-            const parent_offset = parent_transform.axis.multiplyVec3(local_offset);
+            const master_axis = joint_axis.multiply(parent_transform.axis);
+            const parent_offset = parent_transform.axis.multiplyVec3(joint_offset);
+            const master_origin = parent_transform.origin.add(parent_offset);
 
-            transform.origin = parent_transform.origin.add(parent_offset);
-            transform.axis = local_transform.axis.multiply(local_to_parent_axis);
+            transform.origin = master_origin.add(
+                master_axis.multiplyVec3(local_transform.origin),
+            );
+            transform.axis = local_transform.axis.multiply(master_axis);
         }
     }
 }

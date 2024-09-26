@@ -14,10 +14,11 @@ def: common.EntityDef,
 transform: Transform,
 
 pub fn spawn(
+    _: EntityHandle,
     _: std.mem.Allocator,
     spawn_args: SpawnArgs,
     _: ?*anyopaque,
-) !EntityHandle {
+) !PlayerSpawn {
     const classname = spawn_args.get("classname") orelse return error.EntityDefIsUndefined;
     const decl = game.c_findEntityDef(classname.ptr) orelse return error.EntityDefIsUndefined;
 
@@ -31,11 +32,11 @@ pub fn spawn(
     else
         Mat3(f32).identity();
 
-    return try global.entities.register(PlayerSpawn{
+    return .{
         .def = common.EntityDef{ .index = decl.index() },
         .transform = .{
             .axis = rotation,
             .origin = origin,
         },
-    });
+    };
 }
