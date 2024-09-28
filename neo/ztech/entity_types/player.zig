@@ -8,6 +8,7 @@ const Transform = @import("../physics/physics.zig").Transform;
 const Angles = @import("../math/angles.zig");
 const pvs = @import("../pvs.zig");
 const Bounds = @import("../bounding_volume/bounds.zig");
+const Game = @import("../game.zig");
 
 extern fn c_calculateRenderView(*RenderView, f32) void;
 
@@ -21,6 +22,8 @@ pub const View = struct {
         c_calculateRenderView(&self.render_view, self.fov);
         self.render_view.vieworg = CVec3.fromVec3f(self.origin);
         self.render_view.viewaxis = CMat3.fromMat3f(self.axis);
+        self.render_view.time[0] = @intCast(Game.instance.time);
+        self.render_view.time[1] = @intCast(Game.instance.time);
     }
 };
 

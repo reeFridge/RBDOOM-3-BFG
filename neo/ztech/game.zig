@@ -73,7 +73,7 @@ pub fn initFromMap(game: *Game, render_world: *RenderWorld) void {
     game.render_world = render_world;
 }
 
-const MS2SEC: f32 = 0.001;
+pub const MS2SEC: f32 = 0.001;
 // in seconds
 pub fn deltaTime(game: Game) f32 {
     return @as(f32, @floatFromInt(game.deltaTimeMs())) * MS2SEC;

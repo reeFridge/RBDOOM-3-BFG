@@ -415,6 +415,7 @@ pub fn Entities(comptime archetypes: anytype) type {
         }
 
         pub fn processWithQuery(self: *@This(), query: type, f: *const fn (anytype) void) void {
+            @setEvalBranchQuota(2000);
             const info = @typeInfo(U).Union;
 
             inline for (info.fields) |field_info| {
@@ -427,6 +428,7 @@ pub fn Entities(comptime archetypes: anytype) type {
         }
 
         pub fn process(self: *@This(), f: *const fn (type, anytype) void) void {
+            @setEvalBranchQuota(2000);
             const info = @typeInfo(U).Union;
 
             inline for (info.fields) |field_info| {

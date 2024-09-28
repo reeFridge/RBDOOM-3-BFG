@@ -183,14 +183,9 @@ If the model isn't dynamic, it returns the original.
 Returns the cached dynamic model if present, otherwise creates it.
 ===================
 */
-extern "C" int ztech_renderSystem_getFrameCount(void);
 idRenderModel* R_EntityDefDynamicModel( idRenderEntityLocal* def )
 {
-#ifdef USE_ZTECH_RENDER_SYSTEM
-	if( def->dynamicModelFrameCount == ztech_renderSystem_getFrameCount() )
-#else
 	if( def->dynamicModelFrameCount == tr.frameCount )
-#endif
 	{
 		return def->dynamicModel;
 	}
@@ -261,6 +256,91 @@ idRenderModel* R_EntityDefDynamicModel( idRenderEntityLocal* def )
 		idPlane eye, clip;
 		idVec3 ndc;
 		R_TransformModelToClip( def->parms.origin, tr.viewDef->worldSpace.modelViewMatrix, tr.viewDef->projectionMatrix, eye, clip );
+		R_TransformClipToDevice( clip, ndc );
+		def->parms.modelDepthHack = model->DepthHack() * ( 1.0f - ndc.z );
+	}
+	else
+	{
+		def->parms.modelDepthHack = 0.0f;
+	}
+
+	return def->dynamicModel;
+}
+
+extern "C" int ztech_renderSystem_getFrameCount(void);
+idRenderModel* R_EntityDefDynamicModel2( idRenderEntityLocal* def, viewDef_t* viewDef )
+{
+	if( def->dynamicModelFrameCount == ztech_renderSystem_getFrameCount() )
+	{
+		return def->dynamicModel;
+	}
+
+	// allow deferred entities to construct themselves
+	bool callbackUpdate;
+	if( def->parms.callback != NULL )
+	{
+		SCOPED_PROFILE_EVENT( "R_IssueEntityDefCallback" );
+		callbackUpdate = R_IssueEntityDefCallback( def );
+	}
+	else
+	{
+		callbackUpdate = false;
+	}
+
+	idRenderModel* model = def->parms.hModel;
+
+	if( model == NULL )
+	{
+		common->Error( "R_EntityDefDynamicModel: NULL model" );
+		return NULL;
+	}
+
+	if( model->IsDynamicModel() == DM_STATIC )
+	{
+		def->dynamicModel = NULL;
+		def->dynamicModelFrameCount = 0;
+		return model;
+	}
+
+	// continously animating models (particle systems, etc) will have their snapshot updated every single view
+	if( callbackUpdate || ( model->IsDynamicModel() == DM_CONTINUOUS && def->dynamicModelFrameCount != ztech_renderSystem_getFrameCount() ) )
+	{
+		R_ClearEntityDefDynamicModel( def );
+	}
+
+	// if we don't have a snapshot of the dynamic model, generate it now
+	if( def->dynamicModel == NULL )
+	{
+
+		SCOPED_PROFILE_EVENT( "InstantiateDynamicModel" );
+
+		// instantiate the snapshot of the dynamic model, possibly reusing memory from the cached snapshot
+		def->cachedDynamicModel = model->InstantiateDynamicModel( &def->parms, viewDef, def->cachedDynamicModel );
+
+		if( def->cachedDynamicModel != NULL && r_checkBounds.GetBool() )
+		{
+			idBounds b = def->cachedDynamicModel->Bounds();
+			if(	b[0][0] < def->localReferenceBounds[0][0] - CHECK_BOUNDS_EPSILON ||
+					b[0][1] < def->localReferenceBounds[0][1] - CHECK_BOUNDS_EPSILON ||
+					b[0][2] < def->localReferenceBounds[0][2] - CHECK_BOUNDS_EPSILON ||
+					b[1][0] > def->localReferenceBounds[1][0] + CHECK_BOUNDS_EPSILON ||
+					b[1][1] > def->localReferenceBounds[1][1] + CHECK_BOUNDS_EPSILON ||
+					b[1][2] > def->localReferenceBounds[1][2] + CHECK_BOUNDS_EPSILON )
+			{
+				common->Printf( "entity %i dynamic model exceeded reference bounds\n", def->index );
+			}
+		}
+
+		def->dynamicModel = def->cachedDynamicModel;
+		def->dynamicModelFrameCount = ztech_renderSystem_getFrameCount();
+	}
+
+	// set model depth hack value
+	if( def->dynamicModel != NULL && model->DepthHack() != 0.0f && viewDef != NULL )
+	{
+		idPlane eye, clip;
+		idVec3 ndc;
+		R_TransformModelToClip( def->parms.origin, viewDef->worldSpace.modelViewMatrix, viewDef->projectionMatrix, eye, clip );
 		R_TransformClipToDevice( clip, ndc );
 		def->parms.modelDepthHack = model->DepthHack() * ( 1.0f - ndc.z );
 	}
@@ -545,7 +625,7 @@ extern "C" void c_addSingleModel(void* render_world_ptr, viewEntity_t* vEntity, 
 	//---------------------------
 	// create a dynamic model if the geometry isn't static
 	//---------------------------
-	idRenderModel* model = R_EntityDefDynamicModel( entityDef );
+	idRenderModel* model = R_EntityDefDynamicModel2( entityDef, viewDef );
 	if( model == NULL || model->NumSurfaces() <= 0 )
 	{
 		return;

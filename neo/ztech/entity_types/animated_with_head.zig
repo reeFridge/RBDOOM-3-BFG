@@ -159,8 +159,8 @@ pub fn spawn(
             );
             const attach_axis = angle_offset.multiply(joint_world_transform.axis);
 
+            const master_origin = transform.origin.add(transform.axis.multiplyVec3(joint_transform.origin));
             const master_axis = joint_transform.axis.multiply(transform.axis);
-            const master_origin = transform.axis.multiplyVec3(joint_transform.origin).add(transform.origin);
 
             attach_ent.local_transform.origin = master_axis
                 .transpose()
