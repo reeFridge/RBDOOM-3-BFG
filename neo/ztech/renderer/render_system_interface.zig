@@ -26,10 +26,6 @@ export fn ztech_renderSystem_decGuiRecursionLevel() void {
     RenderSystem.instance.gui_recursion_level -= 1;
 }
 
-export fn ztech_renderSystem_getViewCount() callconv(.C) c_int {
-    return @intCast(RenderSystem.instance.view_count);
-}
-
 export fn ztech_renderSystem_drawStretchPicture(
     top_left: *const CVec4,
     top_right: *const CVec4,

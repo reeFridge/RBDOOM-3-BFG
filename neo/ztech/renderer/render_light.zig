@@ -95,6 +95,16 @@ pub const RenderLightLocal = extern struct {
         R_DeriveLightData(light);
     }
 
+    pub fn lightCastsShadows(light: *const RenderLightLocal) bool {
+        const light_shader_casts_shadows = if (light.lightShader) |light_shader|
+            light_shader.lightCastsShadows()
+        else
+            false;
+
+        return light.parms.forceShadows or
+            (!light.parms.noShadows and light_shader_casts_shadows);
+    }
+
     // Frees all references and lit surfaces from the light
     pub fn freeLightDerivedData(light: *RenderLightLocal) void {
         const world = light.world orelse return;

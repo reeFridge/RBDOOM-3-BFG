@@ -340,6 +340,16 @@ pub const RenderModel = opaque {
     extern fn c_renderModel_isDynamicModel(*const RenderModel) callconv(.C) c_int;
     extern fn c_renderModel_reset(*RenderModel) void;
     extern fn c_renderModel_getJointHandle(*const RenderModel, [*]const u8) JointHandle;
+    extern fn c_renderModel_modelHasShadowCastingSurfaces(*const RenderModel) bool;
+    extern fn c_renderModel_modelHasInteractingSurfaces(*const RenderModel) bool;
+
+    pub fn hasShadowCastingSurfaces(model: *const RenderModel) bool {
+        return c_renderModel_modelHasShadowCastingSurfaces(model);
+    }
+
+    pub fn hasInteractingSurfaces(model: *const RenderModel) bool {
+        return c_renderModel_modelHasInteractingSurfaces(model);
+    }
 
     pub fn getJointHandle(model: *const RenderModel, joint_name: []const u8) ?JointHandle {
         const joint_handle = c_renderModel_getJointHandle(model, joint_name.ptr);

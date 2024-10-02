@@ -49,6 +49,14 @@ static const unsigned int BRM_MAGIC = ( 'B' << 24 ) | ( 'R' << 16 ) | ( 'M' << 8
 
 extern "C" {
 
+bool c_renderModel_modelHasShadowCastingSurfaces(const idRenderModel* model) {
+	return model->ModelHasShadowCastingSurfaces();
+}
+
+bool c_renderModel_modelHasInteractingSurfaces(const idRenderModel* model) {
+	return model->ModelHasInteractingSurfaces();
+}
+
 void c_renderModel_initEmpty(idRenderModel* model, uint8_t const * const fileName ) {
 	model->InitEmpty((const char*)fileName);
 }

@@ -626,7 +626,7 @@ fn createInteractionLightSurfaceTriangles(
     return surface_triangles;
 }
 
-fn cullModelBoundsToLight(light: RenderLightLocal, local_bounds: Bounds, model_render_matrix: RenderMatrix) bool {
+pub fn cullModelBoundsToLight(light: RenderLightLocal, local_bounds: Bounds, model_render_matrix: RenderMatrix) bool {
     var model_light_project = light.baseLightProject.multiply(model_render_matrix);
 
     return model_light_project.cullBoundsToMVP(local_bounds, true);

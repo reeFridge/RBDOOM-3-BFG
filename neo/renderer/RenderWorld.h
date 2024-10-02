@@ -485,7 +485,6 @@ void ztech_renderWorld_generateAllInteractions(RenderWorldOpaque*);
 
 size_t ztech_renderWorld_getEntityDefsCount(RenderWorldOpaque*const);
 idInteraction *ztech_renderWorld_getInteractionEntry(RenderWorldOpaque*const, size_t const, size_t const);
-idInteraction **ztech_renderWorld_getInteractionRow(RenderWorldOpaque*const, size_t const);
 
 int ztech_renderWorld_addEntityDef(RenderWorldOpaque*, const renderEntity_t*);
 void ztech_renderWorld_updateEntityDef(RenderWorldOpaque*, int, const renderEntity_t*);

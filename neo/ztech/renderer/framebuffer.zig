@@ -10,7 +10,7 @@ pub const Framebuffer = opaque {
 };
 
 pub const GlobalFramebuffers = extern struct {
-    const MAX_SHADOWMAP_RESOLUTIONS = 5;
+    pub const MAX_SHADOWMAP_RESOLUTIONS = 5;
     const MAX_BLOOM_BUFFERS = 2;
     const MAX_GLOW_BUFFERS = 2;
     const MAX_SSAO_BUFFERS = 2;

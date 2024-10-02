@@ -129,7 +129,7 @@ pub fn frameAlloc(T: type, n: usize) []T {
         @panic("FrameData.frameAlloc: mul overflow");
     };
     const mem = allocBytes(frame_allocator, byte_count);
-    const ptr: [*]T = @ptrCast(mem.ptr);
+    const ptr: [*]T = @ptrCast(@alignCast(mem.ptr));
 
     return ptr[0..n];
 }

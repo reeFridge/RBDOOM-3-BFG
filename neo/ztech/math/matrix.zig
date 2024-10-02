@@ -176,7 +176,7 @@ pub fn Mat3(comptime T: type) type {
             }
 
             rotation.angle = math.acos(rotation.angle);
-            const length_sqr = rotation.vec.length_sqr();
+            const length_sqr = rotation.vec.lengthSqr();
             if ((@abs(rotation.angle) < 1e-10) or (length_sqr < 1e-10)) {
                 rotation.vec = .{ .v = .{ 0, 0, 1 } };
                 rotation.angle = 0.0;

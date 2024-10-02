@@ -62,18 +62,6 @@ export fn ztech_renderWorld_getInteractionEntry(
     return entry;
 }
 
-export fn ztech_renderWorld_getInteractionRow(
-    rw: *RenderWorldOpaque,
-    row: usize,
-) ?[*]?*Interaction {
-    const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
-    const table = render_world.interaction_table orelse return null;
-    const row_start = row * render_world.interaction_table_width;
-    const table_row = table[row_start..(row_start + render_world.interaction_table_width)];
-
-    return table_row.ptr;
-}
-
 export fn ztech_renderWorld_boundsInAreas(
     rw: *RenderWorldOpaque,
     bounds: *const CBounds,

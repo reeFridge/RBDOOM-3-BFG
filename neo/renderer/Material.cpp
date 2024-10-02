@@ -76,40 +76,75 @@ typedef struct mtrParsingData_s
 
 idCVar r_forceSoundOpAmplitude( "r_forceSoundOpAmplitude", "0", CVAR_FLOAT, "Don't call into the sound system for amplitudes" );
 
-extern "C" bool c_material_hasSubview(const idMaterial* material) {
+extern "C" {
+
+const shaderStage_t* c_material_getStage(const idMaterial* material, int stageNum) {
+	return material->GetStage(stageNum);
+}
+
+bool c_material_lightCastsShadows(const idMaterial* material) {
+	return material->LightCastsShadows();
+}
+
+void c_material_evaluateRegisters(
+	const idMaterial* material,
+	float* 			registers,
+	const float		localShaderParms[MAX_ENTITY_SHADER_PARMS],
+	const float		globalShaderParms[MAX_GLOBAL_SHADER_PARMS],
+	const float		floatTime,
+	idSoundEmitter* soundEmitter )
+{
+	material->EvaluateRegisters(registers, localShaderParms, globalShaderParms, floatTime, soundEmitter);
+}
+
+int c_material_getNumRegisters(const idMaterial* material) {
+	return material->GetNumRegisters();
+}
+
+bool c_material_hasSubview(const idMaterial* material) {
 	return material->HasSubview();
 }
 
-extern "C" void c_material_addReference(idMaterial* material) {
+void c_material_addReference(idMaterial* material) {
 	material->AddReference();
 }
 
-extern "C" bool c_material_receivesLighting(const idMaterial* material) {
+bool c_material_receivesLighting(const idMaterial* material) {
 	return material->ReceivesLighting();
 }
 
-extern "C" bool c_material_isDrawn(const idMaterial* material) {
+bool c_material_isDrawn(const idMaterial* material) {
 	return material->IsDrawn();
 }
 
-extern "C" deform_t c_material_deform(const idMaterial* material) {
+deform_t c_material_deform(const idMaterial* material) {
 	return material->Deform();
 }
 
-extern "C" const idMaterial* c_material_remapShaderBySkin(const idDeclSkin* skin, const idMaterial* shader) {
+const idMaterial* c_material_remapShaderBySkin(const idDeclSkin* skin, const idMaterial* shader) {
 	return skin->RemapShaderBySkin(shader);
 }
 
-extern "C" int c_material_spectrum(const idMaterial* material) {
+int c_material_spectrum(const idMaterial* material) {
 	return material->Spectrum();
 }
 
-extern "C" bool c_material_isFogLight(const idMaterial* material) {
+bool c_material_isFogLight(const idMaterial* material) {
 	return material->IsFogLight();
 }
 
-extern "C" bool c_material_testMaterialFlag(const idMaterial* material, int flag) {
+bool c_material_isBlendLight(const idMaterial* material) {
+	return material->IsBlendLight();
+}
+
+bool c_material_testMaterialFlag(const idMaterial* material, int flag) {
 	return material->TestMaterialFlag(flag);
+}
+
+int c_material_getNumStages(const idMaterial* material) {
+	return material->GetNumStages();
+}
+
 }
 
 /*

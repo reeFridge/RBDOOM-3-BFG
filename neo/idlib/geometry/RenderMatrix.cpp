@@ -2297,8 +2297,35 @@ bool idRenderMatrix::CullExtrudedBoundsToMVPbits( const idRenderMatrix& mvp, con
 #endif
 }
 
-extern "C" void c_renderMatrix_projectedBounds(idBounds* projected, const idRenderMatrix* mvp, const idBounds* bounds, bool windowSpace) {
+extern "C" {
+
+void c_renderMatrix_projectedBounds(
+		idBounds* projected,
+		const idRenderMatrix* mvp,
+		const idBounds* bounds,
+		bool windowSpace
+) {
 	idRenderMatrix::ProjectedBounds(*projected, *mvp, *bounds, windowSpace);
+}
+
+void c_renderMatrix_projectedNearClippedBounds(
+		idBounds* projected,
+		const idRenderMatrix* mvp,
+		const idBounds* bounds,
+		bool windowSpace
+) {
+	idRenderMatrix::ProjectedNearClippedBounds(*projected, *mvp, *bounds, windowSpace);
+}
+
+void c_renderMatrix_projectedFullyClippedBounds(
+		idBounds* projected,
+		const idRenderMatrix* mvp,
+		const idBounds* bounds,
+		bool windowSpace
+) {
+	idRenderMatrix::ProjectedFullyClippedBounds(*projected, *mvp, *bounds, windowSpace);
+}
+
 }
 
 /*

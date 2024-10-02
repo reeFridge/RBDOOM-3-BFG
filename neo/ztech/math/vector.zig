@@ -120,12 +120,12 @@ pub fn Vec3(comptime T: type) type {
             return .{ .v = @splat(s) };
         }
 
-        pub inline fn length_sqr(a: Self) T {
+        pub inline fn lengthSqr(a: Self) T {
             return @reduce(.Add, (a.v * a.v));
         }
 
         pub fn normalize(a: Self) Self {
-            const sqr_len = a.length_sqr();
+            const sqr_len = a.lengthSqr();
             const inv_sqr_len = math.invSqrt(sqr_len);
 
             return .{
@@ -134,7 +134,7 @@ pub fn Vec3(comptime T: type) type {
         }
 
         pub fn normalizeLen(a: Self) struct { Self, T } {
-            const sqr_len = a.length_sqr();
+            const sqr_len = a.lengthSqr();
             const inv_sqr_len = math.invSqrt(sqr_len);
 
             return .{

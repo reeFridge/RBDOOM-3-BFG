@@ -15,13 +15,18 @@ const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
 const RenderEntityLocal = @import("render_entity.zig").RenderEntityLocal;
 const RenderEnvprobeLocal = @import("render_envprobe.zig").RenderEnvprobeLocal;
 const AreaReference = @import("common.zig").AreaReference;
-const Interaction = @import("interaction.zig").Interaction;
+const InteractionState = @import("common.zig").InteractionState;
+const ShadowOnlyEntity = @import("common.zig").ShadowOnlyEntity;
+const interaction = @import("interaction.zig");
+const Interaction = interaction.Interaction;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderSystem = @import("render_system.zig");
 const fs = @import("../fs.zig");
 const Image = @import("image.zig").Image;
 const RenderModelManager = @import("render_model_manager.zig");
 const GuiModel = @import("gui_model.zig").GuiModel;
+const math = @import("../math/math.zig");
+const Framebuffer = @import("framebuffer.zig");
 
 pub const RenderView = extern struct {
     viewID: c_int,
@@ -628,8 +633,8 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
 
     RenderSystem.instance.front_end_job_list.wait();
 
-    render_world.addLights();
-    render_world.addModels();
+    render_world.addLights(view_def);
+    render_world.addModels(view_def);
 
     if (view_def.drawSurfs) |draw_surfs| {
         R_AddInGameGuis2(
@@ -702,13 +707,415 @@ fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
     }
 }
 
-extern fn c_addSingleLight(*anyopaque, *ViewLight, *ViewDef) callconv(.C) void;
+const r_skip_suppress = true;
+const r_use_light_scissors = 3;
+const r_shadow_map_lod_scale: f32 = 1.4;
+const r_shadow_map_lod_bias = 0;
+const r_use_areas_connected_for_shadow_culling = 2;
+const r_single_entity = -1;
+fn addSingleLight(
+    render_world: *RenderWorld,
+    view_light: *ViewLight,
+    view_def: *ViewDef,
+) void {
+    // until proven otherwise
+    view_light.removeFromList = true;
+    view_light.shadowOnlyViewEntities = null;
 
-fn addLights(render_world: *RenderWorld) void {
-    const view_def = RenderSystem.instance.getView() orelse return;
+    const light = view_light.lightDef orelse @panic("lightDef is undefined");
+    const light_shader = light.lightShader orelse @panic("lightShader is undefined");
+
+    // see if we are suppressing the light in this view
+    if (!r_skip_suppress) {
+        if (light.parms.suppressLightInViewID != 0 and
+            light.parms.suppressLightInViewID == view_def.renderView.viewID) return;
+        if (light.parms.allowLightInViewID != 0 and
+            light.parms.allowLightInViewID != view_def.renderView.viewID) return;
+    }
+
+    // evaluate the light shader registers
+    const light_regs = FrameData.frameAlloc(f32, light_shader.getNumRegisters());
+    light_shader.evaluateRegisters(
+        light_regs,
+        &light.parms.shaderParms,
+        &view_def.renderView.shaderParms,
+        @as(f32, @floatFromInt(view_def.renderView.time[0])) * 0.001,
+        light.parms.referenceSound,
+    );
+
+    // if this is a purely additive light and no stage in the light shader evaluates
+    // to a positive light value, we can completely skip the light
+    if (!light_shader.isFogLight() and !light_shader.isBlendLight()) {
+        for (0..light_shader.getNumStages()) |stage_num| {
+            const light_stage = light_shader.getStage(stage_num) orelse continue;
+
+            // ignore stages that fail the condition
+            if (light_regs[@intCast(light_stage.conditionRegister)] == 0)
+                continue;
+
+            const registers = light_stage.color.registers;
+            if (light_regs[@intCast(registers[0])] < 0.001) {
+                light_regs[@intCast(registers[0])] = 0;
+            }
+            if (light_regs[@intCast(registers[1])] < 0.001) {
+                light_regs[@intCast(registers[1])] = 0;
+            }
+            if (light_regs[@intCast(registers[2])] < 0.001) {
+                light_regs[@intCast(registers[2])] = 0;
+            }
+
+            if (light_regs[@intCast(registers[0])] > 0 or
+                light_regs[@intCast(registers[1])] > 0 or
+                light_regs[@intCast(registers[2])] > 0)
+            {
+                break;
+            }
+        } else {
+            // we went through all the stages and didn't find one that adds anything
+            // remove the light from the viewLights list, and change its frame marker
+            // so interaction generation doesn't think the light is visible and
+            // create a shadow for it
+            return;
+        }
+    }
+
+    // copy data used by backend
+
+    view_light.globalLightOrigin = light.globalLightOrigin;
+    view_light.lightProject = light.lightProject;
+
+    // the fog plane is the light far clip plane
+    const fog_plane = Plane{
+        .a = light.baseLightProject.m[2 * 4 + 0] - light.baseLightProject.m[3 * 4 + 0],
+        .b = light.baseLightProject.m[2 * 4 + 1] - light.baseLightProject.m[3 * 4 + 1],
+        .c = light.baseLightProject.m[2 * 4 + 2] - light.baseLightProject.m[3 * 4 + 2],
+        .d = light.baseLightProject.m[2 * 4 + 3] - light.baseLightProject.m[3 * 4 + 3],
+    };
+    const plane_scale = math.invSqrt(fog_plane.normal().lengthSqr());
+    view_light.fogPlane.a = fog_plane.a * plane_scale;
+    view_light.fogPlane.b = fog_plane.b * plane_scale;
+    view_light.fogPlane.c = fog_plane.c * plane_scale;
+    view_light.fogPlane.d = fog_plane.d * plane_scale;
+
+    // copy the matrix for deforming the 'zeroOneCubeModel' to exactly cover the light volume in world space
+    view_light.inverseBaseLightProject = light.inverseBaseLightProject;
+
+    view_light.baseLightProject = light.baseLightProject;
+    view_light.pointLight = light.parms.pointLight;
+    view_light.parallel = light.parms.parallel;
+    view_light.lightCenter = light.parms.lightCenter;
+
+    view_light.falloffImage = light.falloffImage;
+    view_light.lightShader = light.lightShader;
+    view_light.shaderRegisters = light_regs.ptr;
+
+    const light_casts_shadows = light.lightCastsShadows();
+
+    if (r_use_light_scissors != 0) {
+        // Calculate the matrix that projects the zero-to-one cube to exactly cover the
+        // light frustum in clip space.
+        const inv_project_mvp_matrix = RenderMatrix.multiply(
+            view_def.worldSpace.mvp,
+            light.inverseBaseLightProject,
+        );
+
+        // Calculate the projected bounds, either not clipped at all, near clipped, or fully clipped.
+        const projected = projected: {
+            var temp = CBounds{};
+            if (r_use_light_scissors == 1) {
+                RenderMatrix.projectedBounds(
+                    &temp,
+                    inv_project_mvp_matrix,
+                    CBounds.fromBounds(Bounds.zero_one_cube),
+                    true,
+                );
+            } else if (r_use_light_scissors == 2) {
+                // TODO: Assertion failed
+                RenderMatrix.projectedNearClippedBounds(
+                    &temp,
+                    inv_project_mvp_matrix,
+                    CBounds.fromBounds(Bounds.zero_one_cube),
+                    true,
+                );
+            } else {
+                RenderMatrix.projectedFullyClippedBounds(
+                    &temp,
+                    inv_project_mvp_matrix,
+                    CBounds.fromBounds(Bounds.zero_one_cube),
+                    true,
+                );
+            }
+
+            break :projected temp.toBounds();
+        };
+
+        if (projected.min.v[2] >= projected.max.v[2]) {
+            // the light was culled to the view frustum
+            return;
+        }
+
+        const screen_width = @as(f32, @floatFromInt(view_def.viewport.x2)) - @as(f32, @floatFromInt(view_def.viewport.x1));
+        const screen_height = @as(f32, @floatFromInt(view_def.viewport.y2)) - @as(f32, @floatFromInt(view_def.viewport.y1));
+
+        var light_scissor_rect = ScreenRect{
+            .x1 = @as(c_short, @intFromFloat(projected.min.v[0] * screen_width)),
+            .x2 = @as(c_short, @intFromFloat(projected.max.v[0] * screen_width)),
+            .y1 = @as(c_short, @intFromFloat(projected.min.v[1] * screen_height)),
+            .y2 = @as(c_short, @intFromFloat(projected.max.v[1] * screen_height)),
+            .zmin = 0.0,
+            .zmax = 1.0,
+        };
+        light_scissor_rect.expand();
+
+        view_light.scissorRect.intersect(light_scissor_rect);
+        view_light.scissorRect.zmin = projected.min.v[2];
+        view_light.scissorRect.zmax = projected.max.v[2];
+
+        // RB: calculate shadow LOD similar to Q3A .md3 LOD code
+
+        // -1 means no shadows
+        view_light.shadowLOD = -1;
+        view_light.shadowFadeOut = 0;
+
+        if (light_casts_shadows) {
+            view_light.shadowLOD = -1;
+
+            const num_lods: usize = Framebuffer.GlobalFramebuffers.MAX_SHADOWMAP_RESOLUTIONS;
+            // compute projected bounding sphere
+            // and use that as a criteria for selecting LOD
+
+            const center = projected.getCenter();
+            const projected_radius = projected_radius: {
+                const temp = projected.getRadius(center);
+                break :projected_radius if (temp > 1.0)
+                    1.0
+                else
+                    temp;
+            };
+
+            const flod = flod: {
+                var temp = if (projected_radius != 0) flod_temp: {
+                    var lod_scale = r_shadow_map_lod_scale;
+                    if (lod_scale > 20) {
+                        lod_scale = 20;
+                    }
+
+                    break :flod_temp 1.0 - projected_radius * lod_scale;
+                } else 0.0; // object intersects near view plane, e.g. view weapon
+                temp *= @as(f32, @floatFromInt(num_lods + 1));
+
+                break :flod if (temp < 0) 0 else temp;
+            };
+
+            const lod = lod: {
+                var temp: i32 = @as(i32, @intFromFloat(flod)) + r_shadow_map_lod_bias;
+                if (temp < 0) {
+                    temp = 0;
+                }
+                if (temp >= num_lods) {
+                    // don't draw any shadow
+                    temp = -1;
+                }
+                if (temp == (num_lods - 1)) {
+                    // blend shadows smoothly in
+                    view_light.shadowFadeOut = math.frac(flod);
+                }
+                // 2048^2 ultra quality is only for cascaded shadow mapping with sun lights
+                if (temp == 0 and !light.parms.parallel) {
+                    temp = 1;
+                }
+
+                break :lod temp;
+            };
+
+            view_light.shadowLOD = @intCast(lod);
+        }
+    }
+
+    // this one stays on the list
+    view_light.removeFromList = false;
+
+    const interaction_table = render_world.interaction_table orelse return;
+
+    // create interactions with all entities the light may touch, and add viewEntities
+    // that may cast shadows, even if they aren't directly visible.  Any real work
+    // will be deferred until we walk through the viewEntities
+    const entity_interaction_state = FrameData.frameAlloc(
+        InteractionState,
+        render_world.entity_defs.items.len,
+    );
+    for (entity_interaction_state) |*state| {
+        state.* = .INTERACTION_UNCHECKED;
+    }
+    view_light.entityInteractionState = entity_interaction_state.ptr;
+
+    var opt_lref: ?*AreaReference = light.references;
+    while (opt_lref) |lref| : (opt_lref = lref.ownerNext) {
+        const area = lref.area orelse continue;
+
+        // some lights have their center of projection outside the world, but otherwise
+        // we want to ignore areas that are not connected to the light center due to a closed door
+        if (light.areaNum != -1 and r_use_areas_connected_for_shadow_culling == 2) {
+            const connected = render_world.areasAreConnected(
+                @intCast(light.areaNum),
+                @intCast(area.areaNum),
+                PS_BLOCK_VIEW,
+            ) catch unreachable;
+            if (!connected) {
+                // can't possibly be seen or shadowed
+                continue;
+            }
+        }
+
+        // check all the models in this area
+        var opt_eref = area.entityRefs.areaNext;
+        while (opt_eref) |eref| : (opt_eref = eref.areaNext) {
+            if (eref == &area.entityRefs) break;
+
+            const edef = eref.entity orelse continue;
+            if (entity_interaction_state[@intCast(edef.index)] != .INTERACTION_UNCHECKED) {
+                continue;
+            }
+
+            // until proven otherwise
+            entity_interaction_state[@intCast(edef.index)] = .INTERACTION_NO;
+
+            // The table is updated at interaction::AllocAndLink() and interaction::UnlinkAndFree()
+            const inter_index = @as(usize, @intCast(light.index)) *
+                render_world.interaction_table_width +
+                @as(usize, @intCast(edef.index));
+            const inter = interaction_table[inter_index];
+            const opt_e_model = edef.parms.hModel;
+
+            // a large fraction of static entity / light pairs will still have no interactions even though
+            // they are both present in the same area(s)
+            if (opt_e_model) |e_model| {
+                if (e_model.isDynamicModel() == 0 and inter == &Interaction.INTERACTION_EMPTY) {
+                    // the interaction was statically checked, and it didn't generate any surfaces,
+                    // so there is no need to force the entity onto the view list if it isn't
+                    // already there
+                    continue;
+                }
+            }
+
+            // non-shadow casting entities don't need to be added if they aren't
+            // directly visible
+            if (!edef.isDirectlyVisible()) {
+                if (edef.parms.noShadow) continue;
+                if (opt_e_model) |e_model| {
+                    if (!e_model.hasShadowCastingSurfaces()) {
+                        continue;
+                    }
+                }
+            }
+
+            // if the model doesn't accept lighting or cast shadows, it doesn't need to be added
+            if (opt_e_model) |e_model| {
+                if (!e_model.hasInteractingSurfaces() and
+                    !e_model.hasShadowCastingSurfaces())
+                {
+                    continue;
+                }
+            }
+
+            // no interaction present, so either the light or entity has moved
+            if (inter == null) {
+                // some big outdoor meshes are flagged to not create any dynamic interactions
+                // when the level designer knows that nearby moving lights shouldn't actually hit them
+                if (edef.parms.noDynamicInteractions) continue;
+
+                // do a check of the entity reference bounds against the light frustum to see if they can't
+                // possibly interact, despite sharing one or more world areas
+                if (interaction.cullModelBoundsToLight(
+                    light.*,
+                    edef.localReferenceBounds.toBounds(),
+                    edef.modelRenderMatrix,
+                )) continue;
+            }
+
+            // we now know that the entity and light do overlap
+            if (edef.isDirectlyVisible()) {
+                // entity is directly visible, so the interaction is definitely needed
+                entity_interaction_state[@intCast(edef.index)] = .INTERACTION_YES;
+                continue;
+            }
+
+            // the entity is not directly visible, but if we can tell that it may cast
+            // shadows onto visible surfaces, we must make a viewEntity for it
+            if (!light_casts_shadows) {
+                // surfaces are never shadowed in this light
+                continue;
+            }
+
+            // if we are suppressing its shadow in this view (player shadows, etc), skip
+            if (!r_skip_suppress) {
+                if (edef.parms.suppressShadowInViewID != 0 and
+                    edef.parms.suppressShadowInViewID == view_def.renderView.viewID)
+                    continue;
+                if (edef.parms.suppressShadowInLightID != 0 and
+                    edef.parms.suppressShadowInLightID == light.parms.lightId)
+                    continue;
+            }
+
+            // should we use the shadow bounds from pre-calculated interactions?
+            const shadow_bounds = shadowBounds(
+                edef.globalReferenceBounds.toBounds(),
+                light.globalLightBounds.toBounds(),
+                light.globalLightOrigin.toVec3f(),
+            );
+
+            // this test is pointless if we knew the light was completely contained
+            // in the view frustum, but the entity would also be directly visible in most
+            // of those cases.
+
+            // this doesn't say that the shadow can't effect anything, only that it can't
+            // effect anything in the view, so we shouldn't set up a view entity
+            if (view_def.worldSpace.mvp.cullBoundsToMVP(shadow_bounds, false))
+                continue;
+
+            // debug tool to allow viewing of only one entity at a time
+            if (r_single_entity >= 0 and r_single_entity != edef.index)
+                continue;
+
+            // we do need it for shadows
+            entity_interaction_state[@intCast(edef.index)] = .INTERACTION_YES;
+
+            const shadow_entity = FrameData.frameCreate(ShadowOnlyEntity);
+            shadow_entity.next = view_light.shadowOnlyViewEntities;
+            shadow_entity.edef = edef;
+            view_light.shadowOnlyViewEntities = shadow_entity;
+        }
+    }
+}
+
+fn shadowBounds(
+    model_bounds: Bounds,
+    light_bounds: Bounds,
+    light_origin: Vec3(f32),
+) Bounds {
+    var shadow_bounds = Bounds.zero;
+    for (0..3) |i| {
+        {
+            const a = model_bounds.min.v[i] - light_origin.v[i];
+            const b = model_bounds.min.v[i];
+            const c = light_bounds.min.v[i];
+            shadow_bounds.min.v[i] = if (a >= 0) b else c;
+        }
+        {
+            const a = light_origin.v[i] - model_bounds.max.v[i];
+            const b = model_bounds.max.v[i];
+            const c = light_bounds.max.v[i];
+            shadow_bounds.max.v[i] = if (a >= 0) b else c;
+        }
+    }
+
+    return shadow_bounds;
+}
+
+fn addLights(render_world: *RenderWorld, view_def: *ViewDef) void {
     var opt_view_light = view_def.viewLights;
     while (opt_view_light) |view_light| : (opt_view_light = view_light.next) {
-        c_addSingleLight(@ptrCast(render_world), view_light, view_def);
+        render_world.addSingleLight(view_light, view_def);
     }
 
     cullLightsMarkedAsRemoved(view_def);
@@ -717,8 +1124,7 @@ fn addLights(render_world: *RenderWorld) void {
 extern fn c_addSingleModel(*anyopaque, *ViewEntity, *ViewDef) callconv(.C) void;
 extern fn R_SortViewEntities(?*ViewEntity) callconv(.C) ?*ViewEntity;
 
-fn addModels(render_world: *RenderWorld) void {
-    const view_def = RenderSystem.instance.getView() orelse return;
+fn addModels(render_world: *RenderWorld, view_def: *ViewDef) void {
     view_def.viewEntitys = R_SortViewEntities(view_def.viewEntitys);
 
     var opt_view_entity = view_def.viewEntitys;

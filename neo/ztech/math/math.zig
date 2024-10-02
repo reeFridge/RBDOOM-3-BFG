@@ -27,6 +27,10 @@ pub inline fn invSqrt(x: f32) f32 {
         std.math.floatMax(f32);
 }
 
+pub inline fn frac(f: f32) f32 {
+    return f - @floor(f);
+}
+
 pub inline fn ftob(f: f32) u8 {
     return @intFromFloat(std.math.clamp(f, 0, 255));
 }

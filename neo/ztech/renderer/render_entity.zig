@@ -173,6 +173,21 @@ pub const RenderEntityLocal = extern struct {
     lastInteraction: ?*Interaction = null,
     needsPortalSky: bool = false,
 
+    pub fn isDirectlyVisible(entity: *const RenderEntityLocal) bool {
+        if (entity.viewCount != RenderSystem.instance.view_count) {
+            return false;
+        }
+
+        const view_entity = entity.viewEntity orelse return false;
+        if (view_entity.scissorRect.isEmpty()) {
+            // a viewEntity was created for shadow generation, but the
+            // model global reference bounds isn't directly visible
+            return false;
+        }
+
+        return true;
+    }
+
     /// Calls `entity.parms.callback()`
     pub fn issueEntityDefCallback(entity: *RenderEntityLocal, opt_view_def: ?*ViewDef) bool {
         var updated = false;

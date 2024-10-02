@@ -1,4 +1,5 @@
 const DeclSkin = @import("common.zig").DeclSkin;
+const Image = @import("image.zig").Image;
 
 pub const MAX_GLOBAL_SHADER_PARMS: usize = 12;
 
@@ -46,15 +47,174 @@ pub const Flags = struct {
     pub const MF_ORIGIN: c_int = 16384;
 };
 
+pub const MAX_VERTEX_PARAMS: usize = 4;
+pub const MAX_FRAGMENT_IMAGES: usize = 8;
+
+pub const TextureStage = extern struct {
+    cinematic: ?*anyopaque,
+    image: ?*Image,
+    texgen: TexGen,
+    hasMatrix: bool,
+    matrix: [2][3]c_int,
+    dynamic: DynamicImage,
+    width: c_int,
+    height: c_int,
+    dynamicFrameCount: c_int,
+};
+
+pub const DynamicImage = enum(c_int) {
+    DI_STATIC,
+    DI_SCRATCH,
+    DI_CUBE_RENDER,
+    DI_MIRROR_RENDER,
+    DI_XRAY_RENDER,
+    DI_REMOTE_RENDER,
+    DI_GUI_RENDER,
+    DI_RENDER_TARGET,
+};
+
+pub const TexGen = enum(c_int) {
+    TG_EXPLICIT,
+    TG_DIFFUSE_CUBE,
+    TG_REFLECT_CUBE,
+    TG_SKYBOX_CUBE,
+    TG_WOBBLESKY_CUBE,
+    TG_SCREEN,
+    TG_SCREEN2,
+    TG_GLASSWARP,
+};
+
+pub const StageLighting = enum(c_int) {
+    SL_AMBIENT,
+    SL_BUMP,
+    SL_DIFFUSE,
+    SL_SPECULAR,
+    SL_COVERAGE,
+};
+
+pub const StageVertexColor = enum(c_int) {
+    SVC_IGNORE,
+    SVC_MODULATE,
+    SVC_INVERSE_MODULATE,
+};
+
+pub const ColorStage = extern struct {
+    registers: [4]c_int,
+};
+
+pub const StencilComp = enum(c_int) {
+    STENCIL_COMP_GREATER,
+    STENCIL_COMP_GEQUAL,
+    STENCIL_COMP_LESS,
+    STENCIL_COMP_LEQUAL,
+    STENCIL_COMP_EQUAL,
+    STENCIL_COMP_NOTEQUAL,
+    STENCIL_COMP_ALWAYS,
+    STENCIL_COMP_NEVER,
+};
+
+pub const StencilOperation = enum(c_int) {
+    STENCIL_OP_KEEP,
+    STENCIL_OP_ZERO,
+    STENCIL_OP_REPLACE,
+    STENCIL_OP_INCRSAT,
+    STENCIL_OP_DECRSAT,
+    STENCIL_OP_INVERT,
+    STENCIL_OP_INCRWRAP,
+    STENCIL_OP_DECRWRAP,
+};
+
+pub const StencilStage = extern struct {
+    ref: u8,
+    readMask: u8,
+    writeMask: u8,
+    comp: StencilComp,
+    pass: StencilOperation,
+    fail: StencilOperation,
+    zFail: StencilOperation,
+};
+
+pub const NewShaderStage = extern struct {
+    vertexProgram: c_int,
+    numVertexParms: c_int,
+    vertexParms: [MAX_VERTEX_PARAMS][4]c_int,
+    fragmentProgram: c_int,
+    glslProgram: c_int,
+    numFragmentProgramImages: c_int,
+    fragmentProgramImages: [MAX_FRAGMENT_IMAGES]?*Image,
+};
+
+pub const ShaderStage = extern struct {
+    conditionRegister: c_int,
+    lighting: StageLighting,
+    drawStateBits: u64,
+    color: ColorStage,
+    hasAlphaTest: bool,
+    alphaTestRegister: c_int,
+    texture: TextureStage,
+    vertexColor: StageVertexColor,
+    ignoreAlphaTest: bool,
+    privatePolygonOffset: f32,
+    stencilStage: ?*StencilStage,
+    newStage: ?*NewShaderStage,
+};
+
 pub const Material = opaque {
     extern fn c_material_isDrawn(*const Material) callconv(.C) bool;
     extern fn c_material_deform(*const Material) callconv(.C) c_int;
     extern fn c_material_isFogLight(*const Material) callconv(.C) bool;
+    extern fn c_material_isBlendLight(*const Material) bool;
     extern fn c_material_testMaterialFlag(*const Material, c_int) callconv(.C) bool;
     extern fn c_material_spectrum(*const Material) callconv(.C) c_int;
     extern fn c_material_addReference(*Material) callconv(.C) void;
     extern fn c_material_receivesLighting(*const Material) callconv(.C) bool;
     extern fn c_material_hasSubview(*const Material) callconv(.C) bool;
+    extern fn c_material_lightCastsShadows(*const Material) bool;
+    extern fn c_material_getNumRegisters(*const Material) c_int;
+    extern fn c_material_getNumStages(*const Material) c_int;
+    extern fn c_material_evaluateRegisters(
+        *const Material,
+        [*]f32,
+        [*]const f32,
+        [*]const f32,
+        f32,
+        ?*anyopaque,
+    ) void;
+    extern fn c_material_getStage(*const Material, c_int) ?*const ShaderStage;
+
+    pub fn getStage(material: *const Material, stage_num: usize) ?*const ShaderStage {
+        return c_material_getStage(material, @intCast(stage_num));
+    }
+
+    pub fn evaluateRegisters(
+        material: *const Material,
+        regs: []f32,
+        local_params: []f32,
+        global_params: []f32,
+        time: f32,
+        sound_emitter: ?*anyopaque,
+    ) void {
+        c_material_evaluateRegisters(
+            material,
+            regs.ptr,
+            local_params.ptr,
+            global_params.ptr,
+            time,
+            sound_emitter,
+        );
+    }
+
+    pub fn getNumRegisters(material: *const Material) usize {
+        return @intCast(c_material_getNumRegisters(material));
+    }
+
+    pub fn getNumStages(material: *const Material) usize {
+        return @intCast(c_material_getNumStages(material));
+    }
+
+    pub fn lightCastsShadows(material: *const Material) bool {
+        return c_material_lightCastsShadows(material);
+    }
 
     pub fn isDrawn(material: *const Material) bool {
         return c_material_isDrawn(material);
@@ -74,6 +234,10 @@ pub const Material = opaque {
 
     pub fn spectrum(material: *const Material) c_int {
         return c_material_spectrum(material);
+    }
+
+    pub fn isBlendLight(material: *const Material) bool {
+        return c_material_isBlendLight(material);
     }
 
     pub fn isFogLight(material: *const Material) bool {

@@ -20,6 +20,13 @@ pub const ScreenRect = extern struct {
         if (b.y2 > a.y2) a.y2 = b.y2;
     }
 
+    pub fn expand(rect: *ScreenRect) void {
+        rect.x1 -= 1;
+        rect.y1 -= 1;
+        rect.x2 += 1;
+        rect.y2 += 1;
+    }
+
     pub fn intersect(a: *ScreenRect, b: ScreenRect) void {
         if (b.x1 > a.x1) a.x1 = b.x1;
         if (b.x2 < a.x2) a.x2 = b.x2;

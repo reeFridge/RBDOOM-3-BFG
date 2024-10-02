@@ -17,11 +17,14 @@ pub const identity: RenderMatrix = .{
 
 // This is a row-major matrix and transforms are applied with left-multiplication.
 pub const RenderMatrix = extern struct {
-    extern fn c_renderMatrix_projectedBounds(*CBounds, *const RenderMatrix, *const CBounds, bool) callconv(.C) void;
-    extern fn c_renderMatrix_getFrustumCorners(*FrustumCorners, *const RenderMatrix, *const CBounds) callconv(.C) void;
+    extern fn c_renderMatrix_projectedBounds(*CBounds, *const RenderMatrix, *const CBounds, bool) void;
+    extern fn c_renderMatrix_projectedNearClippedBounds(*CBounds, *const RenderMatrix, *const CBounds, bool) void;
+    extern fn c_renderMatrix_projectedFullyClippedBounds(*CBounds, *const RenderMatrix, *const CBounds, bool) void;
+    extern fn c_renderMatrix_getFrustumCorners(*FrustumCorners, *const RenderMatrix, *const CBounds) void;
     extern fn c_renderMatrix_cullFrustumCornersToPlane(*const FrustumCorners, *const Plane) c_int;
-    extern fn c_renderMatrix_cullPointToMVP(*const RenderMatrix, *const CVec3, bool) callconv(.C) bool;
-    extern fn c_renderMatrix_cullBoundsToMVP(*const RenderMatrix, *const CBounds, bool) callconv(.C) bool;
+    extern fn c_renderMatrix_cullPointToMVP(*const RenderMatrix, *const CVec3, bool) bool;
+    extern fn c_renderMatrix_cullBoundsToMVP(*const RenderMatrix, *const CBounds, bool) bool;
+    extern fn c_renderMatrix_getFrustumPlanes([*]Plane, *const RenderMatrix, bool, bool) void;
 
     m: [16]f32,
 
@@ -162,7 +165,23 @@ pub const RenderMatrix = extern struct {
         c_renderMatrix_projectedBounds(projected, &mvp, &bounds, window_space);
     }
 
-    extern fn c_renderMatrix_getFrustumPlanes([*]Plane, *const RenderMatrix, bool, bool) callconv(.C) void;
+    pub fn projectedNearClippedBounds(
+        projected: *CBounds,
+        mvp: RenderMatrix,
+        bounds: CBounds,
+        window_space: bool,
+    ) void {
+        c_renderMatrix_projectedNearClippedBounds(projected, &mvp, &bounds, window_space);
+    }
+
+    pub fn projectedFullyClippedBounds(
+        projected: *CBounds,
+        mvp: RenderMatrix,
+        bounds: CBounds,
+        window_space: bool,
+    ) void {
+        c_renderMatrix_projectedFullyClippedBounds(projected, &mvp, &bounds, window_space);
+    }
 
     pub fn getFrustumPlanes(frustum: RenderMatrix, zero_to_one: bool, normalize: bool) [6]Plane {
         var planes = std.mem.zeroes([6]Plane);

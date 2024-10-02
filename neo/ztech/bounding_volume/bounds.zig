@@ -54,6 +54,30 @@ pub fn clear(bounds: *Bounds) void {
     bounds.max = Vec3(f32).fromScalar(std.math.floatMin(f32));
 }
 
+pub fn getCenter(b: *const Bounds) Vec3(f32) {
+    return Vec3(f32){ .v = .{
+        (b.max.v[0] + b.min.v[0]) * 0.5,
+        (b.max.v[1] + b.min.v[1]) * 0.5,
+        (b.max.v[2] + b.min.v[2]) * 0.5,
+    } };
+}
+
+pub fn getRadius(b: *const Bounds, center: Vec3(f32)) f32 {
+    var total: f32 = 0;
+    for (0..3) |i| {
+        const b0 = @abs(center.v[i] - b.min.v[i]);
+        const b1 = @abs(b.max.v[i] - center.v[i]);
+
+        if (b0 > b1) {
+            total += b0 * b0;
+        } else {
+            total += b1 * b1;
+        }
+    }
+
+    return @sqrt(total);
+}
+
 pub fn addPoint(b: *Bounds, v: Vec3(f32)) bool {
     var expanded = false;
 
