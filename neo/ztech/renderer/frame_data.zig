@@ -68,7 +68,7 @@ const CACHE_LINE_SIZE: usize = 128;
 
 // SMP = Symmetric multiprocessing / shared-memory multiprocessing
 var smp_frame: usize = 0;
-const NUM_FRAME_DATA: usize = 3;
+pub const NUM_FRAME_DATA: usize = 3;
 var smp_frame_data: [NUM_FRAME_DATA]FrameData = undefined;
 var buffer_allocators: [NUM_FRAME_DATA]std.heap.FixedBufferAllocator = undefined;
 

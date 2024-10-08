@@ -78,12 +78,32 @@ idCVar r_forceSoundOpAmplitude( "r_forceSoundOpAmplitude", "0", CVAR_FLOAT, "Don
 
 extern "C" {
 
+decalInfo_t c_material_getDecalInfo(const idMaterial* material) {
+	return material->GetDecalInfo();
+}
+
+materialCoverage_t c_material_coverage(const idMaterial* material) {
+	return material->Coverage();
+}
+
+bool c_material_isLod(const idMaterial* material) {
+	return material->IsLOD();
+}
+
+bool c_material_isLodVisibleForDistance(const idMaterial* material, float distance, float lodBase) {
+	return material->IsLODVisibleForDistance(distance, lodBase);
+}
+
 const shaderStage_t* c_material_getStage(const idMaterial* material, int stageNum) {
 	return material->GetStage(stageNum);
 }
 
 bool c_material_lightCastsShadows(const idMaterial* material) {
 	return material->LightCastsShadows();
+}
+
+bool c_material_surfaceCastsShadow(const idMaterial* material) {
+	return material->SurfaceCastsShadow();
 }
 
 void c_material_evaluateRegisters(

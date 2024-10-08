@@ -1768,6 +1768,37 @@ drawSurf_t* R_DeformDrawSurf( drawSurf_t* drawSurf, deform_t deformType )
 	}
 }
 
+extern "C" drawSurf_t* c_drawSurf_deform( drawSurf_t* drawSurf, deform_t deformType, viewDef_t* viewDef)
+{
+	if( r_skipDeforms.GetBool() )
+	{
+		return drawSurf;
+	}
+	switch( deformType )
+	{
+		case DFRM_SPRITE:
+			return R_AutospriteDeform2( drawSurf, viewDef);
+		case DFRM_TUBE:
+			return R_TubeDeform2( drawSurf, viewDef );
+		case DFRM_FLARE:
+			return R_FlareDeform2( drawSurf, viewDef );
+		case DFRM_EXPAND:
+			return R_ExpandDeform( drawSurf );
+		case DFRM_MOVE:
+			return R_MoveDeform( drawSurf );
+		case DFRM_TURB:
+			return R_TurbulentDeform( drawSurf );
+		case DFRM_EYEBALL:
+			return R_EyeballDeform( drawSurf );
+		case DFRM_PARTICLE:
+			return R_ParticleDeform2( drawSurf, true, nullptr, viewDef );
+		case DFRM_PARTICLE2:
+			return R_ParticleDeform2( drawSurf, false, nullptr, viewDef );
+		default:
+			return NULL;
+	}
+}
+
 drawSurf_t* R_DeformDrawSurf2( drawSurf_t* drawSurf, deform_t deformType, viewDef_t* viewDef)
 {
 	if( r_skipDeforms.GetBool() )

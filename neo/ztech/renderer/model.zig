@@ -1,4 +1,6 @@
 const std = @import("std");
+const idlib = @import("../idlib.zig");
+const JointMat = @import("../anim/animator.zig").JointMat;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const sys_types = @import("../sys/types.zig");
 const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
@@ -101,9 +103,34 @@ pub const SurfaceTriangles = extern struct {
     dominantTrisAlloced: c_uint,
     ambientSurface: [*c]SurfaceTriangles,
     nextDeferredFree: [*c]SurfaceTriangles,
-    staticModelWithJoints: ?*anyopaque,
+    staticModelWithJoints: ?*RenderModelStatic,
     indexCache: VertexCacheHandle,
     ambientCache: VertexCacheHandle,
+
+    extern fn R_DeriveUnsmoothedNormalsAndTangents(*SurfaceTriangles) void;
+    extern fn R_DeriveNormalsAndTangents(*SurfaceTriangles) void;
+
+    // This is called once for static surfaces, and every frame for deforming surfaces
+    // Builds tangents, normals, and face planes
+    pub fn deriveTangents(tri: *SurfaceTriangles) void {
+        if (tri.tangentsCalculated) return;
+
+        if (tri.dominantTris != null) {
+            tri.deriveUnsmoothedNormalsAndTangents();
+        } else {
+            tri.deriveNormalsAndTangents();
+        }
+
+        tri.tangentsCalculated = true;
+    }
+
+    pub fn deriveUnsmoothedNormalsAndTangents(tri: *SurfaceTriangles) void {
+        R_DeriveUnsmoothedNormalsAndTangents(tri);
+    }
+
+    pub fn deriveNormalsAndTangents(tri: *SurfaceTriangles) void {
+        R_DeriveNormalsAndTangents(tri);
+    }
 
     pub fn indexesSlice(tri: *SurfaceTriangles) []align(16) sys_types.TriIndex {
         return if (tri.indexes) |indexes_ptr|
@@ -318,10 +345,10 @@ const global = @import("../global.zig");
 const RenderWorld = @import("render_world.zig");
 const RenderEntity = @import("render_entity.zig").RenderEntity;
 
-pub const DynamicModelType = struct {
-    pub const DM_STATIC: c_int = 0; // never creates a dynamic model
-    pub const DM_CACHED: c_int = 1; // once created, stays constant until the entity is updated (animating characters)
-    pub const DM_CONTINUOUS: c_int = 2; // must be recreated for every single view (time dependent things like particles)
+pub const DynamicModelType = enum(c_int) {
+    DM_STATIC, // never creates a dynamic model
+    DM_CACHED, // once created, stays constant until the entity is updated (animating characters)
+    DM_CONTINUOUS, // must be recreated for every single view (time dependent things like particles)
 };
 
 pub const RenderModel = opaque {
@@ -337,7 +364,7 @@ pub const RenderModel = opaque {
     extern fn c_renderModel_modelHasDrawingSurfaces(*const RenderModel) callconv(.C) bool;
     extern fn c_renderModel_isDefaultModel(*const RenderModel) callconv(.C) bool;
     extern fn c_renderModel_isStaticWorldModel(*const RenderModel) callconv(.C) bool;
-    extern fn c_renderModel_isDynamicModel(*const RenderModel) callconv(.C) c_int;
+    extern fn c_renderModel_isDynamicModel(*const RenderModel) DynamicModelType;
     extern fn c_renderModel_reset(*RenderModel) void;
     extern fn c_renderModel_getJointHandle(*const RenderModel, [*]const u8) JointHandle;
     extern fn c_renderModel_modelHasShadowCastingSurfaces(*const RenderModel) bool;
@@ -389,7 +416,7 @@ pub const RenderModel = opaque {
             null;
     }
 
-    pub fn isDynamicModel(model: *const RenderModel) c_int {
+    pub fn isDynamicModel(model: *const RenderModel) DynamicModelType {
         return c_renderModel_isDynamicModel(model);
     }
 
@@ -423,5 +450,43 @@ pub const RenderModel = opaque {
 
     pub fn isStaticWorldModel(model: *const RenderModel) bool {
         return c_renderModel_isStaticWorldModel(model);
+    }
+};
+
+pub const RenderModelStatic = extern struct {
+    vptr: *anyopaque,
+    surfaces: idlib.idList(ModelSurface),
+    bounds: CBounds,
+    overlaysAdded: c_int,
+    numInvertedJoints: c_int,
+    jointsInverted: ?[*]JointMat,
+    jointsInvertedBuffer: VertexCacheHandle,
+    lastModifiedFrame: c_int,
+    lastArchivedFrame: c_int,
+    name: idlib.idStr,
+    isStaticWorldModel: bool,
+    defaulted: bool,
+    purged: bool,
+    fastLoad: bool,
+    reloadable: bool,
+    levelLoadReferenced: bool,
+    hasDrawingSurfaces: bool,
+    hasInteractingSurfaces: bool,
+    hasShadowCastingSurfaces: bool,
+    timeStamp: idlib.ID_TIME_T,
+
+    pub fn findSurfaceWithId(
+        model: *const RenderModelStatic,
+        id: usize,
+        surface_num: *usize,
+    ) bool {
+        for (model.surfaces.constSlice(), 0..) |*surface, i| {
+            if (surface.id == id) {
+                surface_num.* = i;
+                return true;
+            }
+        }
+
+        return false;
     }
 };

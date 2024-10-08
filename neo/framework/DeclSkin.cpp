@@ -207,3 +207,11 @@ const idMaterial* idDeclSkin::RemapShaderBySkin( const idMaterial* shader ) cons
 	// didn't find a match or wildcard, so stay the same
 	return shader;
 }
+
+extern "C" {
+
+const idMaterial* c_declSkin_remapShaderBySkin(const idDeclSkin* skin, const idMaterial* shader ) {
+	return skin->RemapShaderBySkin(shader);
+}
+
+}

@@ -29,6 +29,11 @@ pub const CVec3 = extern struct {
     y: f32 = 0,
     z: f32 = 0,
 
+    pub fn slice(vec: *CVec3) []f32 {
+        const as_array_ptr: *[3]f32 = @ptrCast(vec);
+        return &as_array_ptr.*;
+    }
+
     pub fn fromVec3f(vec: Vec3f) CVec3 {
         return .{ .x = vec.v[0], .y = vec.v[1], .z = vec.v[2] };
     }
@@ -122,6 +127,11 @@ pub fn Vec3(comptime T: type) type {
 
         pub inline fn lengthSqr(a: Self) T {
             return @reduce(.Add, (a.v * a.v));
+        }
+
+        pub fn lengthFast(a: Self) T {
+            const sqr_len = a.lengthSqr();
+            return sqr_len * math.invSqrt(sqr_len);
         }
 
         pub fn normalize(a: Self) Self {

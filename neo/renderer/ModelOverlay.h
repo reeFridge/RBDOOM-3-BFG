@@ -92,7 +92,7 @@ public:
 	unsigned int				GetNumOverlayDrawSurfs();
 	struct drawSurf_t* 			CreateOverlayDrawSurf( const struct viewEntity_t* space, const idRenderModel* baseModel, unsigned int index );
 
-private:
+public:
 	overlay_t					overlays[MAX_OVERLAYS];
 	unsigned int				firstOverlay;
 	unsigned int				nextOverlay;

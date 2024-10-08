@@ -34,6 +34,11 @@ pub const DrawVertex = extern struct {
         draw_vertex.st[1] = @floatCast(t);
     }
 
+    pub inline fn setTexCoordNative(draw_vertex: *DrawVertex, s: f16, t: f16) void {
+        draw_vertex.st[0] = s;
+        draw_vertex.st[1] = t;
+    }
+
     pub inline fn setTexCoord(draw_vertex: *DrawVertex, s: f32, t: f32) void {
         draw_vertex.setTexCoordS(s);
         draw_vertex.setTexCoordT(t);

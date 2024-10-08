@@ -135,6 +135,42 @@ pub const BindingSetDesc = extern struct {
     trackLiveness: bool,
 };
 
+pub const Color = extern struct {
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+};
+
+pub const SamplerAddressMode = enum(u8) {
+    // Vulkan names
+    ClampToEdge,
+    Repeat,
+    ClampToBorder,
+    MirroredRepeat,
+    MirrorClampToEdge,
+};
+
+pub const SamplerReductionType = enum(u8) {
+    Standard,
+    Comparison,
+    Minimum,
+    Maximum,
+};
+
+pub const SamplerDesc = extern struct {
+    borderColor: Color,
+    maxAnisotropy: f32,
+    mipBias: f32,
+    minFilter: bool,
+    magFilter: bool,
+    mipFilter: bool,
+    addressU: SamplerAddressMode,
+    addressV: SamplerAddressMode,
+    addressW: SamplerAddressMode,
+    reductionType: SamplerReductionType,
+};
+
 pub const InputLayoutHandle = RefCountPtr(IInputLayout);
 pub const ShaderHandle = RefCountPtr(IShader);
 pub const DeviceHandle = RefCountPtr(IDevice);

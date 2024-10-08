@@ -125,7 +125,7 @@ public:
 	unsigned int				GetNumDecalDrawSurfs();
 	struct drawSurf_t* 			CreateDecalDrawSurf( const struct viewEntity_t* space, unsigned int index );
 
-private:
+public:
 	decal_t						decals[MAX_DECALS];
 	unsigned int				firstDecal;
 	unsigned int				nextDecal;

@@ -4,7 +4,6 @@ const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const RenderModel = @import("model.zig").RenderModel;
-const DynamicModelType = @import("model.zig").DynamicModelType;
 const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const RenderEntityLocal = @import("render_entity.zig").RenderEntityLocal;
 const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
@@ -186,7 +185,7 @@ pub const Interaction = extern struct {
         inter.staticInteraction = true;
 
         const render_model = if (entity_def.parms.hModel) |model_ptr| render_model: {
-            if (model_ptr.numSurfaces() <= 0 or model_ptr.isDynamicModel() != DynamicModelType.DM_STATIC) {
+            if (model_ptr.numSurfaces() <= 0 or model_ptr.isDynamicModel() != .DM_STATIC) {
                 inter.makeEmpty();
                 return;
             }
@@ -310,22 +309,21 @@ pub const Interaction = extern struct {
 
 const Material = @import("material.zig").Material;
 
-fn globalPointToLocal(model_matrix: []const f32, in: Vec3(f32)) Vec3(f32) {
-    var temp: Vec3(f32) = .{};
-    var out: Vec3(f32) = .{};
+pub fn globalPointToLocal(model_matrix: []const f32, in: Vec3(f32)) Vec3(f32) {
+    const temp = Vec3(f32){ .v = .{
+        in.x() - model_matrix[3 * 4 + 0],
+        in.y() - model_matrix[3 * 4 + 1],
+        in.z() - model_matrix[3 * 4 + 2],
+    } };
 
-    temp.x = in.x - model_matrix[3 * 4 + 0];
-    temp.y = in.y - model_matrix[3 * 4 + 1];
-    temp.z = in.z - model_matrix[3 * 4 + 2];
-
-    out.x = temp.x * model_matrix[0 * 4 + 0] + temp.x * model_matrix[0 * 4 + 1] + temp.x * model_matrix[0 * 4 + 2];
-    out.y = temp.y * model_matrix[1 * 4 + 0] + temp.y * model_matrix[1 * 4 + 1] + temp.y * model_matrix[1 * 4 + 2];
-    out.z = temp.z * model_matrix[2 * 4 + 0] + temp.z * model_matrix[2 * 4 + 1] + temp.z * model_matrix[2 * 4 + 2];
-
-    return out;
+    return .{ .v = .{
+        temp.x() * model_matrix[0 * 4 + 0] + temp.x() * model_matrix[0 * 4 + 1] + temp.x() * model_matrix[0 * 4 + 2],
+        temp.y() * model_matrix[1 * 4 + 0] + temp.y() * model_matrix[1 * 4 + 1] + temp.y() * model_matrix[1 * 4 + 2],
+        temp.z() * model_matrix[2 * 4 + 0] + temp.z() * model_matrix[2 * 4 + 1] + temp.z() * model_matrix[2 * 4 + 2],
+    } };
 }
 
-fn globalPlaneToLocal(model_matrix: []const f32, in: Plane) Plane {
+pub fn globalPlaneToLocal(model_matrix: []const f32, in: Plane) Plane {
     var out: Plane = std.mem.zeroes(Plane);
 
     out.a = in.a * model_matrix[0 * 4 + 0] + in.b * model_matrix[0 * 4 + 1] + in.c * model_matrix[0 * 4 + 2];

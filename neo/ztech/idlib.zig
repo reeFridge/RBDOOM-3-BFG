@@ -2,6 +2,17 @@ const std = @import("std");
 
 extern fn c_memFree(*anyopaque) callconv(.C) void;
 
+pub const ID_TIME_T = i64;
+
+pub const idStr = extern struct {
+    const STR_ALLOC_BASE: usize = 20;
+
+    len: c_int,
+    data: [*c]u8,
+    allocedAndFlag: c_int,
+    baseBuffer: [STR_ALLOC_BASE]u8,
+};
+
 pub fn idList(T: type) type {
     return extern struct {
         const Self = @This();
@@ -11,6 +22,13 @@ pub fn idList(T: type) type {
         granularity: c_int,
         list: ?[*]T,
         memTag: u8,
+
+        pub inline fn constSlice(self: *const Self) []const T {
+            return if (self.list) |list|
+                list[0..@intCast(self.num)]
+            else
+                &.{};
+        }
 
         pub inline fn slice(self: *Self) []T {
             return if (self.list) |list|

@@ -1,3 +1,9 @@
+const std = @import("std");
+const idlib = @import("../idlib.zig");
+const nvrhi = @import("nvrhi.zig");
+const VertexCache = @import("vertex_cache.zig");
+const JointMat = @import("../anim/animator.zig").JointMat;
+const RenderEntity = @import("render_entity.zig").RenderEntity;
 const RenderEntityLocal = @import("render_entity.zig").RenderEntityLocal;
 const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
 const RenderEnvprobeLocal = @import("render_envprobe.zig").RenderEnvprobeLocal;
@@ -12,6 +18,7 @@ const CVec4 = @import("../math/vector.zig").CVec4;
 const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 const Material = @import("material.zig").Material;
+const Deform = @import("material.zig").Deform;
 const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Framebuffer = @import("framebuffer.zig").Framebuffer;
@@ -33,7 +40,16 @@ pub const AreaReference = extern struct {
     area: ?*PortalArea = null,
 };
 
-pub const DeclSkin = opaque {};
+pub const DeclSkin = opaque {
+    extern fn c_declSkin_remapShaderBySkin(
+        *const DeclSkin,
+        ?*const Material,
+    ) ?*const Material;
+
+    pub fn remapShaderBySkin(skin: *const DeclSkin, shader: ?*const Material) ?*const Material {
+        return c_declSkin_remapShaderBySkin(skin, shader);
+    }
+};
 
 pub const DrawSurface = extern struct {
     frontEndGeo: ?*const SurfaceTriangles,
@@ -45,10 +61,64 @@ pub const DrawSurface = extern struct {
     material: ?*const Material,
     extraGLState: c_ulonglong,
     sort: f32,
-    shaderRegisters: [*c]const f32,
+    shaderRegisters: [*]const f32,
     nextOnLight: ?*DrawSurface,
-    linkChain: ?**DrawSurface,
+    linkChain: ?*?*DrawSurface,
     scissorRect: ScreenRect,
+
+    extern fn c_drawSurf_setupShader(
+        *DrawSurface,
+        *const Material,
+        *const RenderEntity,
+        *ViewDef,
+    ) void;
+    extern fn c_drawSurf_deform(
+        *DrawSurface,
+        Deform,
+        *ViewDef,
+    ) ?*DrawSurface;
+
+    pub fn setupShader(
+        surf: *DrawSurface,
+        shader: *const Material,
+        render_entity: *const RenderEntity,
+        view_def: *ViewDef,
+    ) void {
+        c_drawSurf_setupShader(surf, shader, render_entity, view_def);
+    }
+
+    const r_use_gpu_skinning = true;
+    pub fn setupJoints(
+        surf: *DrawSurface,
+        tri: *const SurfaceTriangles,
+        command_list: ?*nvrhi.ICommandList,
+    ) void {
+        // if gpu skinning is not available
+        if (tri.staticModelWithJoints == null or !r_use_gpu_skinning) {
+            surf.jointCache = 0;
+            return;
+        }
+
+        const model = tri.staticModelWithJoints orelse return;
+        std.debug.assert(model.jointsInverted != null);
+
+        if (!VertexCache.instance.cacheIsCurrent(model.jointsInvertedBuffer)) {
+            model.jointsInvertedBuffer = VertexCache.instance.allocJoint(
+                @ptrCast(model.jointsInverted),
+                @intCast(model.numInvertedJoints),
+                @sizeOf(JointMat),
+                command_list,
+            );
+        }
+        surf.jointCache = model.jointsInvertedBuffer;
+    }
+
+    pub fn deform(surf: *DrawSurface, view_def: *ViewDef) ?*DrawSurface {
+        return if (surf.material) |material|
+            c_drawSurf_deform(surf, material.deformType(), view_def)
+        else
+            null;
+    }
 };
 
 pub const ViewEntity = extern struct {
@@ -180,15 +250,6 @@ pub const ViewDef = extern struct {
     targetRender: ?*Framebuffer,
 };
 
-pub const idStr = extern struct {
-    const STR_ALLOC_BASE: usize = 20;
-
-    len: c_int,
-    data: [*c]u8,
-    allocedAndFlag: c_int,
-    baseBuffer: [STR_ALLOC_BASE]u8,
-};
-
 pub const CalcEnvprobeParams = extern struct {
     radiance: [6]*u8,
     freeRadiance: c_int,
@@ -198,7 +259,7 @@ pub const CalcEnvprobeParams = extern struct {
     printProgress: bool,
     printWidth: c_int,
     printHeight: c_int,
-    filename: idStr,
+    filename: idlib.idStr,
     outBuffer: [*]f16,
     time: c_int,
 };

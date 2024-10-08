@@ -6,6 +6,7 @@ const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const RenderMatrix = @import("matrix.zig").RenderMatrix;
+const render_matrix = @import("matrix.zig");
 const FrustumCorners = @import("matrix.zig").FrustumCorners;
 const FrustumCull = @import("matrix.zig").FrustumCull;
 const CWinding = @import("../geometry/winding.zig").CWinding;
@@ -27,6 +28,7 @@ const RenderModelManager = @import("render_model_manager.zig");
 const GuiModel = @import("gui_model.zig").GuiModel;
 const math = @import("../math/math.zig");
 const Framebuffer = @import("framebuffer.zig");
+const VertexCache = @import("vertex_cache.zig");
 
 pub const RenderView = extern struct {
     viewID: c_int,
@@ -622,7 +624,6 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
         plane.* = plane.flip();
     }
 
-    const r_znear: f32 = 3.0;
     frustum_planes[4].d -= r_znear;
     const FRUSTUM_PRIMARY: usize = 0;
     view_def.frustums[FRUSTUM_PRIMARY] = frustum_planes;
@@ -990,7 +991,7 @@ fn addSingleLight(
             // a large fraction of static entity / light pairs will still have no interactions even though
             // they are both present in the same area(s)
             if (opt_e_model) |e_model| {
-                if (e_model.isDynamicModel() == 0 and inter == &Interaction.INTERACTION_EMPTY) {
+                if (e_model.isDynamicModel() == .DM_STATIC and inter == &Interaction.INTERACTION_EMPTY) {
                     // the interaction was statically checked, and it didn't generate any surfaces,
                     // so there is no need to force the entity onto the view list if it isn't
                     // already there
@@ -1121,7 +1122,6 @@ fn addLights(render_world: *RenderWorld, view_def: *ViewDef) void {
     cullLightsMarkedAsRemoved(view_def);
 }
 
-extern fn c_addSingleModel(*anyopaque, *ViewEntity, *ViewDef) callconv(.C) void;
 extern fn R_SortViewEntities(?*ViewEntity) callconv(.C) ?*ViewEntity;
 
 fn addModels(render_world: *RenderWorld, view_def: *ViewDef) void {
@@ -1129,10 +1129,565 @@ fn addModels(render_world: *RenderWorld, view_def: *ViewDef) void {
 
     var opt_view_entity = view_def.viewEntitys;
     while (opt_view_entity) |view_entity| : (opt_view_entity = view_entity.next) {
-        c_addSingleModel(@ptrCast(render_world), view_entity, view_def);
+        render_world.addSingleModel(view_entity, view_def);
     }
 
     moveDrawSurfsToView(view_def);
+}
+
+const r_znear: f32 = 3;
+const r_skip_decals = false;
+const r_skip_overlays = false;
+const r_single_surface = -1;
+const r_check_bounds = false;
+const r_use_gpu_skinning = true;
+const r_lod_material_distance: f32 = 500;
+const r_force_shadow_maps_on_alpha_surfs = true;
+const max_contacted_lights: usize = 128;
+fn addSingleModel(
+    render_world: *RenderWorld,
+    view_entity: *ViewEntity,
+    view_def: *ViewDef,
+) void {
+    const interaction_table = render_world.interaction_table orelse @panic("interaction_table is undefined");
+
+    // we will add all interaction surfs here, to be chained to the lights in later serial code
+    view_entity.drawSurfs = null;
+    view_entity.useLightGrid = false;
+
+    const entity_def = view_entity.entityDef orelse @panic("entityDef is undefined");
+    const render_entity = &entity_def.parms;
+
+    if (view_def.isXraySubview and entity_def.parms.xrayIndex == 1)
+        return;
+    if (!view_def.isXraySubview and entity_def.parms.xrayIndex == 2)
+        return;
+
+    // if the entity wasn't seen through a portal chain, it was added just for light shadows
+    const model_is_visible = !view_entity.scissorRect.isEmpty();
+    const entity_index: usize = @intCast(entity_def.index);
+
+    // Find which of the visible lights contact this entity
+    // If the entity doesn't accept light or cast shadows from any surface,
+    // this can be skipped.
+    // OPTIMIZE: world areas can assume all referenced lights are used
+    var num_contacted_lights: usize = 0;
+    var contacted_lights = std.BoundedArray(*ViewLight, max_contacted_lights)
+        .init(num_contacted_lights) catch unreachable;
+    var static_interactions = std.BoundedArray(?*Interaction, max_contacted_lights)
+        .init(num_contacted_lights) catch unreachable;
+
+    const no_model = render_entity.hModel == null;
+    const model_has_surfaces = if (render_entity.hModel) |render_model|
+        render_model.hasInteractingSurfaces() or render_model.hasShadowCastingSurfaces()
+    else
+        false;
+
+    if (no_model or model_has_surfaces) {
+        var opt_view_light = view_def.viewLights;
+        while (opt_view_light) |view_light| : (opt_view_light = view_light.next) {
+            if (view_light.scissorRect.isEmpty()) continue;
+
+            const light_def = view_light.lightDef orelse @panic("lightDef is undefined");
+            const row: usize = @intCast(light_def.index);
+
+            if (view_light.entityInteractionState) |array_ptr| {
+                const entity_interaction_state = array_ptr[0..render_world.entity_defs.items.len];
+
+                if (entity_interaction_state[entity_index] == .INTERACTION_YES) {
+                    const inter = interaction_table[row * render_world.interaction_table_width + entity_index];
+                    const index = num_contacted_lights;
+                    num_contacted_lights += 1;
+                    contacted_lights.resize(num_contacted_lights) catch break;
+                    static_interactions.resize(num_contacted_lights) catch break;
+                    contacted_lights.set(index, view_light);
+                    static_interactions.set(index, inter);
+                }
+
+                continue;
+            }
+
+            if (!Bounds.intersectsBounds(
+                light_def.globalLightBounds.toBounds(),
+                entity_def.globalReferenceBounds.toBounds(),
+            ))
+                continue;
+
+            if (interaction.cullModelBoundsToLight(
+                light_def.*,
+                entity_def.localReferenceBounds.toBounds(),
+                entity_def.modelRenderMatrix,
+            ))
+                continue;
+
+            if (!model_is_visible) {
+                // some lights have their center of projection outside the world
+                if (light_def.areaNum != -1) {
+                    // if no part of the model is in an area that is connected to
+                    // the light center (it is behind a solid, closed door), we can ignore it
+                    var areas_connected = false;
+                    var opt_ref: ?*AreaReference = entity_def.entityRefs;
+                    while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+                        const area = ref.area orelse continue;
+                        const connected = render_world.areasAreConnected(
+                            @intCast(light_def.areaNum),
+                            @intCast(area.areaNum),
+                            PS_BLOCK_VIEW,
+                        ) catch unreachable;
+                        if (connected) {
+                            areas_connected = connected;
+                            break;
+                        }
+                    }
+                    // can't possibly be seen or shadowed
+                    if (!areas_connected) continue;
+                }
+
+                // check more precisely for shadow visibility
+                const shadow_bounds = shadowBounds(
+                    entity_def.globalReferenceBounds.toBounds(),
+                    light_def.globalLightBounds.toBounds(),
+                    light_def.globalLightOrigin.toVec3f(),
+                );
+
+                // this doesn't say that the shadow can't effect anything, only that it can't
+                // effect anything in the view
+                if (view_def.worldSpace.mvp.cullBoundsToMVP(shadow_bounds, false))
+                    continue;
+            }
+
+            const inter = interaction_table[row * render_world.interaction_table_width + entity_index];
+            const index = num_contacted_lights;
+            num_contacted_lights += 1;
+            contacted_lights.resize(num_contacted_lights) catch break;
+            static_interactions.resize(num_contacted_lights) catch break;
+            contacted_lights.set(index, view_light);
+            static_interactions.set(index, inter);
+        }
+    }
+
+    // if we aren't visible and none of the shadows stretch into the view,
+    // we don't need to do anything else
+    if (!model_is_visible and num_contacted_lights == 0)
+        return;
+
+    // create a dynamic model if the geometry isn't static
+    const render_model = entity_def.getDynamicModelForFrame(view_def) orelse
+        return;
+    if (render_model.numSurfaces() <= 0) return;
+
+    // add the lightweight blood decal surfaces if the model is directly visible
+    if (model_is_visible) {
+        std.debug.assert(!view_entity.scissorRect.isEmpty());
+        if (!r_skip_decals) {
+            if (entity_def.decals) |decals| {
+                decals.createDeferredDecals(render_model, view_def);
+                const num_draw_surfs = decals.getNumDecalDrawSurfs();
+                for (0..num_draw_surfs) |i| {
+                    if (decals.createDecalDrawSurf(view_entity, i, view_def)) |decal_draw_surf| {
+                        decal_draw_surf.linkChain = null;
+                        decal_draw_surf.nextOnLight = view_entity.drawSurfs;
+                        view_entity.drawSurfs = decal_draw_surf;
+                    }
+                }
+            }
+        }
+        if (!r_skip_overlays) {
+            if (entity_def.overlays) |overlays| {
+                overlays.createDeferredOverlays(render_model, view_def);
+                const num_draw_surfs = overlays.getNumOverlayDrawSurfs();
+                for (0..num_draw_surfs) |i| {
+                    if (overlays.createOverlayDrawSurf(
+                        view_entity,
+                        render_model,
+                        i,
+                        view_def,
+                    )) |overlay_draw_surf| {
+                        overlay_draw_surf.linkChain = null;
+                        overlay_draw_surf.nextOnLight = view_entity.drawSurfs;
+                        view_entity.drawSurfs = overlay_draw_surf;
+                    }
+                }
+            }
+        }
+    }
+
+    // use first valid lightgrid
+    var opt_ref: ?*AreaReference = entity_def.entityRefs;
+    while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+        const area = ref.area orelse continue;
+        const light_grid_image = area.lightGrid.irradianceImage orelse continue;
+        if (area.lightGrid.lightGridPoints.num > 0 and !light_grid_image.defaulted) {
+            view_entity.useLightGrid = true;
+            view_entity.lightGridAtlasImage = light_grid_image;
+            view_entity.lightGridAtlasSingleProbeSize = area.lightGrid.imageSingleProbeSize;
+            view_entity.lightGridAtlasBorderSize = area.lightGrid.imageBorderSize;
+
+            for (0..3) |i| {
+                view_entity.lightGridOrigin.slice()[i] = area.lightGrid.lightGridOrigin.slice()[i];
+                view_entity.lightGridSize.slice()[i] = area.lightGrid.lightGridSize.slice()[i];
+                view_entity.lightGridBounds[i] = area.lightGrid.lightGridBounds[i];
+            }
+
+            break;
+        }
+    }
+
+    // copy matrix related stuff for back-end use
+    // and setup a render matrix for faster culling
+    view_entity.modelDepthHack = render_entity.modelDepthHack;
+    view_entity.weaponDepthHack = render_entity.weaponDepthHack;
+    view_entity.skipMotionBlur = render_entity.skipMotionBlur;
+    view_entity.modelMatrix = entity_def.modelMatrix;
+
+    render_matrix.multiplySlice(
+        &entity_def.modelMatrix,
+        &view_def.worldSpace.modelViewMatrix,
+        &view_entity.modelViewMatrix,
+    );
+    const view_mat = RenderMatrix.transpose(@as(*RenderMatrix, @ptrCast(&view_entity.modelViewMatrix)).*);
+    view_entity.mvp = RenderMatrix.multiply(view_def.projectionRenderMatrix, view_mat);
+    if (render_entity.weaponDepthHack) {
+        RenderMatrix.applyDepthHack(&view_entity.mvp);
+    }
+    if (render_entity.modelDepthHack != 0) {
+        RenderMatrix.applyModelDepthHack(&view_entity.mvp, render_entity.modelDepthHack);
+    }
+
+    // local light and view origins are used to determine if the view is definitely outside
+    // an extruded shadow volume, which means we can skip drawing the end caps
+    const local_view_origin = interaction.globalPointToLocal(
+        &view_entity.modelMatrix,
+        view_def.renderView.vieworg.toVec3f(),
+    );
+
+    const add_interactions = model_is_visible and
+        (!view_def.isXraySubview or entity_def.parms.xrayIndex == 2);
+
+    // add all the model surfaces
+    for (0..@intCast(render_model.numSurfaces())) |surface_num| {
+        const surf = render_model.getSurface(surface_num) orelse continue;
+        if (r_single_surface >= 0 and surface_num != r_single_surface) continue;
+
+        const tri = surf.geometry orelse continue;
+        // happens for particles
+        if (tri.numIndexes == 0) continue;
+
+        var shader = surf.shader orelse continue;
+
+        if (shader.isLod()) {
+            const local_bounds = if (tri.staticModelWithJoints != null)
+                // skeletal models have difficult to compute bounds for surfaces, so use the whole entity
+                entity_def.localReferenceBounds
+            else
+                tri.bounds;
+            const bounds = local_bounds.constSlice();
+            // nearest point on bounds
+            var p = local_view_origin;
+            p.v[0] = @max(p.x(), bounds[0]);
+            p.v[0] = @min(p.x(), bounds[3]);
+            p.v[1] = @max(p.y(), bounds[1]);
+            p.v[1] = @min(p.y(), bounds[4]);
+            p.v[2] = @max(p.z(), bounds[2]);
+            p.v[2] = @min(p.z(), bounds[5]);
+            const delta = p.subtract(local_view_origin);
+            const distance = delta.lengthFast();
+
+            if (!shader.isLodVisibleForDistance(distance, r_lod_material_distance))
+                continue;
+        }
+
+        if (!shader.isDrawn() and !shader.surfaceCastsShadow()) continue;
+
+        if (entity_def.parms.customShader) |custom_shader| {
+            // this is sort of a hack, but causes deformed surfaces to map to empty surfaces,
+            // so the item highlight overlay doesn't highlight the autosprite surface
+            if (shader.deformType() != .DFRM_NONE) continue;
+            shader = custom_shader;
+        } else if (entity_def.parms.customSkin) |custom_skin| {
+            shader = custom_skin.remapShaderBySkin(shader) orelse continue;
+            if (!shader.isDrawn() and !shader.surfaceCastsShadow()) continue;
+        }
+
+        if (RenderSystem.instance.primary_render_view) |render_view| {
+            if (render_view.globalMaterial) |global_material| {
+                shader = global_material;
+            }
+        }
+
+        // debugging tool to make sure we have the correct pre-calculated bounds
+        if (r_check_bounds) {
+            // TODO: check bounds
+        }
+
+        // view frustum culling for the precise surface bounds, which is tighter
+        // than the entire entity reference bounds
+        // If the entire model wasn't visible, there is no need to check the
+        // individual surfaces.
+        const surface_directly_visible = model_is_visible and
+            !RenderMatrix.cullBoundsToMVP(view_entity.mvp, tri.bounds.toBounds(), false);
+
+        // base drawing surface
+        var opt_base_draw_surf: ?*DrawSurface = null;
+        var opt_shader_regs: ?[*]const f32 = null;
+        if (surface_directly_visible and shader.isDrawn()) {
+            if (!VertexCache.instance.cacheIsCurrent(tri.indexCache)) {
+                tri.indexCache = VertexCache.instance.allocIndex(
+                    @ptrCast(tri.indexes),
+                    @intCast(tri.numIndexes),
+                    @sizeOf(sys_types.TriIndex),
+                    null,
+                );
+            }
+
+            if (!VertexCache.instance.cacheIsCurrent(tri.ambientCache)) {
+                if (shader.receivesLighting() and !tri.tangentsCalculated) {
+                    std.debug.assert(tri.staticModelWithJoints == null);
+                    tri.deriveTangents();
+                }
+                tri.ambientCache = VertexCache.instance.allocVertex(
+                    @ptrCast(tri.verts),
+                    @intCast(tri.numVerts),
+                    @sizeOf(DrawVertex),
+                    null,
+                );
+            }
+
+            // add the surface for drawing
+            // we can re-use some of the values for light interaction surfaces
+            const base_surf = FrameData.frameCreate(DrawSurface);
+            opt_base_draw_surf = base_surf;
+            base_surf.frontEndGeo = tri;
+            base_surf.space = view_entity;
+            base_surf.scissorRect = view_entity.scissorRect;
+            base_surf.extraGLState = 0;
+            base_surf.setupShader(shader, render_entity, view_def);
+
+            opt_shader_regs = base_surf.shaderRegisters;
+
+            const shader_deform = shader.deformType();
+            if (shader_deform != .DFRM_NONE) {
+                if (base_surf.deform(view_def)) |deform_draw_surf| {
+                    // any deforms may have created multiple draw surfaces
+                    var opt_draw_surf: ?*DrawSurface = deform_draw_surf;
+                    var next: ?*DrawSurface = null;
+                    while (opt_draw_surf) |draw_surf| : (opt_draw_surf = next) {
+                        next = draw_surf.nextOnLight;
+                        draw_surf.linkChain = null;
+                        draw_surf.nextOnLight = view_entity.drawSurfs;
+                        view_entity.drawSurfs = draw_surf;
+                    }
+                }
+            }
+
+            if (shader_deform == .DFRM_NONE or
+                shader_deform == .DFRM_PARTICLE or
+                shader_deform == .DFRM_PARTICLE2)
+            {
+                if (!VertexCache.instance.cacheIsCurrent(tri.indexCache)) {
+                    tri.indexCache = VertexCache.instance.allocIndex(
+                        @ptrCast(tri.indexes),
+                        @intCast(tri.numIndexes),
+                        @sizeOf(sys_types.TriIndex),
+                        null,
+                    );
+                }
+
+                if (!VertexCache.instance.cacheIsCurrent(tri.ambientCache)) {
+                    tri.ambientCache = VertexCache.instance.allocVertex(
+                        @ptrCast(tri.verts),
+                        @intCast(tri.numVerts),
+                        @sizeOf(DrawVertex),
+                        null,
+                    );
+                }
+
+                base_surf.setupJoints(tri, null);
+                base_surf.numIndexes = tri.numIndexes;
+                base_surf.ambientCache = tri.ambientCache;
+                base_surf.indexCache = tri.indexCache;
+                base_surf.linkChain = null;
+                base_surf.nextOnLight = view_entity.drawSurfs;
+                view_entity.drawSurfs = base_surf;
+            }
+        }
+
+        // add all light interactions
+        for (
+            contacted_lights.slice(),
+            static_interactions.slice(),
+        ) |view_light, opt_interaction| {
+            var opt_surf_inter: ?*interaction.SurfaceInteraction = null;
+            const light_def = view_light.lightDef orelse continue;
+
+            // check for a static interaction
+            if (opt_interaction) |inter| {
+                if (inter != &Interaction.INTERACTION_EMPTY and
+                    inter.staticInteraction)
+                {
+                    // we have a static interaction that was calculated accurately
+                    std.debug.assert(render_model.numSurfaces() == inter.numSurfaces);
+                    opt_surf_inter = &inter.surfaces.?[surface_num];
+                }
+            }
+
+            // else
+            if (opt_surf_inter == null) {
+                if (interaction.cullModelBoundsToLight(
+                    light_def.*,
+                    tri.bounds.toBounds(),
+                    entity_def.modelRenderMatrix,
+                )) continue;
+            }
+
+            // "invisible ink" lights and shaders (imp spawn drawing on walls, etc)
+            if (light_def.lightShader) |light_shader| {
+                if (shader.spectrum() != light_shader.spectrum())
+                    continue;
+            }
+
+            // surface light interactions
+            if (add_interactions and
+                surface_directly_visible and
+                shader.receivesLighting())
+            {
+                // static interactions can commonly find that no triangles from a surface
+                // contact the light, even when the total model does
+
+                const is_cached = if (opt_surf_inter) |surf_inter|
+                    surf_inter.lightTrisIndexCache > 0
+                else
+                    false;
+                if (opt_surf_inter == null or is_cached) {
+                    // make sure we have a valid shader register even if we didn't generate a drawn mesh above
+                    if (opt_shader_regs == null) {
+                        var scratch_surf = std.mem.zeroes(DrawSurface);
+                        scratch_surf.setupShader(shader, render_entity, view_def);
+                        opt_shader_regs = scratch_surf.shaderRegisters;
+                    }
+
+                    if (opt_shader_regs) |shader_regs| {
+                        const light_draw_surf = FrameData.frameCreate(DrawSurface);
+                        if (opt_surf_inter) |surf_inter| {
+                            // optimized static interaction
+                            light_draw_surf.numIndexes = surf_inter.numLightTrisIndexes;
+                            light_draw_surf.indexCache = surf_inter.lightTrisIndexCache;
+                        } else {
+                            // throw the entire source surface at it without any per-triangle culling
+                            light_draw_surf.numIndexes = tri.numIndexes;
+                            light_draw_surf.indexCache = tri.indexCache;
+                        }
+
+                        light_draw_surf.ambientCache = tri.ambientCache;
+                        light_draw_surf.frontEndGeo = tri;
+                        light_draw_surf.space = view_entity;
+                        light_draw_surf.material = shader;
+                        light_draw_surf.extraGLState = 0;
+                        light_draw_surf.scissorRect = view_light.scissorRect;
+                        light_draw_surf.sort = 0;
+                        light_draw_surf.shaderRegisters = shader_regs;
+
+                        light_draw_surf.setupJoints(tri, null);
+
+                        // Determine which linked list to add the light surface to.
+                        // There will only be localSurfaces if the light casts shadows and
+                        // there are surfaces with NOSELFSHADOW.
+                        if (shader.coverage() == .MC_TRANSLUCENT) {
+                            light_draw_surf.linkChain = &view_light.translucentInteractions;
+                        } else if (!light_def.parms.noShadows and
+                            shader.testMaterialFlag(material.Flags.MF_NOSELFSHADOW))
+                        {
+                            light_draw_surf.linkChain = &view_light.localInteractions;
+                        } else {
+                            light_draw_surf.linkChain = &view_light.globalInteractions;
+                        }
+
+                        light_draw_surf.nextOnLight = view_entity.drawSurfs;
+                        view_entity.drawSurfs = light_draw_surf;
+                    }
+                }
+            }
+
+            // surface shadows
+            if (!shader.surfaceCastsShadow() and
+                !(r_force_shadow_maps_on_alpha_surfs and
+                shader.coverage() == .MC_PERFORATED))
+            {
+                continue;
+            }
+
+            if (!light_def.lightCastsShadows()) continue;
+            // some entities, like view weapons, don't cast any shadows
+            if (entity_def.parms.noShadow) continue;
+            // No shadow if it's suppressed for this light.
+            if (entity_def.parms.suppressShadowInLightID != 0 and
+                entity_def.parms.suppressShadowInLightID == light_def.parms.lightId)
+                continue;
+
+            const is_cached = if (opt_surf_inter) |surf_inter|
+                surf_inter.lightTrisIndexCache > 0
+            else
+                false;
+
+            // RB: draw shadow occluder using shadow mapping
+            // OPTIMIZE: check if projected occluder box intersects the view
+            // static interactions can commonly find that no triangles from a surface
+            // contact the light, even when the total model does
+            if (opt_surf_inter == null or is_cached) {
+                // create a drawSurf for this interaction
+                const shadow_draw_surf = FrameData.frameCreate(DrawSurface);
+                if (opt_surf_inter) |surf_inter| {
+                    shadow_draw_surf.numIndexes = surf_inter.numLightTrisIndexes;
+                    shadow_draw_surf.indexCache = surf_inter.lightTrisIndexCache;
+                } else {
+                    if (!VertexCache.instance.cacheIsCurrent(tri.indexCache)) {
+                        tri.indexCache = VertexCache.instance.allocIndex(
+                            @ptrCast(tri.indexes),
+                            @intCast(tri.numIndexes),
+                            @sizeOf(sys_types.TriIndex),
+                            null,
+                        );
+                    }
+
+                    shadow_draw_surf.numIndexes = tri.numIndexes;
+                    shadow_draw_surf.indexCache = tri.indexCache;
+                }
+
+                if (!VertexCache.instance.cacheIsCurrent(tri.ambientCache)) {
+                    if (shader.receivesLighting() and !tri.tangentsCalculated) {
+                        std.debug.assert(tri.staticModelWithJoints == null);
+                        tri.deriveTangents();
+                    }
+                    tri.ambientCache = VertexCache.instance.allocVertex(
+                        @ptrCast(tri.verts),
+                        @intCast(tri.numVerts),
+                        @sizeOf(DrawVertex),
+                        null,
+                    );
+                }
+
+                shadow_draw_surf.ambientCache = tri.ambientCache;
+                shadow_draw_surf.frontEndGeo = tri;
+                shadow_draw_surf.space = view_entity;
+                shadow_draw_surf.material = shader;
+                shadow_draw_surf.extraGLState = 0;
+                shadow_draw_surf.scissorRect = view_light.scissorRect;
+                shadow_draw_surf.sort = 0;
+                if (opt_base_draw_surf) |base_surf| {
+                    shadow_draw_surf.shaderRegisters = base_surf.shaderRegisters;
+                }
+
+                if (shader.coverage() == .MC_PERFORATED) {
+                    shadow_draw_surf.setupShader(shader, render_entity, view_def);
+                }
+
+                shadow_draw_surf.setupJoints(tri, null);
+                shadow_draw_surf.linkChain = &view_light.globalShadows;
+                shadow_draw_surf.nextOnLight = view_entity.drawSurfs;
+                view_entity.drawSurfs = shadow_draw_surf;
+            }
+        }
+    }
 }
 
 extern fn R_LinkDrawSurfToView(*DrawSurface, *ViewDef) callconv(.C) void;

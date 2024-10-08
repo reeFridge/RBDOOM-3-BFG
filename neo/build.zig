@@ -247,6 +247,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         .target = target,
     });
+    ztech_lib.addIncludePath(b.path("libs/vma/include"));
     ztech_lib.linkLibC();
 
     shader_make_pkg.link(exe);

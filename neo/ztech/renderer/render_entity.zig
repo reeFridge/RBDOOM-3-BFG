@@ -91,7 +91,7 @@ pub const RenderEntity = extern struct {
     joints: ?[*]align(16) JointMat = null,
 
     // squash depth range so particle effects don't clip into walls
-    modelDepthHack: bool = false,
+    modelDepthHack: f32 = 0,
 
     // options to override surface shader flags (replace with material parameters?)
 
@@ -172,6 +172,17 @@ pub const RenderEntityLocal = extern struct {
     firstInteraction: ?*Interaction = null,
     lastInteraction: ?*Interaction = null,
     needsPortalSky: bool = false,
+
+    extern fn c_renderEntity_getDynamicModelForFrame(
+        *RenderEntityLocal,
+        *ViewDef,
+    ) ?*RenderModel;
+    pub fn getDynamicModelForFrame(
+        entity: *RenderEntityLocal,
+        view_def: *ViewDef,
+    ) ?*RenderModel {
+        return c_renderEntity_getDynamicModelForFrame(entity, view_def);
+    }
 
     pub fn isDirectlyVisible(entity: *const RenderEntityLocal) bool {
         if (entity.viewCount != RenderSystem.instance.view_count) {

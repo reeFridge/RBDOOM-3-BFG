@@ -7,6 +7,11 @@ const Plane = @import("../math/plane.zig").Plane;
 pub const CBounds = extern struct {
     b: [2]CVec3 = [_]CVec3{ .{}, .{} },
 
+    pub fn constSlice(bounds: *const CBounds) []const f32 {
+        const as_array_ptr: *const [3 * 2]f32 = @ptrCast(bounds);
+        return &as_array_ptr.*;
+    }
+
     pub fn toBounds(c_bounds: CBounds) Bounds {
         return .{
             .min = c_bounds.b[0].toVec3f(),

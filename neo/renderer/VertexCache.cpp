@@ -352,24 +352,51 @@ vertCacheHandle_t idVertexCache::AllocStaticVertex( const void* data, int bytes,
 	return ActuallyAlloc( staticData, data, bytes, CACHE_VERTEX, commandList );
 }
 
-extern "C" vertCacheHandle_t c_vertexCache_allocStaticIndex(idVertexCache* instance, const void* data, int bytes, nvrhi::ICommandList* commandList) {
+extern "C" {
+
+byte* c_vertexCache_mappedVertexBuffer(idVertexCache* instance, const vertCacheHandle_t handle) {
+	return instance->MappedVertexBuffer(handle);
+}
+
+byte* c_vertexCache_mappedIndexBuffer(idVertexCache* instance, const vertCacheHandle_t handle) {
+	return instance->MappedIndexBuffer(handle);
+}
+
+bool c_vertexCache_cacheIsCurrent(idVertexCache* instance, const vertCacheHandle_t handle) {
+	return instance->CacheIsCurrent(handle);
+}
+
+vertCacheHandle_t c_vertexCache_actuallyAlloc(
+		idVertexCache* instance,
+		geoBufferSet_t* vcs,
+		const void* data,
+		int bytes,
+		cacheType_t type,
+		nvrhi::ICommandList* commandList
+		) {
+	return instance->ActuallyAlloc(*vcs, data, bytes, type, commandList);
+}
+
+vertCacheHandle_t c_vertexCache_allocStaticIndex(idVertexCache* instance, const void* data, int bytes, nvrhi::ICommandList* commandList) {
 	return instance->AllocStaticIndex(data, bytes, commandList);
 }
 
-extern "C" vertCacheHandle_t c_vertexCache_allocStaticVertex(idVertexCache* instance, const void* data, int bytes, nvrhi::ICommandList* commandList) {
+vertCacheHandle_t c_vertexCache_allocStaticVertex(idVertexCache* instance, const void* data, int bytes, nvrhi::ICommandList* commandList) {
 	return instance->AllocStaticVertex(data, bytes, commandList);
 }
 
-extern "C" void c_vertexCache_shutdown(idVertexCache* instance) {
+void c_vertexCache_shutdown(idVertexCache* instance) {
 	instance->Shutdown();
 }
 
-extern "C" void c_vertexCache_init(idVertexCache* instance, unsigned int uniform_buffer_offset_alignment, nvrhi::ICommandList* command_list) {
+void c_vertexCache_init(idVertexCache* instance, unsigned int uniform_buffer_offset_alignment, nvrhi::ICommandList* command_list) {
 	instance->Init(uniform_buffer_offset_alignment, command_list);
 }
 
-extern "C" void c_vertexCache_beginBackend(idVertexCache* instance) {
+void c_vertexCache_beginBackend(idVertexCache* instance) {
 	instance->BeginBackEnd();
+}
+
 }
 
 /*

@@ -876,4 +876,10 @@ drawSurf_t* idRenderModelDecal::CreateDecalDrawSurf( const viewEntity_t* space, 
 	return drawSurf;
 }
 
+extern "C" {
 
+void c_modelDecal_createDecal( idRenderModelDecal* decal, const idRenderModel* model, const decalProjectionParms_t* localParms ) {
+	decal->CreateDecal(model, *localParms);
+}
+
+}

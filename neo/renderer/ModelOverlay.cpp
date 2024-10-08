@@ -788,4 +788,14 @@ drawSurf_t* idRenderModelOverlay::CreateOverlayDrawSurf( const viewEntity_t* spa
 	return drawSurf;
 }
 
+extern "C" {
 
+void c_modelOverlay_createOverlay(idRenderModelOverlay* overlay, const idRenderModel* model, const idPlane localTextureAxis[2], const idMaterial* material) {
+	overlay->CreateOverlay(model, localTextureAxis, material);
+}
+
+void c_modelOverlay_freeOverlay(idRenderModelOverlay* overlay, overlay_t* overlay_) {
+	overlay->FreeOverlay(*overlay_);
+}
+
+}

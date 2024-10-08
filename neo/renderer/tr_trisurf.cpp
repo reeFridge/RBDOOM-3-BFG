@@ -892,7 +892,7 @@ For each vertex the normal and tangent vectors are derived from all triangles
 using the vertex which results in smooth tangents across the mesh.
 ============
 */
-void R_DeriveNormalsAndTangents( srfTriangles_t* tri )
+extern "C" void R_DeriveNormalsAndTangents( srfTriangles_t* tri )
 {
 	idTempArray< idVec3 > vertexNormals( tri->numVerts );
 	idTempArray< idVec3 > vertexTangents( tri->numVerts );
@@ -1032,7 +1032,7 @@ void R_DeriveNormalsAndTangents( srfTriangles_t* tri )
 R_DeriveUnsmoothedNormalsAndTangents
 ============
 */
-void R_DeriveUnsmoothedNormalsAndTangents( srfTriangles_t* tri )
+extern "C" void R_DeriveUnsmoothedNormalsAndTangents( srfTriangles_t* tri )
 {
 	for( int i = 0; i < tri->numVerts; i++ )
 	{
