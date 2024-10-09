@@ -8,7 +8,7 @@ const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 
 pub const RenderEnvironmentProbe = extern struct {
     origin: CVec3,
-    shaderParms: [render_entity.MAX_ENTITY_SHADER_PARMS]f32,
+    shaderParms: [render_entity.MAX_ENTITY_SHADER_PARAMS]f32,
 
     // if non-zero, the environment probe will not show up in the specific view,
     // which may be used if we want to have slightly different muzzle

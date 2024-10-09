@@ -26,6 +26,7 @@ pub const DeclType = enum(c_int) {
 };
 
 pub const Decl = opaque {};
+pub const DeclBase = opaque {};
 
 pub const DeclManager = opaque {
     extern fn c_declManager_findMaterial(*DeclManager, [*:0]const u8, bool) callconv(.C) ?*Material;

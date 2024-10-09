@@ -78,12 +78,8 @@ idCVar r_forceSoundOpAmplitude( "r_forceSoundOpAmplitude", "0", CVAR_FLOAT, "Don
 
 extern "C" {
 
-decalInfo_t c_material_getDecalInfo(const idMaterial* material) {
-	return material->GetDecalInfo();
-}
-
-materialCoverage_t c_material_coverage(const idMaterial* material) {
-	return material->Coverage();
+const idMaterial* c_material_remapShaderBySkin(const idDeclSkin* skin, const idMaterial* shader) {
+	return skin->RemapShaderBySkin(shader);
 }
 
 bool c_material_isLod(const idMaterial* material) {
@@ -92,10 +88,6 @@ bool c_material_isLod(const idMaterial* material) {
 
 bool c_material_isLodVisibleForDistance(const idMaterial* material, float distance, float lodBase) {
 	return material->IsLODVisibleForDistance(distance, lodBase);
-}
-
-const shaderStage_t* c_material_getStage(const idMaterial* material, int stageNum) {
-	return material->GetStage(stageNum);
 }
 
 bool c_material_lightCastsShadows(const idMaterial* material) {
@@ -117,14 +109,6 @@ void c_material_evaluateRegisters(
 	material->EvaluateRegisters(registers, localShaderParms, globalShaderParms, floatTime, soundEmitter);
 }
 
-int c_material_getNumRegisters(const idMaterial* material) {
-	return material->GetNumRegisters();
-}
-
-bool c_material_hasSubview(const idMaterial* material) {
-	return material->HasSubview();
-}
-
 void c_material_addReference(idMaterial* material) {
 	material->AddReference();
 }
@@ -137,32 +121,8 @@ bool c_material_isDrawn(const idMaterial* material) {
 	return material->IsDrawn();
 }
 
-deform_t c_material_deform(const idMaterial* material) {
-	return material->Deform();
-}
-
-const idMaterial* c_material_remapShaderBySkin(const idDeclSkin* skin, const idMaterial* shader) {
-	return skin->RemapShaderBySkin(shader);
-}
-
-int c_material_spectrum(const idMaterial* material) {
-	return material->Spectrum();
-}
-
-bool c_material_isFogLight(const idMaterial* material) {
-	return material->IsFogLight();
-}
-
-bool c_material_isBlendLight(const idMaterial* material) {
-	return material->IsBlendLight();
-}
-
 bool c_material_testMaterialFlag(const idMaterial* material, int flag) {
 	return material->TestMaterialFlag(flag);
-}
-
-int c_material_getNumStages(const idMaterial* material) {
-	return material->GetNumStages();
 }
 
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const FrameData = @import("frame_data.zig");
 const idlib = @import("../idlib.zig");
 const nvrhi = @import("nvrhi.zig");
 const VertexCache = @import("vertex_cache.zig");
@@ -27,6 +28,9 @@ const Framebuffer = @import("framebuffer.zig").Framebuffer;
 const globalPlaneToLocal = @import("interaction.zig").globalPlaneToLocal;
 const RenderSystem = @import("render_system.zig");
 const RenderWorld = @import("render_world.zig");
+
+const MAX_ENTITY_SHADER_PARAMS = @import("render_entity.zig").MAX_ENTITY_SHADER_PARAMS;
+const MAX_EXPRESSION_REGISTERS = @import("material.zig").MAX_EXPRESSION_REGISTERS;
 
 // areas have references to hold all the lights and entities in them
 pub const AreaReference = extern struct {
@@ -71,12 +75,6 @@ pub const DrawSurface = extern struct {
     linkChain: ?*?*DrawSurface,
     scissorRect: ScreenRect,
 
-    extern fn c_drawSurf_setupShader(
-        *DrawSurface,
-        *const Material,
-        *const RenderEntity,
-        *ViewDef,
-    ) void;
     extern fn c_drawSurf_deform(
         *DrawSurface,
         Deform,
@@ -84,12 +82,57 @@ pub const DrawSurface = extern struct {
     ) ?*DrawSurface;
 
     pub fn setupShader(
-        surf: *DrawSurface,
+        draw_surf: *DrawSurface,
         shader: *const Material,
         render_entity: *const RenderEntity,
         view_def: *ViewDef,
     ) void {
-        c_drawSurf_setupShader(surf, shader, render_entity, view_def);
+        draw_surf.material = shader;
+        draw_surf.sort = shader.sort;
+        const time_sec: f32 = @as(f32, @floatFromInt(
+            view_def.renderView.time[@intCast(render_entity.timeGroup)],
+        )) * 0.001;
+
+        // process the shader expressions for conditionals / color / texcoords
+        if (shader.constantRegisters) |constant_registers| {
+            // shader only uses constant values
+            draw_surf.shaderRegisters = constant_registers;
+        } else {
+            var gen_shader_params = std.mem.zeroes([MAX_ENTITY_SHADER_PARAMS]f32);
+            // by default evaluate with the entityDef's shader parms
+            const shader_params = if (render_entity.referenceShader) |ref_shader| shader_params: {
+                // evaluate the reference shader to find our shader parms
+                var ref_regs = std.mem.zeroes([MAX_EXPRESSION_REGISTERS]f32);
+                ref_shader.evaluateRegisters(
+                    &ref_regs,
+                    &render_entity.shaderParms,
+                    &view_def.renderView.shaderParms,
+                    time_sec,
+                    render_entity.referenceSound,
+                );
+
+                const p_stage = ref_shader.getStage(0) orelse @panic("No primary stage!");
+                gen_shader_params = render_entity.shaderParms;
+                gen_shader_params[0] = ref_regs[@intCast(p_stage.color.registers[0])];
+                gen_shader_params[1] = ref_regs[@intCast(p_stage.color.registers[1])];
+                gen_shader_params[2] = ref_regs[@intCast(p_stage.color.registers[2])];
+
+                break :shader_params &gen_shader_params;
+            } else &render_entity.shaderParms;
+
+            // allocate frame memory for the shader register values
+            const regs = FrameData.frameAlloc(f32, @intCast(shader.getNumRegisters()));
+            draw_surf.shaderRegisters = @ptrCast(regs);
+
+            // process the shader expressions for conditionals / color / texcoords
+            shader.evaluateRegisters(
+                regs,
+                shader_params,
+                &view_def.renderView.shaderParms,
+                time_sec,
+                render_entity.referenceSound,
+            );
+        }
     }
 
     const r_use_gpu_skinning = true;

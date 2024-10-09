@@ -1,3 +1,5 @@
+const idlib = @import("../idlib.zig");
+const decl = @import("../framework/decl_manager.zig");
 const DeclSkin = @import("common.zig").DeclSkin;
 const Image = @import("image.zig").Image;
 
@@ -200,23 +202,119 @@ pub const ShaderStage = extern struct {
     newStage: ?*NewShaderStage,
 };
 
-pub const Material = opaque {
-    extern fn c_material_isDrawn(*const Material) callconv(.C) bool;
-    extern fn c_material_deform(*const Material) Deform;
-    extern fn c_material_isFogLight(*const Material) callconv(.C) bool;
-    extern fn c_material_isBlendLight(*const Material) bool;
-    extern fn c_material_testMaterialFlag(*const Material, c_int) callconv(.C) bool;
-    extern fn c_material_spectrum(*const Material) callconv(.C) c_int;
+pub const CullType = enum(c_int) {
+    CT_FRONT_SIDED,
+    CT_BACK_SIDED,
+    CT_TWO_SIDED,
+};
+
+pub const SubViewType = enum(u16) {
+    SUBVIEW_NONE,
+    SUBVIEW_MIRROR,
+    SUBVIEW_DIRECT_PORTAL,
+};
+
+pub const ExpOpType = enum(c_int) {
+    OP_TYPE_ADD,
+    OP_TYPE_SUBTRACT,
+    OP_TYPE_MULTIPLY,
+    OP_TYPE_DIVIDE,
+    OP_TYPE_MOD,
+    OP_TYPE_TABLE,
+    OP_TYPE_GT,
+    OP_TYPE_GE,
+    OP_TYPE_LT,
+    OP_TYPE_LE,
+    OP_TYPE_EQ,
+    OP_TYPE_NE,
+    OP_TYPE_AND,
+    OP_TYPE_OR,
+    OP_TYPE_SOUND,
+};
+
+pub const ExpOp = extern struct {
+    opType: ExpOpType,
+    a: c_int,
+    b: c_int,
+    c: c_int,
+};
+
+const MtrParsingData = extern struct {
+    registerIsTemporary: [MAX_EXPRESSION_REGISTERS]bool,
+    shaderRegisters: [MAX_EXPRESSION_REGISTERS]f32,
+    shaderOps: [MAX_EXPRESSION_OPS]ExpOp,
+    parseStages: [MAX_SHADER_STAGES]ShaderStage,
+    registersAreConstant: bool,
+    forceOverlays: bool,
+};
+
+pub const UserInterface = opaque {};
+
+pub const MAX_EXPRESSION_OPS: usize = 4096;
+pub const MAX_EXPRESSION_REGISTERS: usize = 4096;
+pub const MAX_SHADER_STAGES: usize = 256;
+pub const MAX_TEXGEN_REGISTERS: usize = 4;
+
+pub const Material = extern struct {
+    vptr: *anyopaque,
+    base: ?*decl.DeclBase,
+    desc: idlib.idStr,
+    renderBump: idlib.idStr,
+    lightFalloffImage: ?*Image,
+    fastPathBumpImage: ?*Image,
+    fastPathDiffuseImage: ?*Image,
+    fastPathSpecularImage: ?*Image,
+    entityGui: c_int,
+    gui: ?*UserInterface,
+    noFog: bool,
+    spectrum: c_int,
+    polygonOffset: f32,
+    contentFlags: c_int,
+    surfaceFlags: c_int,
+    materialFlags: c_int,
+    decalInfo: DecalInfo,
+    sort: f32,
+    stereoEye: f32,
+    deform: Deform,
+    deformRegisters: [4]c_int,
+    deformDecl: ?*const decl.Decl,
+    texGenRegisters: [MAX_TEXGEN_REGISTERS]c_int,
+    coverage: MaterialCoverage,
+    cullType: CullType,
+    subViewType: SubViewType,
+    shouldCreateBackSides: bool,
+    fogLight: bool,
+    blendLight: bool,
+    ambientLight: bool,
+    unsmoothedTangents: bool,
+    mikktspace: bool,
+    hasSubview: bool,
+    allowOverlays: bool,
+    numOps: c_int,
+    ops: ?[*]ExpOp,
+    numRegisters: c_int,
+    expressionRegisters: ?[*]f32,
+    constantRegisters: ?[*]f32,
+    numStages: c_int,
+    numAmbientStages: c_int,
+    stages: ?[*]ShaderStage,
+    pd: ?*MtrParsingData,
+    surfaceArea: f32,
+    editorImageName: idlib.idStr,
+    editorImage: ?*Image,
+    editorAlpha: f32,
+    suppressInSubview: bool,
+    portalSky: bool,
+    refCount: c_int,
+
+    extern fn c_material_isDrawn(*const Material) bool;
+    extern fn c_material_testMaterialFlag(*const Material, c_int) bool;
     extern fn c_material_addReference(*Material) callconv(.C) void;
-    extern fn c_material_receivesLighting(*const Material) callconv(.C) bool;
-    extern fn c_material_hasSubview(*const Material) callconv(.C) bool;
+    extern fn c_material_receivesLighting(*const Material) bool;
     extern fn c_material_lightCastsShadows(*const Material) bool;
     extern fn c_material_surfaceCastsShadow(*const Material) bool;
     extern fn c_material_isLod(*const Material) bool;
     extern fn c_material_isLodVisibleForDistance(*const Material, f32, f32) bool;
-    extern fn c_material_getNumRegisters(*const Material) c_int;
-    extern fn c_material_getNumStages(*const Material) c_int;
-    extern fn c_material_coverage(*const Material) MaterialCoverage;
     extern fn c_material_evaluateRegisters(
         *const Material,
         [*]f32,
@@ -225,15 +323,13 @@ pub const Material = opaque {
         f32,
         ?*anyopaque,
     ) void;
-    extern fn c_material_getStage(*const Material, c_int) ?*const ShaderStage;
-    extern fn c_material_getDecalInfo(*const Material) DecalInfo;
 
     pub fn getDecalInfo(material: *const Material) DecalInfo {
-        return c_material_getDecalInfo(material);
+        return material.decalInfo;
     }
 
     pub fn coverage(material: *const Material) MaterialCoverage {
-        return c_material_coverage(material);
+        return material.coverage;
     }
 
     pub fn isLod(material: *const Material) bool {
@@ -249,14 +345,17 @@ pub const Material = opaque {
     }
 
     pub fn getStage(material: *const Material, stage_num: usize) ?*const ShaderStage {
-        return c_material_getStage(material, @intCast(stage_num));
+        return if (material.stages) |stages|
+            &stages[stage_num]
+        else
+            null;
     }
 
     pub fn evaluateRegisters(
         material: *const Material,
         regs: []f32,
-        local_params: []f32,
-        global_params: []f32,
+        local_params: []const f32,
+        global_params: []const f32,
         time: f32,
         sound_emitter: ?*anyopaque,
     ) void {
@@ -271,11 +370,11 @@ pub const Material = opaque {
     }
 
     pub fn getNumRegisters(material: *const Material) usize {
-        return @intCast(c_material_getNumRegisters(material));
+        return @intCast(material.numRegisters);
     }
 
     pub fn getNumStages(material: *const Material) usize {
-        return @intCast(c_material_getNumStages(material));
+        return @intCast(material.numStages);
     }
 
     pub fn lightCastsShadows(material: *const Material) bool {
@@ -291,7 +390,7 @@ pub const Material = opaque {
     }
 
     pub fn deformType(material: *const Material) Deform {
-        return c_material_deform(material);
+        return material.deform;
     }
 
     pub fn receivesLighting(material: *const Material) bool {
@@ -302,23 +401,15 @@ pub const Material = opaque {
         c_material_addReference(material);
     }
 
-    pub fn spectrum(material: *const Material) c_int {
-        return c_material_spectrum(material);
-    }
-
     pub fn isBlendLight(material: *const Material) bool {
-        return c_material_isBlendLight(material);
+        return material.blendLight;
     }
 
     pub fn isFogLight(material: *const Material) bool {
-        return c_material_isFogLight(material);
+        return material.fogLight;
     }
 
     pub fn testMaterialFlag(material: *const Material, flag: c_int) bool {
         return c_material_testMaterialFlag(material, flag);
-    }
-
-    pub fn hasSubview(material: *const Material) bool {
-        return c_material_hasSubview(material);
     }
 };

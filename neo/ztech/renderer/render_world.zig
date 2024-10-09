@@ -327,7 +327,7 @@ pub fn updateLightDef(
     // new for BFG edition: force noShadows on spectrum lights so teleport spawns
     // don't cause such a slowdown.  Hell writing shouldn't be shadowed anyway...
     if (light.parms.shader) |shader| {
-        if (shader.spectrum() > 0)
+        if (shader.spectrum > 0)
             light.parms.noShadows = true;
     }
 
@@ -707,7 +707,7 @@ fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
 
     for (draw_surfs) |surf_ptr| {
         const surf_material = surf_ptr.material orelse continue;
-        if (!surf_material.hasSubview()) continue;
+        if (!surf_material.hasSubview) continue;
 
         // TODO: generate subview surface
     }
@@ -1547,7 +1547,7 @@ fn addSingleModel(
 
             // "invisible ink" lights and shaders (imp spawn drawing on walls, etc)
             if (light_def.lightShader) |light_shader| {
-                if (shader.spectrum() != light_shader.spectrum())
+                if (shader.spectrum != light_shader.spectrum)
                     continue;
             }
 
@@ -1597,7 +1597,7 @@ fn addSingleModel(
                         // Determine which linked list to add the light surface to.
                         // There will only be localSurfaces if the light casts shadows and
                         // there are surfaces with NOSELFSHADOW.
-                        if (shader.coverage() == .MC_TRANSLUCENT) {
+                        if (shader.coverage == .MC_TRANSLUCENT) {
                             light_draw_surf.linkChain = &view_light.translucentInteractions;
                         } else if (!light_def.parms.noShadows and
                             shader.testMaterialFlag(material.Flags.MF_NOSELFSHADOW))
@@ -1616,7 +1616,7 @@ fn addSingleModel(
             // surface shadows
             if (!shader.surfaceCastsShadow() and
                 !(r_force_shadow_maps_on_alpha_surfs and
-                shader.coverage() == .MC_PERFORATED))
+                shader.coverage == .MC_PERFORATED))
             {
                 continue;
             }
@@ -1682,7 +1682,7 @@ fn addSingleModel(
                     shadow_draw_surf.shaderRegisters = base_surf.shaderRegisters;
                 }
 
-                if (shader.coverage() == .MC_PERFORATED) {
+                if (shader.coverage == .MC_PERFORATED) {
                     shadow_draw_surf.setupShader(shader, render_entity, view_def);
                 }
 
