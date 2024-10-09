@@ -34,6 +34,11 @@ pub const CVec3 = extern struct {
         return &as_array_ptr.*;
     }
 
+    pub fn constSlice(vec: *const CVec3) []const f32 {
+        const as_array_ptr: *const [3]f32 = @ptrCast(vec);
+        return &as_array_ptr.*;
+    }
+
     pub fn fromVec3f(vec: Vec3f) CVec3 {
         return .{ .x = vec.v[0], .y = vec.v[1], .z = vec.v[2] };
     }
@@ -275,6 +280,10 @@ pub fn Vec4(comptime T: type) type {
         const V = @Vector(4, T);
 
         v: V = @splat(std.mem.zeroes(T)),
+
+        pub inline fn dot(a: Self, b: Self) T {
+            return @reduce(.Add, (a.v * b.v));
+        }
 
         pub inline fn x(a: Self) T {
             return a.v[0];

@@ -1,4 +1,6 @@
 const nvrhi = @import("nvrhi.zig");
+const CVec2 = @import("../math/vector.zig").CVec2;
+const Vec2 = @import("../math/vector.zig").Vec2;
 const ViewDef = @import("common.zig").ViewDef;
 const Image = @import("image.zig").Image;
 
@@ -169,6 +171,7 @@ pub const TemporalAntiAliasingPass = opaque {
         numConstantBufferVersions: u32 = 16,
     };
 
+    extern fn c_temporalAntiAliasingPass_getCurrentPixelOffset(*TemporalAntiAliasingPass) CVec2;
     extern fn c_temporalAntiAliasingPass_advanceFrame(*TemporalAntiAliasingPass) callconv(.C) void;
     extern fn c_temporalAntiAliasingPass_delete(*TemporalAntiAliasingPass) callconv(.C) void;
     extern fn c_temporalAntiAliasingPass_create() callconv(.C) *TemporalAntiAliasingPass;
@@ -206,5 +209,9 @@ pub const TemporalAntiAliasingPass = opaque {
 
     pub fn advanceFrame(pass: *TemporalAntiAliasingPass) void {
         c_temporalAntiAliasingPass_advanceFrame(pass);
+    }
+
+    pub fn getCurrentPixelOffset(pass: *TemporalAntiAliasingPass) Vec2(f32) {
+        return c_temporalAntiAliasingPass_getCurrentPixelOffset(pass).toVec2f();
     }
 };

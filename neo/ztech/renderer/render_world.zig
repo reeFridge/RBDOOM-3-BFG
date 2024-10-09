@@ -541,9 +541,6 @@ const ViewLight = @import("common.zig").ViewLight;
 const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 const DrawSurface = @import("common.zig").DrawSurface;
 
-extern fn R_SetupViewMatrix(*ViewDef) callconv(.C) void;
-extern fn R_SetupProjectionMatrix(*ViewDef, bool) callconv(.C) void;
-extern fn R_SetupUnprojection(*ViewDef) callconv(.C) void;
 extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
 extern fn R_AddInGameGuis2([*]*DrawSurface, c_int, *ViewDef, *GuiModel) callconv(.C) void;
 extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
@@ -596,21 +593,29 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
 }
 
 fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
+    // save view in case we are a subview
     const old_view_def = RenderSystem.instance.getView();
     RenderSystem.instance.setView(view_def);
     defer RenderSystem.instance.setView(old_view_def);
 
-    R_SetupViewMatrix(view_def);
-    R_SetupProjectionMatrix(view_def, true);
-    R_SetupProjectionMatrix(view_def, false);
-    R_SetupUnprojection(view_def);
+    // setup the matrix for world space to eye space
+    view_def.setupViewMatrix();
+    // we need to set the projection matrix before doing
+    // portal-to-screen scissor calculations
+    view_def.setupProjectionMatrix(true);
+    view_def.setupProjectionMatrix(false);
+    // we need a unprojection matrix to calculate the vertex position
+    // based on the depth image value
+    // for some post process shaders
+    view_def.setupUnprojection();
 
-    const projection_matrix = RenderMatrix{ .m = view_def.projectionMatrix };
+    // setup render matrices for faster culling
+    const projection_matrix: *RenderMatrix = @ptrCast(&view_def.projectionMatrix);
     view_def.projectionRenderMatrix = projection_matrix.transpose();
-    const model_view_matrix = RenderMatrix{ .m = view_def.worldSpace.modelViewMatrix };
+    const model_view_matrix: *RenderMatrix = @ptrCast(&view_def.worldSpace.modelViewMatrix);
     const view_render_matrix = model_view_matrix.transpose();
     view_def.worldSpace.mvp = view_def.projectionRenderMatrix.multiply(view_render_matrix);
-    const unjittered_projection_matrix = RenderMatrix{ .m = view_def.unjitteredProjectionMatrix };
+    const unjittered_projection_matrix: *RenderMatrix = @ptrCast(&view_def.unjitteredProjectionMatrix);
     view_def.unjitteredProjectionRenderMatrix = unjittered_projection_matrix.transpose();
     view_def.worldSpace.unjitteredMVP = view_def.unjitteredProjectionRenderMatrix.multiply(view_render_matrix);
 
@@ -662,12 +667,12 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
     cmd.viewDef = view_def;
 }
 
+pub const RDF_IRRADIANCE: c_int = 4;
 fn renderPostProcess(view_def: *ViewDef) void {
     const old_view_def = RenderSystem.instance.getView();
     RenderSystem.instance.setView(view_def);
     defer RenderSystem.instance.setView(old_view_def);
 
-    const RDF_IRRADIANCE: c_int = 4;
     if ((view_def.renderView.rdflags & RDF_IRRADIANCE) == 0) {
         var cmd = FrameData.createCommand(FrameData.PostProcessCommand);
         cmd.commandId = .RC_POST_PROCESS;

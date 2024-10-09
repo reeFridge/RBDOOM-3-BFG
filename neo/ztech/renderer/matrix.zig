@@ -2,6 +2,7 @@ const std = @import("std");
 const CVec3 = @import("../math/vector.zig").CVec3;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const CMat3 = @import("../math/matrix.zig").CMat3;
+const Mat4 = @import("../math/matrix.zig").Mat4;
 const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Bounds = @import("../bounding_volume/bounds.zig");
@@ -228,6 +229,31 @@ pub fn multiplySlice(a: []const f32, b: []const f32, out: []f32) void {
                 a[i * 4 + 1] * b[1 * 4 + j] +
                 a[i * 4 + 2] * b[2 * 4 + j] +
                 a[i * 4 + 3] * b[3 * 4 + j];
+        }
+    }
+}
+
+pub fn transposeSlice(in: []const f32, out: []f32) void {
+    inline for (0..4) |i| {
+        inline for (0..4) |j| {
+            out[i * 4 + j] = in[j * 4 + i];
+        }
+    }
+}
+
+pub fn fullInverseSlice(a: []const f32, r: []f32) void {
+    var am = std.mem.zeroes(Mat4(f32));
+    inline for (0..4) |i| {
+        inline for (0..4) |j| {
+            am.v[i].v[j] = a[j * 4 + i];
+        }
+    }
+
+    if (!am.inverseSelf()) @panic("Matrix inverse failed");
+
+    inline for (0..4) |i| {
+        inline for (0..4) |j| {
+            r[j * 4 + i] = am.v[i].v[j];
         }
     }
 }

@@ -1,8 +1,96 @@
 const Vec3 = @import("vector.zig").Vec3;
+const Vec4 = @import("vector.zig").Vec4;
 const CVec3 = @import("vector.zig").CVec3;
 const Rotation = @import("rotation.zig");
 const math = @import("math.zig");
 const std = @import("std");
+
+const MATRIX_INVERSE_EPSILON: f32 = 1e-14;
+
+pub fn Mat4(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        v: [4]Vec4(T),
+
+        pub fn inverseSelf(mat: *Self) bool {
+            // 84+4+16 = 104 multiplications
+            // 1 division
+
+            // 2x2 sub-determinants required to calculate 4x4 determinant
+            const det2_01_01 = mat.v[0].v[0] * mat.v[1].v[1] - mat.v[0].v[1] * mat.v[1].v[0];
+            const det2_01_02 = mat.v[0].v[0] * mat.v[1].v[2] - mat.v[0].v[2] * mat.v[1].v[0];
+            const det2_01_03 = mat.v[0].v[0] * mat.v[1].v[3] - mat.v[0].v[3] * mat.v[1].v[0];
+            const det2_01_12 = mat.v[0].v[1] * mat.v[1].v[2] - mat.v[0].v[2] * mat.v[1].v[1];
+            const det2_01_13 = mat.v[0].v[1] * mat.v[1].v[3] - mat.v[0].v[3] * mat.v[1].v[1];
+            const det2_01_23 = mat.v[0].v[2] * mat.v[1].v[3] - mat.v[0].v[3] * mat.v[1].v[2];
+
+            // 3x3 sub-determinants required to calculate 4x4 determinant
+            const det3_201_012 = mat.v[2].v[0] * det2_01_12 - mat.v[2].v[1] * det2_01_02 + mat.v[2].v[2] * det2_01_01;
+            const det3_201_013 = mat.v[2].v[0] * det2_01_13 - mat.v[2].v[1] * det2_01_03 + mat.v[2].v[3] * det2_01_01;
+            const det3_201_023 = mat.v[2].v[0] * det2_01_23 - mat.v[2].v[2] * det2_01_03 + mat.v[2].v[3] * det2_01_02;
+            const det3_201_123 = mat.v[2].v[1] * det2_01_23 - mat.v[2].v[2] * det2_01_13 + mat.v[2].v[3] * det2_01_12;
+
+            const det = (-det3_201_123 * mat.v[3].v[0] + det3_201_023 * mat.v[3].v[1] - det3_201_013 * mat.v[3].v[2] + det3_201_012 * mat.v[3].v[3]);
+            if (@abs(det) < MATRIX_INVERSE_EPSILON) return false;
+
+            // remaining 2x2 sub-determinants
+            const det2_03_01 = mat.v[0].v[0] * mat.v[3].v[1] - mat.v[0].v[1] * mat.v[3].v[0];
+            const det2_03_02 = mat.v[0].v[0] * mat.v[3].v[2] - mat.v[0].v[2] * mat.v[3].v[0];
+            const det2_03_03 = mat.v[0].v[0] * mat.v[3].v[3] - mat.v[0].v[3] * mat.v[3].v[0];
+            const det2_03_12 = mat.v[0].v[1] * mat.v[3].v[2] - mat.v[0].v[2] * mat.v[3].v[1];
+            const det2_03_13 = mat.v[0].v[1] * mat.v[3].v[3] - mat.v[0].v[3] * mat.v[3].v[1];
+            const det2_03_23 = mat.v[0].v[2] * mat.v[3].v[3] - mat.v[0].v[3] * mat.v[3].v[2];
+
+            const det2_13_01 = mat.v[1].v[0] * mat.v[3].v[1] - mat.v[1].v[1] * mat.v[3].v[0];
+            const det2_13_02 = mat.v[1].v[0] * mat.v[3].v[2] - mat.v[1].v[2] * mat.v[3].v[0];
+            const det2_13_03 = mat.v[1].v[0] * mat.v[3].v[3] - mat.v[1].v[3] * mat.v[3].v[0];
+            const det2_13_12 = mat.v[1].v[1] * mat.v[3].v[2] - mat.v[1].v[2] * mat.v[3].v[1];
+            const det2_13_13 = mat.v[1].v[1] * mat.v[3].v[3] - mat.v[1].v[3] * mat.v[3].v[1];
+            const det2_13_23 = mat.v[1].v[2] * mat.v[3].v[3] - mat.v[1].v[3] * mat.v[3].v[2];
+
+            // remaining 3x3 sub-determinants
+            const det3_203_012 = mat.v[2].v[0] * det2_03_12 - mat.v[2].v[1] * det2_03_02 + mat.v[2].v[2] * det2_03_01;
+            const det3_203_013 = mat.v[2].v[0] * det2_03_13 - mat.v[2].v[1] * det2_03_03 + mat.v[2].v[3] * det2_03_01;
+            const det3_203_023 = mat.v[2].v[0] * det2_03_23 - mat.v[2].v[2] * det2_03_03 + mat.v[2].v[3] * det2_03_02;
+            const det3_203_123 = mat.v[2].v[1] * det2_03_23 - mat.v[2].v[2] * det2_03_13 + mat.v[2].v[3] * det2_03_12;
+
+            const det3_213_012 = mat.v[2].v[0] * det2_13_12 - mat.v[2].v[1] * det2_13_02 + mat.v[2].v[2] * det2_13_01;
+            const det3_213_013 = mat.v[2].v[0] * det2_13_13 - mat.v[2].v[1] * det2_13_03 + mat.v[2].v[3] * det2_13_01;
+            const det3_213_023 = mat.v[2].v[0] * det2_13_23 - mat.v[2].v[2] * det2_13_03 + mat.v[2].v[3] * det2_13_02;
+            const det3_213_123 = mat.v[2].v[1] * det2_13_23 - mat.v[2].v[2] * det2_13_13 + mat.v[2].v[3] * det2_13_12;
+
+            const det3_301_012 = mat.v[3].v[0] * det2_01_12 - mat.v[3].v[1] * det2_01_02 + mat.v[3].v[2] * det2_01_01;
+            const det3_301_013 = mat.v[3].v[0] * det2_01_13 - mat.v[3].v[1] * det2_01_03 + mat.v[3].v[3] * det2_01_01;
+            const det3_301_023 = mat.v[3].v[0] * det2_01_23 - mat.v[3].v[2] * det2_01_03 + mat.v[3].v[3] * det2_01_02;
+            const det3_301_123 = mat.v[3].v[1] * det2_01_23 - mat.v[3].v[2] * det2_01_13 + mat.v[3].v[3] * det2_01_12;
+
+            const inv_det = 1.0 / det;
+
+            mat.v[0].v[0] = -det3_213_123 * inv_det;
+            mat.v[1].v[0] = det3_213_023 * inv_det;
+            mat.v[2].v[0] = -det3_213_013 * inv_det;
+            mat.v[3].v[0] = det3_213_012 * inv_det;
+
+            mat.v[0].v[1] = det3_203_123 * inv_det;
+            mat.v[1].v[1] = -det3_203_023 * inv_det;
+            mat.v[2].v[1] = det3_203_013 * inv_det;
+            mat.v[3].v[1] = -det3_203_012 * inv_det;
+
+            mat.v[0].v[2] = det3_301_123 * inv_det;
+            mat.v[1].v[2] = -det3_301_023 * inv_det;
+            mat.v[2].v[2] = det3_301_013 * inv_det;
+            mat.v[3].v[2] = -det3_301_012 * inv_det;
+
+            mat.v[0].v[3] = -det3_201_123 * inv_det;
+            mat.v[1].v[3] = det3_201_023 * inv_det;
+            mat.v[2].v[3] = -det3_201_013 * inv_det;
+            mat.v[3].v[3] = det3_201_012 * inv_det;
+
+            return true;
+        }
+    };
+}
 
 const Mat3f = Mat3(f32);
 
@@ -12,6 +100,11 @@ pub const CMat3 = extern struct {
         .{ .y = 1 },
         .{ .z = 1 },
     },
+
+    pub fn constSlice(vec: *const CMat3) []const f32 {
+        const as_array_ptr: *const [9]f32 = @ptrCast(vec);
+        return &as_array_ptr.*;
+    }
 
     pub fn fromMat3f(mat: Mat3f) CMat3 {
         var result: CMat3 = std.mem.zeroes(CMat3);

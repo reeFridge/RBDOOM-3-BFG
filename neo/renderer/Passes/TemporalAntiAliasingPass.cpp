@@ -314,6 +314,10 @@ idVec2 TemporalAntiAliasingPass::GetCurrentPixelOffset()
 
 extern "C" {
 
+idVec2 c_temporalAntiAliasingPass_getCurrentPixelOffset(TemporalAntiAliasingPass* ptr) {
+	return ptr->GetCurrentPixelOffset();
+}
+
 void c_temporalAntiAliasingPass_delete(TemporalAntiAliasingPass* ptr) {
 	delete ptr;
 }

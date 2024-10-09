@@ -1,4 +1,5 @@
 const std = @import("std");
+const Vec2 = @import("../math/vector.zig").Vec2;
 const Image = @import("image.zig");
 const RenderSystem = @import("render_system.zig");
 const DeviceManager = @import("../sys/device_manager.zig");
@@ -277,6 +278,13 @@ pub const RenderBackend = extern struct {
     extern fn VKimp_Shutdown(bool) callconv(.C) void;
     extern fn R_SetNewMode(bool) callconv(.C) void;
     extern fn Sys_InitInput() callconv(.C) void;
+
+    pub fn getCurrentPixelOffset(backend: *RenderBackend) Vec2(f32) {
+        return if (backend.taaPass) |taa|
+            taa.getCurrentPixelOffset()
+        else
+            Vec2(f32){};
+    }
 
     pub fn shutdown(backend: *RenderBackend) void {
         backend.clearCaches();

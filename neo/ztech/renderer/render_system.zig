@@ -439,7 +439,7 @@ backend_initialized: bool = false,
 omit_swap_buffers: bool = false,
 
 pub var instance = RenderSystem{};
-export var backend_ = std.mem.zeroes(RenderBackend);
+pub export var backend_ = std.mem.zeroes(RenderBackend);
 //pub var backend_ = std.mem.zeroes(RenderBackend);
 
 const DeviceManager = @import("../sys/device_manager.zig");

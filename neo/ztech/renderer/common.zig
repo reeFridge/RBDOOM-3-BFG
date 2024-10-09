@@ -9,12 +9,14 @@ const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
 const RenderEnvprobeLocal = @import("render_envprobe.zig").RenderEnvprobeLocal;
 const PortalArea = @import("render_world.zig").PortalArea;
 const RenderView = @import("render_world.zig").RenderView;
-const RenderMatrix = @import("matrix.zig").RenderMatrix;
+const render_matrix = @import("matrix.zig");
+const RenderMatrix = render_matrix.RenderMatrix;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const Image = @import("image.zig").Image;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CVec2i = @import("../math/vector.zig").CVec2i;
 const CVec4 = @import("../math/vector.zig").CVec4;
+const Vec4 = @import("../math/vector.zig").Vec4;
 const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const VertexCacheHandle = @import("vertex_cache.zig").VertexCacheHandle;
 const Material = @import("material.zig").Material;
@@ -22,6 +24,9 @@ const Deform = @import("material.zig").Deform;
 const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Framebuffer = @import("framebuffer.zig").Framebuffer;
+const globalPlaneToLocal = @import("interaction.zig").globalPlaneToLocal;
+const RenderSystem = @import("render_system.zig");
+const RenderWorld = @import("render_world.zig");
 
 // areas have references to hold all the lights and entities in them
 pub const AreaReference = extern struct {
@@ -248,6 +253,203 @@ pub const ViewDef = extern struct {
     radianceImages: [3]?*Image,
     radianceImageBlends: CVec4,
     targetRender: ?*Framebuffer,
+
+    const flip_matrix: [16]f32 = .{
+        // convert from our coordinate system (looking down X)
+        // to OpenGL's coordinate system (looking down -Z)
+        0,  0, -1, 0,
+        -1, 0, 0,  0,
+        0,  1, 0,  0,
+        0,  0, 0,  1,
+    };
+
+    pub fn setupUnprojection(view_def: *ViewDef) void {
+        render_matrix.fullInverseSlice(
+            &view_def.projectionMatrix,
+            &view_def.unprojectionToCameraMatrix,
+        );
+
+        const unprojection_to_camera: *RenderMatrix = @ptrCast(&view_def.unprojectionToCameraMatrix);
+        view_def.unprojectionToCameraRenderMatrix = unprojection_to_camera.transpose();
+
+        render_matrix.multiplySlice(
+            &view_def.worldSpace.modelViewMatrix,
+            &view_def.projectionMatrix,
+            &view_def.unprojectionToWorldMatrix,
+        );
+
+        render_matrix.fullInverseSlice(
+            &view_def.unprojectionToWorldMatrix,
+            &view_def.unprojectionToWorldMatrix,
+        );
+
+        const unprojection_to_world: *RenderMatrix = @ptrCast(&view_def.unprojectionToWorldMatrix);
+        view_def.unprojectionToWorldRenderMatrix = unprojection_to_world.transpose();
+    }
+
+    pub fn setupViewMatrix(view_def: *ViewDef) void {
+        const world = &view_def.worldSpace;
+        world.* = std.mem.zeroes(ViewEntity);
+
+        // identity
+        world.modelMatrix[0 * 4 + 0] = 1.0;
+        world.modelMatrix[1 * 4 + 1] = 1.0;
+        world.modelMatrix[2 * 4 + 2] = 1.0;
+
+        const origin = view_def.renderView.vieworg.constSlice();
+        const axis = view_def.renderView.viewaxis.constSlice();
+        var viewer_matrix = std.mem.zeroes([16]f32);
+
+        viewer_matrix[0 * 4 + 0] = axis[0 * 3 + 0];
+        viewer_matrix[1 * 4 + 0] = axis[0 * 3 + 1];
+        viewer_matrix[2 * 4 + 0] = axis[0 * 3 + 2];
+        viewer_matrix[3 * 4 + 0] =
+            -origin[0] * axis[0 * 3 + 0] -
+            origin[1] * axis[0 * 3 + 1] -
+            origin[2] * axis[0 * 3 + 2];
+
+        viewer_matrix[0 * 4 + 1] = axis[1 * 3 + 0];
+        viewer_matrix[1 * 4 + 1] = axis[1 * 3 + 1];
+        viewer_matrix[2 * 4 + 1] = axis[1 * 3 + 2];
+        viewer_matrix[3 * 4 + 1] =
+            -origin[0] * axis[1 * 3 + 0] -
+            origin[1] * axis[1 * 3 + 1] -
+            origin[2] * axis[1 * 3 + 2];
+
+        viewer_matrix[0 * 4 + 2] = axis[2 * 3 + 0];
+        viewer_matrix[1 * 4 + 2] = axis[2 * 3 + 1];
+        viewer_matrix[2 * 4 + 2] = axis[2 * 3 + 2];
+        viewer_matrix[3 * 4 + 2] =
+            -origin[0] * axis[2 * 3 + 0] -
+            origin[1] * axis[2 * 3 + 1] -
+            origin[2] * axis[2 * 3 + 2];
+
+        viewer_matrix[0 * 4 + 3] = 0.0;
+        viewer_matrix[1 * 4 + 3] = 0.0;
+        viewer_matrix[2 * 4 + 3] = 0.0;
+        viewer_matrix[3 * 4 + 3] = 1.0;
+
+        // convert from our coordinate system (looking down X)
+        // to OpenGL's coordinate system (looking down -Z)
+        render_matrix.multiplySlice(
+            &viewer_matrix,
+            &flip_matrix,
+            &world.modelViewMatrix,
+        );
+    }
+
+    const r_znear: f32 = 3;
+    const r_use_temporal_aa = false;
+    pub fn setupProjectionMatrix(view_def: *ViewDef, do_jitter: bool) void {
+        // random jittering is usefull when multiple
+        // frames are going to be blended together
+        // for motion blurred anti-aliasing
+        var jitterx: f32 = 0;
+        var jittery: f32 = 0;
+
+        const irradiance_flag_set = (view_def.renderView.rdflags & RenderWorld.RDF_IRRADIANCE) != 0;
+        if (r_use_temporal_aa and do_jitter and !irradiance_flag_set) {
+            // TODO: R_UseTemporalAA
+            const pixel_offset = RenderSystem.backend_.getCurrentPixelOffset();
+            jitterx = pixel_offset.v[0];
+            jittery = pixel_offset.v[1];
+        }
+
+        const z_near = if (view_def.renderView.cramZNear)
+            r_znear * 0.25
+        else
+            r_znear;
+
+        const view_width = view_def.viewport.x2 - view_def.viewport.x1 + 1;
+        const view_height = view_def.viewport.y2 - view_def.viewport.y1 + 1;
+
+        const xoffset = -2.0 * jitterx / @as(f32, @floatFromInt(view_width));
+        const yoffset = -2.0 * jittery / @as(f32, @floatFromInt(view_height));
+
+        const projection_matrix = if (do_jitter)
+            &view_def.projectionMatrix
+        else
+            &view_def.unjitteredProjectionMatrix;
+
+        // alternative far plane at infinity Z for better precision in the distance but still no reversed depth buffer
+        // see Foundations of Game Engine Development 2, chapter 6.3
+
+        const aspect = view_def.renderView.fov_x / view_def.renderView.fov_y;
+
+        const y_scale = 1.0 / (std.math.tan(0.5 * std.math.degreesToRadians(view_def.renderView.fov_y)));
+        const x_scale = y_scale / aspect;
+
+        const epsilon = 1.9073486328125e-6; // 2^-19;
+        //const z_far = 160000.0;
+
+        //const k = z_far / ( z_far - z_near );
+        const k = 1.0 - epsilon;
+
+        projection_matrix[0 * 4 + 0] = x_scale;
+        projection_matrix[1 * 4 + 0] = 0.0;
+        projection_matrix[2 * 4 + 0] = xoffset;
+        projection_matrix[3 * 4 + 0] = 0.0;
+
+        projection_matrix[0 * 4 + 1] = 0.0;
+        projection_matrix[1 * 4 + 1] = y_scale;
+        projection_matrix[2 * 4 + 1] = yoffset;
+        projection_matrix[3 * 4 + 1] = 0.0;
+
+        projection_matrix[0 * 4 + 2] = 0.0;
+        projection_matrix[1 * 4 + 2] = 0.0;
+
+        // adjust value to prevent imprecision issues
+        projection_matrix[2 * 4 + 2] = -k;
+
+        // the clip space Z range has changed from [-1 .. 1] to [0 .. 1] for DX12 & Vulkan
+        projection_matrix[3 * 4 + 2] = -k * z_near;
+
+        projection_matrix[0 * 4 + 3] = 0.0;
+        projection_matrix[1 * 4 + 3] = 0.0;
+        projection_matrix[2 * 4 + 3] = -1.0;
+        projection_matrix[3 * 4 + 3] = 0.0;
+
+        if (view_def.renderView.flipProjection) {
+            projection_matrix[1 * 4 + 1] = -projection_matrix[1 * 4 + 1];
+            projection_matrix[1 * 4 + 3] = -projection_matrix[1 * 4 + 3];
+        }
+
+        if (view_def.isObliqueProjection and do_jitter) {
+            view_def.obliqueProjection();
+        }
+    }
+
+    fn obliqueProjection(view_def: *ViewDef) void {
+        var mvt = std.mem.zeroes([16]f32);
+        render_matrix.transposeSlice(
+            &view_def.worldSpace.modelViewMatrix,
+            &mvt,
+        );
+
+        // transform plane (which is set to the surface we're mirroring about's plane) to camera space
+        const camera_plane = globalPlaneToLocal(&mvt, view_def.clipPlanes[0]);
+        const clip_plane = Vec4(f32){ .v = .{
+            camera_plane.a, camera_plane.b,
+            camera_plane.c, camera_plane.d,
+        } };
+
+        const proj = &view_def.projectionMatrix;
+        const q = Vec4(f32){ .v = .{
+            (std.math.sign(clip_plane.x()) + proj[8]) / proj[0],
+            (std.math.sign(clip_plane.y()) + proj[9]) / proj[5],
+            -1.0,
+            (1.0 + proj[10]) / proj[14],
+        } };
+
+        // scaled plane vector
+        const d = 1.0 / clip_plane.dot(q);
+
+        // Replace the third row of the projection matrix
+        proj[2] = clip_plane.x() * d;
+        proj[6] = clip_plane.y() * d;
+        proj[10] = clip_plane.z() * d;
+        proj[14] = clip_plane.w() * d;
+    }
 };
 
 pub const CalcEnvprobeParams = extern struct {
