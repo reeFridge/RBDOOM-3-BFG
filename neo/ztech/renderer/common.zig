@@ -251,6 +251,14 @@ pub const ViewEnvprobe = extern struct {
 
 pub const FRUSTUM_PLANES: usize = 6;
 pub const MAX_FRUSTUMS: usize = 6;
+pub const FrustumType = enum(c_int) {
+    FRUSTUM_PRIMARY,
+    FRUSTUM_CASCADE1,
+    FRUSTUM_CASCADE2,
+    FRUSTUM_CASCADE3,
+    FRUSTUM_CASCADE4,
+    FRUSTUM_CASCADE5,
+};
 pub const Frustum = [FRUSTUM_PLANES]Plane;
 
 pub const MAX_CLIP_PLANES: usize = 1;
@@ -459,6 +467,127 @@ pub const ViewDef = extern struct {
 
         if (view_def.isObliqueProjection and do_jitter) {
             view_def.obliqueProjection();
+        }
+    }
+
+    const r_shadow_map_splits = 3;
+    const r_shadow_map_split_weight = 0.9;
+    pub fn setupSplitFrustums(view_def: *ViewDef) void {
+        const z_near_start = if (view_def.renderView.cramZNear)
+            r_znear * 0.25
+        else
+            r_znear;
+        const z_far_end: f32 = 10000;
+        var z_near = z_near_start;
+        var z_far = z_far_end;
+
+        const lambda = r_shadow_map_split_weight;
+        const ratio = z_far_end / z_near_start;
+
+        for (0..6) |i| {
+            view_def.frustumSplitDistances[i] = std.math.floatMax(f32);
+        }
+
+        var i: usize = 1;
+        const splits_num = r_shadow_map_splits + 1;
+        while (i <= splits_num and i < MAX_FRUSTUMS) : (i += 1) {
+            const si = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(splits_num));
+            if (i > @intFromEnum(FrustumType.FRUSTUM_CASCADE1)) {
+                z_near = z_far - (z_far * 0.005);
+            }
+
+            z_far =
+                1.005 * lambda *
+                (z_near_start * std.math.pow(f32, ratio, si)) +
+                (1 - lambda) *
+                (z_near_start + (z_far_end - z_near_start) * si);
+
+            if (i <= r_shadow_map_splits) {
+                view_def.frustumSplitDistances[i - 1] = z_far;
+            }
+
+            var proj = std.mem.zeroes([16]f32);
+            view_def.calcProjectionMatrix(z_near, z_far, &proj);
+
+            const projection_matrix: *RenderMatrix = @ptrCast(&proj);
+            const projection_render_matrix = projection_matrix.transpose();
+            const model_view_matrix: *RenderMatrix = @ptrCast(&view_def.worldSpace.modelViewMatrix);
+            const view_render_matrix = model_view_matrix.transpose();
+            view_def.frustumMVPs[i] = projection_render_matrix.multiply(view_render_matrix);
+            view_def.frustums[i] = RenderMatrix.getFrustumPlanes(
+                view_def.frustumMVPs[i],
+                false,
+                true,
+            );
+
+            // the DOOM 3 frustum planes point outside the frustum
+            for (0..6) |j| {
+                view_def.frustums[i][j] = view_def.frustums[i][j].flip();
+            }
+
+            // remove the Z-near to avoid portals from being near clipped
+            if (i == @intFromEnum(FrustumType.FRUSTUM_CASCADE1)) {
+                view_def.frustums[i][4].d -= r_znear;
+            }
+        }
+    }
+
+    const r_center_x = 0;
+    const r_center_y = 0;
+    fn calcProjectionMatrix(
+        view_def: *const ViewDef,
+        z_near: f32,
+        z_far: f32,
+        projection_matrix: []f32,
+    ) void {
+        var ymax = z_near * std.math.tan(view_def.renderView.fov_y * std.math.pi / 360);
+        var ymin = -ymax;
+        var xmax = z_near * std.math.tan(view_def.renderView.fov_x * std.math.pi / 360);
+        var xmin = -xmax;
+
+        const width = xmax - xmin;
+        const height = ymax - ymin;
+        const view_width = view_def.viewport.x2 - view_def.viewport.x1 + 1;
+        const view_height = view_def.viewport.y2 - view_def.viewport.y1 + 1;
+
+        var jitterx: f32 = 0;
+        jitterx = jitterx * width / @as(f32, @floatFromInt(view_width));
+        jitterx += r_center_x;
+        jitterx += view_def.renderView.stereoScreenSeparation;
+        xmin += jitterx * width;
+        xmax += jitterx * width;
+
+        var jittery: f32 = 0;
+        jittery = jittery * height / @as(f32, @floatFromInt(view_height));
+        jittery += r_center_y;
+        ymin += jittery * height;
+        ymax += jittery * height;
+
+        const depth = z_far - z_near;
+
+        projection_matrix[0 * 4 + 0] = 2.0 * z_near / width;
+        projection_matrix[1 * 4 + 0] = 0.0;
+        projection_matrix[2 * 4 + 0] = (xmax + xmin) / width; // normally 0
+        projection_matrix[3 * 4 + 0] = 0.0;
+
+        projection_matrix[0 * 4 + 1] = 0.0;
+        projection_matrix[1 * 4 + 1] = 2.0 * z_near / height;
+        projection_matrix[2 * 4 + 1] = (ymax + ymin) / height; // normally 0
+        projection_matrix[3 * 4 + 1] = 0.0;
+
+        projection_matrix[0 * 4 + 2] = 0.0;
+        projection_matrix[1 * 4 + 2] = 0.0;
+        projection_matrix[2 * 4 + 2] = -(z_far + z_near) / depth;
+        projection_matrix[3 * 4 + 2] = -2 * z_far * z_near / depth;
+
+        projection_matrix[0 * 4 + 3] = 0.0;
+        projection_matrix[1 * 4 + 3] = 0.0;
+        projection_matrix[2 * 4 + 3] = -1.0;
+        projection_matrix[3 * 4 + 3] = 0.0;
+
+        if (view_def.renderView.flipProjection) {
+            projection_matrix[1 * 4 + 1] = -view_def.projectionMatrix[1 * 4 + 1];
+            projection_matrix[1 * 4 + 3] = -view_def.projectionMatrix[1 * 4 + 3];
         }
     }
 

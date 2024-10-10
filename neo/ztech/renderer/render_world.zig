@@ -541,7 +541,6 @@ const ViewLight = @import("common.zig").ViewLight;
 const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 const DrawSurface = @import("common.zig").DrawSurface;
 
-extern fn R_SetupSplitFrustums(*ViewDef) callconv(.C) void;
 extern fn R_AddInGameGuis2([*]*DrawSurface, c_int, *ViewDef, *GuiModel) callconv(.C) void;
 extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
 extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
@@ -633,7 +632,7 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
     const FRUSTUM_PRIMARY: usize = 0;
     view_def.frustums[FRUSTUM_PRIMARY] = frustum_planes;
 
-    R_SetupSplitFrustums(view_def);
+    view_def.setupSplitFrustums();
 
     render_world.findViewLightsAndEntities(&view_def.frustums[FRUSTUM_PRIMARY]);
 
