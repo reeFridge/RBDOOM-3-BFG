@@ -86,7 +86,7 @@ idCVar com_pid( "com_pid", "0", CVAR_INTEGER | CVAR_INIT | CVAR_SYSTEM, "process
 
 // exit - quit - error --------------------------------------------------------
 
-static int set_exit = 0;
+int set_exit = 0;
 static char exit_spawn[ 1024 ];
 
 /*
@@ -318,44 +318,44 @@ unsigned int sys_timeBase = 0;
      0x7fffffff ms - ~24 days
 		 or is it 48 days? the specs say int, but maybe it's casted from unsigned int?
 */
-extern "C" int Sys_Milliseconds()
-{
-	// DG: use clock_gettime on all platforms
-#if 1
-	int curtime;
-	struct timespec ts;
-
-	clock_gettime( D3_CLOCK_TO_USE, &ts );
-
-	if( !sys_timeBase )
-	{
-		sys_timeBase = ts.tv_sec;
-		return ts.tv_nsec / 1000000;
-	}
-
-	curtime = ( ts.tv_sec - sys_timeBase ) * 1000 + ts.tv_nsec / 1000000;
-
-	return curtime;
-#else
-	// gettimeofday() implementation
-	int curtime;
-	struct timeval tp;
-
-	gettimeofday( &tp, NULL );
-
-	if( !sys_timeBase )
-	{
-		sys_timeBase = tp.tv_sec;
-		return tp.tv_usec / 1000;
-	}
-
-	curtime = ( tp.tv_sec - sys_timeBase ) * 1000 + tp.tv_usec / 1000;
-
-	return curtime;
-	* /
-#endif
-	// DG end
-}
+//extern "C" int Sys_Milliseconds()
+//{
+//	// DG: use clock_gettime on all platforms
+//#if 1
+//	int curtime;
+//	struct timespec ts;
+//
+//	clock_gettime( D3_CLOCK_TO_USE, &ts );
+//
+//	if( !sys_timeBase )
+//	{
+//		sys_timeBase = ts.tv_sec;
+//		return ts.tv_nsec / 1000000;
+//	}
+//
+//	curtime = ( ts.tv_sec - sys_timeBase ) * 1000 + ts.tv_nsec / 1000000;
+//
+//	return curtime;
+//#else
+//	// gettimeofday() implementation
+//	int curtime;
+//	struct timeval tp;
+//
+//	gettimeofday( &tp, NULL );
+//
+//	if( !sys_timeBase )
+//	{
+//		sys_timeBase = tp.tv_sec;
+//		return tp.tv_usec / 1000;
+//	}
+//
+//	curtime = ( tp.tv_sec - sys_timeBase ) * 1000 + tp.tv_usec / 1000;
+//
+//	return curtime;
+//	* /
+//#endif
+//	// DG end
+//}
 
 // RB: added for BFG
 

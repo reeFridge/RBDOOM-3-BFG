@@ -509,49 +509,49 @@ void Sys_ReLaunch()
 main
 ===============
 */
-int main( int argc, const char** argv )
-{
-	// DG: needed for Sys_ReLaunch()
-	cmdargc = argc;
-	cmdargv = argv;
-	// DG end
-#ifdef ID_MCHECK
-	// must have -lmcheck linkage
-	mcheck( abrt_func );
-	Sys_Printf( "memory consistency checking enabled\n" );
-#endif
-
-	// Setting memory allocators
-	OPTICK_SET_MEMORY_ALLOCATOR(
-		[]( size_t size ) -> void* { return operator new( size ); },
-		[]( void* p )
-	{
-		operator delete( p );
-	},
-	[]()
-	{
-		/* Do some TLS initialization here if needed */
-	}
-	);
-
-	Posix_EarlyInit();
-
-	if( argc > 1 )
-	{
-		common->Init( argc - 1, &argv[1], NULL );
-	}
-	else
-	{
-		common->Init( 0, NULL, NULL );
-	}
-
-	Posix_LateInit();
-
-
-	while( 1 )
-	{
-		OPTICK_FRAME( "MainThread" );
-
-		common->Frame();
-	}
-}
+//int main( int argc, const char** argv )
+//{
+//	// DG: needed for Sys_ReLaunch()
+//	cmdargc = argc;
+//	cmdargv = argv;
+//	// DG end
+//#ifdef ID_MCHECK
+//	// must have -lmcheck linkage
+//	mcheck( abrt_func );
+//	Sys_Printf( "memory consistency checking enabled\n" );
+//#endif
+//
+//	// Setting memory allocators
+//	OPTICK_SET_MEMORY_ALLOCATOR(
+//		[]( size_t size ) -> void* { return operator new( size ); },
+//		[]( void* p )
+//	{
+//		operator delete( p );
+//	},
+//	[]()
+//	{
+//		/* Do some TLS initialization here if needed */
+//	}
+//	);
+//
+//	Posix_EarlyInit();
+//
+//	if( argc > 1 )
+//	{
+//		common->Init( argc - 1, &argv[1], NULL );
+//	}
+//	else
+//	{
+//		common->Init( 0, NULL, NULL );
+//	}
+//
+//	Posix_LateInit();
+//
+//
+//	while( 1 )
+//	{
+//		OPTICK_FRAME( "MainThread" );
+//
+//		common->Frame();
+//	}
+//}

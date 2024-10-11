@@ -14,7 +14,12 @@ pub fn build(b: *std.Build) !void {
     const idlib_pkg = try idlib_mod.package(b, target, optimize);
     const shader_make_pkg = try shader_make_mod.package(b, target, optimize);
 
-    const exe = b.addExecutable(.{ .name = "rbdoom3bfg", .target = target, .optimize = optimize });
+    const exe = b.addExecutable(.{
+        .name = "rbdoom3bfg",
+        .root_source_file = b.path("ztech/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     exe.defineCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", null);
     exe.defineCMacro("USE_NVRHI", null);

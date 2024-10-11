@@ -2759,6 +2759,7 @@ pub fn setupAreaRefs(render_world: *RenderWorld, portal_areas: []PortalArea) voi
 
 const MAX_OS_PATH: usize = 256;
 const PROC_FILE_EXT = "proc";
+const LIGHT_GRID_FILE_EXT = "lightgrid";
 const BPROC_FILE_EXT = "bproc";
 const PROC_FILE_ID = "mapProcFile003";
 
@@ -2911,7 +2912,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
     }
 
     render_world.clearPortalStates();
-    render_world.setupLightGrid();
+    try render_world.setupLightGrid();
 }
 
 fn commonChildrenArea_r(node: *AreaNode, area_nodes: []AreaNode) c_int {
@@ -3119,14 +3120,37 @@ fn floodConnectedAreas(
     }
 }
 
-fn setupLightGrid(_: *RenderWorld) void {
-    // TODO: convert
-    // idRenderWorldLocal::SetupLightGrid (hard)
-    // -> idRenderWorldLocal::LoadLightGridFile (parse and generate binary) (hard)
-    // -> idRenderWorldLocal::LoadLightGridImages (execute nvrhi command list) (hard)
-    // -> LightGrid::SetupLightGrid (medium)
-    // -> -> LightGrid::CalculateLightGridPointPositions (medium)
-    // -> LightGrid::CountValidGridPoints (easy)
+fn setupLightGrid(render_world: *RenderWorld) error{OutOfMemory}!void {
+    const portal_areas = render_world.portal_areas orelse @panic("portal_areas is not alloced");
+    var buffer: [MAX_OS_PATH * 2]u8 = undefined;
+    var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
+    defer fixed_allocator.reset();
+
+    const allocator = fixed_allocator.allocator();
+
+    const ext = std.fs.path.extension(render_world.map_name);
+    const map_name_wo_ext = render_world.map_name[0 .. render_world.map_name.len - ext.len];
+
+    const filename = try std.fmt.allocPrintZ(
+        allocator,
+        "{s}." ++ LIGHT_GRID_FILE_EXT,
+        .{map_name_wo_ext},
+    );
+
+    _ = portal_areas;
+    std.debug.print("[{s}] TODO: LightGrid.setupLightGrid\n", .{filename});
+
+    //if (render_world.loadLightGridFile(filename)) {
+    //    render_world.loadLightGridImages();
+    //} else {
+    //    for (portal_areas) |*area| {
+    //        area.lightGrid.setupLightGrid(
+    //            area.globalBounds,
+    //            render_world.map_name,
+    //            render_world,
+    //        );
+    //    }
+    //}
 }
 
 const ParseModelError = error{

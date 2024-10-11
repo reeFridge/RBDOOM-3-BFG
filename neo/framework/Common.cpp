@@ -2123,6 +2123,18 @@ CONSOLE_COMMAND( testFormattingSizes, "test printf format security", 0 )
 
 extern "C" {
 
+void c_common_init(idCommonLocal* instance, unsigned int argc, const char* const* argv) {
+	instance->Init(argc, argv, NULL);
+}
+
+void c_common_frame(idCommonLocal* instance) {
+	instance->Frame();
+}
+
+void c_common_quit(idCommonLocal* instance) {
+	instance->Quit();
+}
+
 uint64 c_common_getRendererGPUMicroseconds(const idCommonLocal* instance) {
 	return instance->GetRendererGPUMicroseconds();
 }
