@@ -1201,7 +1201,10 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 			args.TokenizeString( cmdline, true );
 			argv = args.GetArgs( &argc );
 		}
-		ParseCommandLine( argc, argv );
+
+		if (argc > 1) {
+			ParseCommandLine( argc, argv );
+		}
 
 		// init console command system
 		cmdSystem->Init();

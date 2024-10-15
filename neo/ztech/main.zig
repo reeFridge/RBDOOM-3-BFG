@@ -141,25 +141,16 @@ fn lateInit() void {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    var args = try std.process.argsAlloc(allocator);
+    const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    const args_ptr = try allocator.alloc([*:0]const u8, args.len - 1);
-    for (args[1..], args_ptr) |arg, *arg_ptr| {
-        arg_ptr.* = arg.ptr;
-    }
-    defer allocator.free(args_ptr);
-
-    for (args, 0..) |arg_str, i| {
-        std.debug.print("ARGS:\n[{}] {s}\n", .{ i, arg_str });
-    }
 
     try earlyInit();
 
     if (args.len > 1) {
-        common.instance.init(args_ptr);
-    } else {
-        common.instance.init(null);
+        common.Common.parseCommandLine(args[1..]);
     }
+
+    common.instance.init();
 
     lateInit();
 

@@ -13,6 +13,13 @@ pub const idStr = extern struct {
     baseBuffer: [STR_ALLOC_BASE]u8,
 };
 
+pub fn idStrStatic(size: usize) type {
+    return extern struct {
+        base: idStr,
+        buffer: [size]c_char,
+    };
+}
+
 pub fn idList(T: type) type {
     return extern struct {
         const Self = @This();
@@ -76,9 +83,8 @@ pub fn idStaticList(T: type, size: usize) type {
 // TODO: const MutexHandle = @import("std").c.pthread_mutex_t;
 // Wrong size of std.c.pthread_mutex_t
 // https://github.com/ziglang/zig/issues/21229
-pub const MutexHandle = extern struct {
-    data: [40]u8,
-};
+const pthread = @cImport(@cInclude("pthread.h"));
+pub const MutexHandle = pthread.pthread_mutex_t;
 
 pub const idSysMutex = extern struct {
     handle: MutexHandle,
@@ -128,6 +134,15 @@ pub const idHashIndex = extern struct {
     }
 };
 
+pub const idFile = opaque {};
+
+pub const idResourceCacheEntry = extern struct {
+    filename: idStrStatic(256),
+    offset: c_int,
+    length: c_int,
+    owner: *idResourceContainer,
+};
+
 pub const idDict = extern struct {
     const KeyValue = extern struct {
         key: *const anyopaque,
@@ -136,4 +151,65 @@ pub const idDict = extern struct {
 
     args: idList(KeyValue),
     argsHash: idHashIndex,
+};
+
+pub const idResourceContainer = extern struct {
+    fileName: idStrStatic(256),
+    resourceFile: ?*idFile,
+    tableOffset: c_int,
+    tableLength: c_int,
+    resourceMagic: c_int,
+    numFileResources: c_int,
+    cacheTable: idList(idResourceCacheEntry),
+    cacheHash: idHashIndex,
+};
+
+pub const idZipCacheEntry = extern struct {
+    const MAX_ZIPPED_FILE_NAME: usize = 2048;
+    const ZPOS64_T = u64;
+
+    filename: idStrStatic(MAX_ZIPPED_FILE_NAME),
+    offset: ZPOS64_T,
+    length: ZPOS64_T,
+    owner: *idZipContainer,
+};
+
+pub const idZipContainer = extern struct {
+    const unzFile = opaque {};
+
+    fileName: idStrStatic(256),
+    zipFileHandle: ?*unzFile,
+    checksum: c_int,
+    numFileResources: c_int,
+    cacheTable: idList(idZipCacheEntry),
+    cacheHash: idHashIndex,
+};
+
+pub const idStrList = idList(idStr);
+
+pub const idPreloadManifest = extern struct {
+    pub const PreloadType = enum(c_int) {
+        PRELOAD_IMAGE,
+        PRELOAD_MODEL,
+        PRELOAD_SAMPLE,
+        PRELOAD_ANIM,
+        PRELOAD_COLLISION,
+        PRELOAD_PARTICLE,
+    };
+
+    pub const ImagePreload = extern struct {
+        filter: c_int,
+        repeat: c_int,
+        usage: c_int,
+        cubeMap: c_int,
+    };
+
+    pub const PreloadEntry = extern struct {
+        resType: PreloadType,
+        resourceName: idStr,
+        imgData: ImagePreload,
+    };
+
+    entries: idList(PreloadEntry),
+    filename: idStr,
 };

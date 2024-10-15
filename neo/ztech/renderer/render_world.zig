@@ -1,3 +1,4 @@
+const idlib = @import("../idlib.zig");
 const CVec3 = @import("../math/vector.zig").CVec3;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const std = @import("std");
@@ -22,7 +23,7 @@ const interaction = @import("interaction.zig");
 const Interaction = interaction.Interaction;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderSystem = @import("render_system.zig");
-const fs = @import("../fs.zig");
+const fs = @import("../framework/file_system.zig");
 const Image = @import("image.zig").Image;
 const RenderModelManager = @import("render_model_manager.zig");
 const GuiModel = @import("gui_model.zig").GuiModel;
@@ -161,13 +162,11 @@ pub const ReusableOverlay = extern struct {
     overlays: ?*RenderModelOverlay = null,
 };
 
-const FILE_NOT_FOUND_TIMESTAMP: fs.Time = -1;
-
 allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
 map_name: []u8,
 // for fast reloads of the same level
-map_time_stamp: fs.Time = FILE_NOT_FOUND_TIMESTAMP,
+map_time_stamp: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
 area_nodes: ?[]AreaNode = null,
 portal_areas: ?[]PortalArea = null,
 // incremented every time a door portal state changes
@@ -2804,10 +2803,10 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
     });
 
     // 3. if we are reloading the same map, check the timestamp and try to skip all the work
-    const current_time_stamp = fs.getTimestamp(proc_filename);
+    const current_time_stamp = fs.instance.getTimestamp(proc_filename);
 
     if (std.mem.eql(u8, map_name, render_world.map_name)) {
-        if (current_time_stamp != FILE_NOT_FOUND_TIMESTAMP and current_time_stamp == render_world.map_time_stamp) {
+        if (current_time_stamp != fs.FILE_NOT_FOUND_TIMESTAMP and current_time_stamp == render_world.map_time_stamp) {
             std.debug.print("Retaining existing map\n", .{});
             //render_world.freeDefs();
             //render_world.touchWorldModels();
@@ -2823,7 +2822,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
     try render_world.setMapName("<FREED>");
 
     // 5. Check if we have an already generated version of file (see 2)
-    const loaded = if (fs.openFileReadMemory(bproc_filename)) |_| loaded: {
+    const loaded = if (fs.instance.openFileReadMemory(bproc_filename)) |_| loaded: {
         // and load from .bproc
         break :loaded false;
     } else false;
