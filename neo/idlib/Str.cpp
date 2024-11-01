@@ -2596,3 +2596,23 @@ CONSOLE_COMMAND( testStrId, "prints a localized string", 0 )
 	idStrId str( va( "#%s", args.Argv( 1 ) ) );
 	idLib::Printf( "%s = %s\n", args.Argv( 1 ), str.GetLocalizedString() );
 }
+
+extern "C" {
+
+idStr* c_str_fromStr(const uint8_t* const str) {
+	return new idStr((const char*)str);
+}
+
+void c_str_append(idStr* self, const uint8_t* const str) {
+	self->Append((const char*)str);
+}
+
+void c_str_freeData(idStr* self) {
+	self->FreeData();
+}
+
+void c_str_assignStr(idStr* self, const uint8_t* const str) {
+	*self = (const char*)str;
+}
+
+}

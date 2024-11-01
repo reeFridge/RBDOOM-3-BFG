@@ -1207,13 +1207,13 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		}
 
 		// init console command system
-		cmdSystem->Init();
+		//cmdSystem->Init();
 
 		// init CVar system
-		cvarSystem->Init();
+		//cvarSystem->Init();
 
 		// register all static CVars
-		idCVar::RegisterStaticVars();
+		//idCVar::RegisterStaticVars();
 
 		idLib::Printf( "QA Timing INIT: %06dms\n", Sys_Milliseconds() );
 
@@ -1221,7 +1221,7 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		Printf( "%s\n", version.string );
 
 		// initialize key input/binding, done early so bind command exists
-		idKeyInput::Init();
+		//idKeyInput::Init();
 
 		// init the console so we can take prints
 		console->Init();
@@ -1246,7 +1246,7 @@ void idCommonLocal::Init( int argc, const char* const* argv, const char* cmdline
 		InitSIMD();
 
 		// initialize the file system
-		fileSystem->Init();
+		//fileSystem->Init();
 
 		const char* defaultLang = Sys_DefaultLanguage();
 		com_isJapaneseSKU = ( idStr::Icmp( defaultLang, ID_LANG_JAPANESE ) == 0 );

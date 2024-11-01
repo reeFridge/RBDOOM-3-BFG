@@ -256,8 +256,7 @@ pub const MAX_SHADER_STAGES: usize = 256;
 pub const MAX_TEXGEN_REGISTERS: usize = 4;
 
 pub const Material = extern struct {
-    vptr: *anyopaque,
-    base: ?*decl.DeclBase,
+    base: decl.Decl,
     desc: idlib.idStr,
     renderBump: idlib.idStr,
     lightFalloffImage: ?*Image,

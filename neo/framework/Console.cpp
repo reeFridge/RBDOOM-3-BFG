@@ -153,7 +153,7 @@ private:
 	static idCVar		con_noPrint;
 };
 
-static idConsoleLocal localConsole;
+idConsoleLocal localConsole;
 idConsole* console = &localConsole;
 
 idCVar idConsoleLocal::con_speed( "con_speed", "3", CVAR_SYSTEM, "speed at which the console moves up and down" );

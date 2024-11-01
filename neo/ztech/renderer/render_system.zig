@@ -9,6 +9,16 @@ const DrawSurface = @import("common.zig").DrawSurface;
 const ResolutionScale = @import("resolution_scale.zig");
 const DeclManager = @import("../framework/decl_manager.zig");
 
+pub const SMALLCHAR_WIDTH: c_int = 8;
+pub const SMALLCHAR_HEIGHT: c_int = 16;
+pub const BIGCHAR_WIDTH: c_int = 16;
+pub const BIGCHAR_HEIGHT: c_int = 16;
+
+// all drawing is done to a 640 x 480 virtual screen size
+// and will be automatically scaled to the real resolution
+pub const SCREEN_WIDTH: c_int = 640;
+pub const SCREEN_HEIGHT: c_int = 480;
+
 pub const VENDOR_NVIDIA: c_int = 0;
 pub const VENDOR_AMD: c_int = 1;
 pub const VENDOR_INTEL: c_int = 2;
@@ -454,7 +464,6 @@ const global = @import("../global.zig");
 pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) error{OutOfMemory}!void {
     if (render_system.initialized) return;
     // also inits FrameData
-    // and calls to ztech_renderSystem_setBackendInitialized()
     try backend_.init(allocator);
 
     const device = DeviceManager.instance().getDevice();

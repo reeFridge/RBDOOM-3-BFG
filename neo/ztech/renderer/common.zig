@@ -28,6 +28,7 @@ const Framebuffer = @import("framebuffer.zig").Framebuffer;
 const globalPlaneToLocal = @import("interaction.zig").globalPlaneToLocal;
 const RenderSystem = @import("render_system.zig");
 const RenderWorld = @import("render_world.zig");
+const Decl = @import("../framework/decl_manager.zig").Decl;
 
 const MAX_ENTITY_SHADER_PARAMS = @import("render_entity.zig").MAX_ENTITY_SHADER_PARAMS;
 const MAX_EXPRESSION_REGISTERS = @import("material.zig").MAX_EXPRESSION_REGISTERS;
@@ -49,7 +50,16 @@ pub const AreaReference = extern struct {
     area: ?*PortalArea = null,
 };
 
-pub const DeclSkin = opaque {
+const SkinMapping = extern struct {
+    from: ?*const Material,
+    to: ?*const Material,
+};
+
+pub const DeclSkin = extern struct {
+    base: Decl,
+    mappings: idlib.idList(SkinMapping),
+    associatedModels: idlib.idStrList,
+
     extern fn c_declSkin_remapShaderBySkin(
         *const DeclSkin,
         ?*const Material,

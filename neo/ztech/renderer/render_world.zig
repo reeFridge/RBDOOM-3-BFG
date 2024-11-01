@@ -2756,14 +2756,15 @@ pub fn setupAreaRefs(render_world: *RenderWorld, portal_areas: []PortalArea) voi
     }
 }
 
-const MAX_OS_PATH: usize = 256;
 const PROC_FILE_EXT = "proc";
 const LIGHT_GRID_FILE_EXT = "lightgrid";
 const BPROC_FILE_EXT = "bproc";
 const PROC_FILE_ID = "mapProcFile003";
 
-const Lexer = @import("../lexer.zig");
-const Token = @import("../token.zig");
+const lexer_ = @import("../lexer.zig");
+const Lexer = lexer_.Lexer;
+const token_ = @import("../token.zig");
+const Token = token_.Token;
 
 const MapError = error{
     ProcFileNotFound,
@@ -2771,7 +2772,7 @@ const MapError = error{
 };
 
 pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
-    var buffer: [MAX_OS_PATH * 2]u8 = undefined;
+    var buffer: [fs.MAX_OS_PATH * 2]u8 = undefined;
     var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
     defer fixed_allocator.reset();
 
@@ -2829,9 +2830,9 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
 
     // 6. Else parse .proc file and generate binary .bproc from it
     if (!loaded) {
-        var lexer = Lexer.init(
+        var lexer = lexer_.Lexer.init(
             proc_filename,
-            Lexer.Flags.LEXFL_NOSTRINGCONCAT | Lexer.Flags.LEXFL_NODOLLARPRECOMPILE,
+            lexer_.Flags.LEXFL_NOSTRINGCONCAT | lexer_.Flags.LEXFL_NODOLLARPRECOMPILE,
         );
         defer lexer.deinit();
 
@@ -2849,15 +2850,15 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
         var token = Token.init();
         defer token.deinit();
 
-        if (!lexer.readToken(&token) or !std.mem.eql(u8, token.slice(), PROC_FILE_ID)) {
+        if (!lexer.readToken(token) or !std.mem.eql(u8, token.slice(), PROC_FILE_ID)) {
             std.debug.print("Bad id {s} instead of {s}\n", .{ token.slice(), PROC_FILE_ID });
             return error.BadProcFileId;
         }
 
         var numEntries: usize = 0;
-        while (lexer.readToken(&token)) {
+        while (lexer.readToken(token)) {
             if (std.mem.eql(u8, token.slice(), "model")) {
-                const render_model = try render_world.parseModel(&lexer);
+                const render_model = try render_world.parseModel(lexer);
                 // add it to the model manager list
                 RenderModelManager.instance.addModel(render_model);
 
@@ -2868,8 +2869,8 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             }
 
             if (std.mem.eql(u8, token.slice(), "shadowModel")) {
-                _ = try render_world.parseShadowModel(&lexer);
-                //const last_model = render_world.parseShadowModel(&lexer);
+                _ = try render_world.parseShadowModel(lexer);
+                //const last_model = render_world.parseShadowModel(lexer);
                 // add it to the model manager list
                 //global.renderModelManager.addModel(last_model);
 
@@ -2880,13 +2881,13 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             }
 
             if (std.mem.eql(u8, token.slice(), "interAreaPortals")) {
-                try render_world.parseInterAreaPortals(&lexer);
+                try render_world.parseInterAreaPortals(lexer);
                 numEntries += 1;
                 continue;
             }
 
             if (std.mem.eql(u8, token.slice(), "nodes")) {
-                try render_world.parseNodes(&lexer);
+                try render_world.parseNodes(lexer);
                 numEntries += 1;
                 continue;
             }
@@ -3121,7 +3122,7 @@ fn floodConnectedAreas(
 
 fn setupLightGrid(render_world: *RenderWorld) error{OutOfMemory}!void {
     const portal_areas = render_world.portal_areas orelse @panic("portal_areas is not alloced");
-    var buffer: [MAX_OS_PATH * 2]u8 = undefined;
+    var buffer: [fs.MAX_OS_PATH * 2]u8 = undefined;
     var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
     defer fixed_allocator.reset();
 
@@ -3169,7 +3170,7 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
     defer token.deinit();
 
     // model name
-    try lexer.expectAnyToken(&token);
+    try lexer.expectAnyToken(token);
 
     var render_model = try model.RenderModel.initEmpty(token.slice());
     errdefer render_model.deinit(render_world);
@@ -3180,7 +3181,7 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
         // surface parsing start
         try lexer.expectTokenString("{");
 
-        try lexer.expectAnyToken(&token);
+        try lexer.expectAnyToken(token);
 
         const num_vertices = try lexer.parseSize();
         const num_indices = try lexer.parseSize();
@@ -3335,7 +3336,7 @@ fn parseShadowModel(_: *RenderWorld, lexer: *Lexer) !?*model.RenderModel {
     defer token.deinit();
 
     // model name
-    try lexer.expectAnyToken(&token);
+    try lexer.expectAnyToken(token);
     const num_verts = try lexer.parseSize(); // numVerts
     _ = try lexer.parseSize();
     _ = try lexer.parseSize();

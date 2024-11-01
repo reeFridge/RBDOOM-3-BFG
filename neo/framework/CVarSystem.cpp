@@ -1440,3 +1440,11 @@ void idCVarSystemLocal::Restart_f( const idCmdArgs& args )
 		cvar->Reset();
 	}
 }
+
+extern "C" {
+
+idInternalCVar* c_cvar_createHeap(const uint8_t * const name, const uint8_t * const value, int flags) {
+	return new idInternalCVar((const char*)name, (const char*)value, flags);
+}
+
+}

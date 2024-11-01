@@ -1,9 +1,12 @@
 const std = @import("std");
 const posix = std.posix;
 const common = @import("framework/common.zig");
+const cmd = @import("framework/cmd_system.zig");
 
 const c_string = @cImport(@cInclude("string.h"));
 const c_signal = @cImport(@cInclude("signal.h"));
+
+usingnamespace @import("lib.zig");
 
 extern var set_exit: c_int;
 
@@ -150,9 +153,13 @@ pub fn main() !void {
         common.Common.parseCommandLine(args[1..]);
     }
 
-    common.instance.init();
+    try common.instance.init(allocator);
+    var cmd_args = std.mem.zeroes(cmd.CmdArgs);
+    cmd_args.appendArg("exec");
+    cmd_args.appendArg("default.cfg");
+    cmd.cmd_execFile(&cmd_args);
 
-    lateInit();
+    //lateInit();
 
-    while (true) common.instance.frame();
+    //while (true) common.instance.frame();
 }

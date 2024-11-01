@@ -10,6 +10,20 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const gen_static_cmds_exe = b.addExecutable(.{
+        .name = "gen_static_cmds",
+        .root_source_file = b.path("gen_cmd_index.zig"),
+        .target = b.host,
+    });
+    const gen_static_cmds = b.addRunArtifact(gen_static_cmds_exe);
+
+    const gen_static_cvars_exe = b.addExecutable(.{
+        .name = "gen_static_cvars",
+        .root_source_file = b.path("gen_cvar_index.zig"),
+        .target = b.host,
+    });
+    const gen_static_cvars = b.addRunArtifact(gen_static_cvars_exe);
+
     const nvrhi_pkg = try nvrhi_mod.package(b, target, optimize);
     const idlib_pkg = try idlib_mod.package(b, target, optimize);
     const shader_make_pkg = try shader_make_mod.package(b, target, optimize);
@@ -20,6 +34,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    exe.step.dependOn(&gen_static_cmds.step);
+    exe.step.dependOn(&gen_static_cvars.step);
 
     exe.defineCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", null);
     exe.defineCMacro("USE_NVRHI", null);
@@ -246,19 +262,19 @@ pub fn build(b: *std.Build) !void {
     exe.addCSourceFiles(.{ .files = exe_src_cpp.items, .flags = &cxxflags });
     exe.addCSourceFiles(.{ .files = exe_src_c.items, .flags = &cflags });
 
-    const ztech_lib = b.addStaticLibrary(.{
-        .name = "libztech",
-        .root_source_file = b.path("ztech/lib.zig"),
-        .optimize = optimize,
-        .target = target,
-    });
-    ztech_lib.addIncludePath(b.path("libs/vma/include"));
-    ztech_lib.linkLibC();
+    //const ztech_lib = b.addStaticLibrary(.{
+    //    .name = "libztech",
+    //    .root_source_file = b.path("ztech/lib.zig"),
+    //    .optimize = optimize,
+    //    .target = target,
+    //});
+    //ztech_lib.addIncludePath(b.path("libs/vma/include"));
+    //ztech_lib.linkLibC();
 
     shader_make_pkg.link(exe);
     nvrhi_pkg.link(exe);
     idlib_pkg.link(exe);
-    exe.linkLibrary(ztech_lib);
+    //exe.linkLibrary(ztech_lib);
 
     exe.linkSystemLibrary("sdl2");
     exe.linkSystemLibrary("vulkan");

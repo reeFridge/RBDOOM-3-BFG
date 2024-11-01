@@ -4235,6 +4235,10 @@ sysFolder_t idFileSystemLocal::IsFolder( const char* relativePath, const char* b
 
 extern "C" {
 
+void c_fileSystem_freeFile(idFileSystem* fs, void* buffer) {
+	fs->FreeFile(buffer);
+}
+
 int c_fileSystem_readFile(idFileSystem* fs, uint8_t const * const relativePath, void** buffer, ID_TIME_T* timestamp) {
 	return fs->ReadFile((const char*)relativePath, buffer, timestamp);
 }

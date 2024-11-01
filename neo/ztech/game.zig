@@ -4,10 +4,35 @@ const RenderSystem = @import("renderer/render_system.zig");
 const global = @import("global.zig");
 const Player = @import("entity_types/player.zig");
 const idlib = @import("idlib.zig");
+const Decl = @import("framework/decl_manager.zig").Decl;
+
+const cmd = @import("framework/cmd_system.zig");
+const CmdDecl = cmd.CmdDecl;
+
+fn cmd_printCurrentTime(_: *const cmd.CmdArgs) callconv(.C) void {
+    std.debug.print("Current Game.time: {}\n", .{instance.time});
+}
+pub const print_current_time: CmdDecl = .{
+    .name = "printCurrentTime",
+    .function = cmd_printCurrentTime,
+    .flags = cmd.CmdFlags.CMD_FL_GAME,
+    .description = "prints current game time in microsec",
+    .arg_completion = null,
+};
+
+fn cmd_printCurrentFrame(_: *const cmd.CmdArgs) callconv(.C) void {
+    std.debug.print("Current Game.frame: {}\n", .{instance.frame});
+}
+pub const print_current_frame = CmdDecl{
+    .name = "printCurrentFrame",
+    .function = cmd_printCurrentFrame,
+    .flags = cmd.CmdFlags.CMD_FL_GAME,
+    .description = "prints current game frame",
+    .arg_completion = null,
+};
 
 pub const DeclEntityDef = extern struct {
-    vptr: *anyopaque,
-    base: *anyopaque,
+    base: decl.Decl,
     dict: idlib.idDict,
 
     pub fn name(self: DeclEntityDef) []const u8 {
