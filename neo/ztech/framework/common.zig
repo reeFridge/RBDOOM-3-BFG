@@ -7,6 +7,8 @@ const console = @import("console.zig");
 const network = @import("../sys/network.zig");
 const localization = @import("../sys/localization.zig");
 const decl_manager = @import("decl_manager.zig");
+const event_loop = @import("event_loop.zig");
+const parallel_job_manager = @import("../renderer/parallel_job_manager.zig");
 
 pub const Common = opaque {
     extern fn c_common_getRendererGPUMicroseconds(*const Common) callconv(.C) u64;
@@ -33,8 +35,8 @@ pub const Common = opaque {
         try fs.instance.init();
         try localization.setDefaultLang();
         try decl_manager.instance.init();
-        // TODO try event_loop.instance.init();
-        // TODO try parallel_job_manager.instance.init();
+        try event_loop.instance.init();
+        try parallel_job_manager.instance.init();
         cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec default.cfg\n");
         cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec autoexec.cfg\n");
         // TODO cmd.instance.executeCommandBuffer();

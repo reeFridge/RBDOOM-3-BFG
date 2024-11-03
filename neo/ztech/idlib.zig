@@ -344,24 +344,6 @@ pub fn idList(T: type) type {
                 &.{};
         }
 
-        pub fn getPtr(self: *const Self, index: c_int) ?*T {
-            if (index >= self.num) return null;
-
-            return if (self.list) |list|
-                &list[@intCast(index)]
-            else
-                null;
-        }
-
-        pub fn getValue(self: *const Self, index: c_int) ?T {
-            if (index >= self.num) return null;
-
-            return if (self.list) |list|
-                list[@intCast(index)]
-            else
-                null;
-        }
-
         pub fn clear(self: *Self) void {
             const allocator = global.gpa.allocator();
 
@@ -623,4 +605,22 @@ pub const idPreloadManifest = extern struct {
 
     entries: idList(PreloadEntry),
     filename: idStr,
+};
+
+const SignalHandle = @import("sys/threading.zig").SignalHandle;
+pub const idSysThread = extern struct {
+    const idSysSignal = extern struct {
+        handle: SignalHandle,
+    };
+
+    vptr: *anyopaque,
+    name: idStr,
+    thradHandle: usize,
+    isWorker: bool,
+    isRunning: bool,
+    isTerminating: bool,
+    moreWorkToDo: bool,
+    signalWorkerDonw: idSysSignal,
+    signalMoreWorkToDo: idSysSignal,
+    signalMutex: idSysMutex,
 };

@@ -21,7 +21,7 @@ fn initTime() posix.ClockGetTimeError!void {
     }
 }
 
-export fn Sys_Milliseconds() c_int {
+pub export fn Sys_Milliseconds() c_int {
     if (sys_time_base == 0) @panic("Clock is not initialized");
 
     var timespec: posix.timespec = std.mem.zeroes(posix.timespec);

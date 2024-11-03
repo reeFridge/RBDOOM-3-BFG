@@ -558,16 +558,16 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
     RenderModelManager.instance.init();
 
     render_system.front_end_job_list = ParallelJobManager.instance.allocJobList(
-        JobListId.JOBLIST_RENDERER_FRONTEND,
-        JobListPriority.JOBLIST_PRIORITY_MEDIUM,
+        .RENDERER_FRONTEND,
+        .MEDIUM,
         2048,
         0,
         null,
     );
 
     render_system.envprobe_job_list = ParallelJobManager.instance.allocJobList(
-        JobListId.JOBLIST_UTILITY,
-        JobListPriority.JOBLIST_PRIORITY_MEDIUM,
+        .UTILITY,
+        .MEDIUM,
         2048,
         0,
         null,

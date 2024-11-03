@@ -1,3 +1,4 @@
+//! @exportCVars
 const std = @import("std");
 const idlib = @import("../idlib.zig");
 const cvar = @import("cvar_system.zig");
@@ -429,6 +430,21 @@ pub const FileSystem = extern struct {
         _ = fs.readFile(relative_path, null, &timestamp);
 
         return timestamp;
+    }
+
+    pub fn listFilenames(
+        fs: *const FileSystem,
+        allocator: std.mem.Allocator,
+        folder: []const u8,
+        extension: []const u8,
+    ) error{OutOfMemory}![][]const u8 {
+        _ = fs;
+        _ = allocator;
+        _ = extension;
+        _ = folder;
+
+        // TODO: implement
+        unreachable;
     }
 
     pub fn readFile(

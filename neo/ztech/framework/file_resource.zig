@@ -92,7 +92,7 @@ pub fn init(rc: *ResourceContainer, filename: []const u8) bool {
     };
 
     for (0..rc.num_files) |i| {
-        const entry = rc.cache_table.getPtr(@intCast(i)) orelse unreachable;
+        const entry = &rc.cache_table.slice()[i];
 
         const filename_len = header_reader.readInt(u32, .little) catch
             readFail("filename_len");

@@ -1,3 +1,5 @@
+//! @exportCVars
+//! @exportConsoleCommands
 const std = @import("std");
 const RenderWorld = @import("renderer/render_world.zig");
 const RenderSystem = @import("renderer/render_system.zig");
@@ -32,7 +34,7 @@ pub const print_current_frame = CmdDecl{
 };
 
 pub const DeclEntityDef = extern struct {
-    base: decl.Decl,
+    base: Decl,
     dict: idlib.idDict,
 
     pub fn name(self: DeclEntityDef) []const u8 {

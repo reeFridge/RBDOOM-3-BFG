@@ -3,7 +3,7 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 
 const output_file_path = "static_cvars.zig";
-const target_type = "CVar";
+const include_mark = "//! @exportCVars";
 
 pub fn main() !void {
     var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -44,42 +44,17 @@ pub fn main() !void {
         var ast = try std.zig.Ast.parse(arena, contents, .zig);
         defer ast.deinit(arena);
 
-        const root = ast.containerDeclRoot();
-        const node_tags = ast.nodes.items(.tag);
+        const token_tags = ast.tokens.items(.tag);
+        const tokens = ast.tokens.items(.start);
 
-        for (root.ast.members) |member_node| {
-            switch (node_tags[member_node]) {
-                .simple_var_decl => {
-                    const full = ast.fullVarDecl(member_node) orelse continue;
-                    const visib_token = full.visib_token orelse continue;
-                    const name_token = full.ast.mut_token + 1;
-                    const mut_token = full.ast.mut_token;
+        for (tokens, 0..) |_, i| {
+            const tag = token_tags[i];
+            if (tag != .container_doc_comment) continue;
+            const token_text = ast.tokenSlice(@intCast(i));
 
-                    const ident_name = ast.tokenSlice(name_token);
-                    const mut_spec = ast.tokenSlice(mut_token);
-                    const visib_spec = ast.tokenSlice(visib_token);
-
-                    const is_pub = std.mem.eql(u8, "pub", visib_spec);
-                    const is_var = std.mem.eql(u8, "var", mut_spec);
-
-                    if (!is_pub or !is_var) continue;
-                    if (full.ast.type_node == 0) continue;
-
-                    const type_expr = full.ast.type_node;
-
-                    const type_tag = node_tags[type_expr];
-                    if (type_tag != .identifier) continue;
-
-                    const type_name = ast.tokenSlice(ast.firstToken(type_expr));
-
-                    if (!std.mem.eql(u8, target_type, type_name)) continue;
-
-                    try output_writer.print("&@import(\"{s}\").{s},\n", .{
-                        entry.path,
-                        ident_name,
-                    });
-                },
-                else => continue,
+            if (std.mem.eql(u8, token_text, include_mark)) {
+                try output_writer.print("@import(\"{s}\"),\n", .{entry.path});
+                break;
             }
         }
     }

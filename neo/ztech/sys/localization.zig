@@ -1,3 +1,4 @@
+//! @exportCVars
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
 

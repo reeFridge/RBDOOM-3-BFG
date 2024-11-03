@@ -173,8 +173,32 @@ pub const CmdSystem = extern struct {
             null,
         );
 
-        const static_cmds = @import("../static_cmds.zig");
-        inline for (static_cmds.root) |cmd_decl| {
+        const cmd_decls = comptime blk: {
+            var count: usize = 0;
+            const tree = @import("../static_cmds.zig").root;
+
+            for (tree) |mod| {
+                for (@typeInfo(mod).Struct.decls) |decl| {
+                    if (@TypeOf(@field(mod, decl.name)) == CmdDecl) {
+                        count += 1;
+                    }
+                }
+            }
+
+            var array: [count]*const CmdDecl = undefined;
+            var i: usize = 0;
+            for (tree) |mod| {
+                for (@typeInfo(mod).Struct.decls) |decl| {
+                    if (@TypeOf(@field(mod, decl.name)) == CmdDecl) {
+                        array[i] = &@field(mod, decl.name);
+                        i += 1;
+                    }
+                }
+            }
+
+            break :blk array;
+        };
+        inline for (cmd_decls) |cmd_decl| {
             std.debug.print("[CMD] register: {s}\n", .{cmd_decl.name});
             try cmd_system.addCommand(
                 cmd_decl.name,

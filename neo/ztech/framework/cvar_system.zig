@@ -90,6 +90,21 @@ pub const CVar = extern struct {
         };
     }
 
+    pub fn initMinMax(
+        name: [:0]const u8,
+        value: [:0]const u8,
+        flags: c_int,
+        desc: [:0]const u8,
+        min: c_int,
+        max: c_int,
+    ) CVar {
+        var c = init(name, value, flags, desc);
+        c.valueMin = min;
+        c.valueMax = max;
+
+        return c;
+    }
+
     pub fn setupStrings(cvar: *CVar) void {
         cvar.nameString.initEmptyBuffer();
         cvar.resetString.initEmptyBuffer();
@@ -288,8 +303,33 @@ pub const CVarSystem = extern struct {
     }
 
     fn registerStaticCVars(cvar_system: *CVarSystem) void {
-        const static_cvars = @import("../static_cvars.zig");
-        inline for (static_cvars.root) |cvar| {
+        const cvar_decls = comptime blk: {
+            var count: usize = 0;
+            const tree = @import("../static_cvars.zig").root;
+
+            for (tree) |mod| {
+                for (@typeInfo(mod).Struct.decls) |decl| {
+                    if (@TypeOf(@field(mod, decl.name)) == CVar) {
+                        count += 1;
+                    }
+                }
+            }
+
+            var array: [count]*CVar = undefined;
+            var i: usize = 0;
+            for (tree) |mod| {
+                for (@typeInfo(mod).Struct.decls) |decl| {
+                    if (@TypeOf(@field(mod, decl.name)) == CVar) {
+                        array[i] = &@field(mod, decl.name);
+                        i += 1;
+                    }
+                }
+            }
+
+            break :blk array;
+        };
+
+        inline for (cvar_decls) |cvar| {
             cvar.setupStrings();
             cvar_system.register(cvar) catch |err| {
                 std.debug.print(
@@ -335,11 +375,12 @@ pub const CVarSystem = extern struct {
         }
     }
 
-    fn findByName(cvar_system: *const CVarSystem, name: [:0]const u8) ?*CVar {
+    fn findByName(cvar_system: *CVarSystem, name: [:0]const u8) ?*CVar {
         const hash = cvar_system.cvarHash.generateKey(name, false);
         var i = cvar_system.cvarHash.first(hash);
         while (i != -1) : (i = cvar_system.cvarHash.next(i)) {
-            const cvar_ptr = cvar_system.cvars.getValue(i) orelse continue;
+            const cvars = cvar_system.cvars.slice();
+            const cvar_ptr = if (i < cvars.len) cvars[@intCast(i)] else continue;
             if (std.mem.eql(u8, name, cvar_ptr.nameString.constSlice())) {
                 return cvar_ptr;
             }

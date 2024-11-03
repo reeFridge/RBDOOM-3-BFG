@@ -1,4 +1,5 @@
 const std = @import("std");
+const fs = @import("file_system.zig");
 const global = @import("../global.zig");
 const idlib = @import("../idlib.zig");
 
@@ -6,6 +7,10 @@ const Material = @import("../renderer/material.zig").Material;
 const DeclSkin = @import("../renderer/common.zig").DeclSkin;
 const DeclEntityDef = @import("../game.zig").DeclEntityDef;
 const SoundShader = @import("../sound/sound.zig").SoundShader;
+const DeclFX = @import("decl_fx.zig").DeclFX;
+const DeclAF = @import("decl_af.zig").DeclAF;
+const decl_pda = @import("decl_pda.zig");
+const DeclParticle = @import("decl_particle.zig").DeclParticle;
 
 pub const instance = @extern(*DeclManager, .{ .name = "declManagerLocal" });
 
@@ -66,13 +71,13 @@ pub const DeclLocal = extern struct {
 };
 
 pub const DeclFile = extern struct {
-    fileName: idlib.idStr,
+    fileName: idlib.idStr = .{},
     defaultType: DeclType,
-    timestamp: idlib.ID_TIME_T,
-    checksum: c_int,
-    fileSize: c_int,
-    numLines: c_int,
-    decls: ?[*]DeclLocal,
+    timestamp: idlib.ID_TIME_T = 0,
+    checksum: c_int = 0,
+    fileSize: c_int = 0,
+    numLines: c_int = 0,
+    decls: ?[*]DeclLocal = null,
 };
 
 pub const DeclFolder = extern struct {
@@ -89,7 +94,7 @@ pub const RuntimeDeclType = extern struct {
     allocator: *const AllocatorFn,
 };
 
-const DeclTable = extern struct {
+pub const DeclTable = extern struct {
     base: Decl,
     clamp: bool,
     snap: bool,
@@ -143,7 +148,7 @@ pub const DeclManager = extern struct {
         );
         try manager.registerDeclType(
             "entityDef",
-            .DECL_ENITYDEF,
+            .DECL_ENTITYDEF,
             DeclAllocator(DeclEntityDef).alloc,
         );
         try manager.registerDeclType(
@@ -174,25 +179,89 @@ pub const DeclManager = extern struct {
         try manager.registerDeclType(
             "pda",
             .DECL_PDA,
-            DeclAllocator(DeclPDA).alloc,
+            DeclAllocator(decl_pda.DeclPDA).alloc,
         );
         try manager.registerDeclType(
             "email",
             .DECL_EMAIL,
-            DeclAllocator(DeclEmail).alloc,
+            DeclAllocator(decl_pda.DeclEmail).alloc,
         );
         try manager.registerDeclType(
             "video",
             .DECL_VIDEO,
-            DeclAllocator(DeclVideo).alloc,
+            DeclAllocator(decl_pda.DeclVideo).alloc,
         );
         try manager.registerDeclType(
             "audio",
-            .DECL_VIDEO,
-            DeclAllocator(DeclAudio).alloc,
+            .DECL_AUDIO,
+            DeclAllocator(decl_pda.DeclAudio).alloc,
         );
 
         // TODO: try manager.registerDeclFolder("materials", ".mtr", .DECL_MATERIAL);
+    }
+
+    fn registerDeclFolder(
+        manager: *DeclManager,
+        folder: []const u8,
+        extension: []const u8,
+        default_type: DeclType,
+    ) error{OutOfMemory}!void {
+        for (manager.declFolders.slice()) |decl_folder| {
+            const already_exists =
+                std.mem.eql(u8, folder, decl_folder.folder.constSlice()) and
+                std.mem.eql(u8, extension, decl_folder.extension.constSlice());
+
+            if (already_exists) break;
+        } else {
+            const allocator = global.gpa.allocator();
+            const decl_folder = try allocator.create(DeclFolder);
+            errdefer {
+                decl_folder.extension.deinit();
+                decl_folder.folder.deinit();
+                allocator.free(decl_folder);
+            }
+
+            decl_folder.folder.initEmptyBuffer();
+            try decl_folder.folder.assignSlice(folder);
+            errdefer decl_folder.folder.deinit();
+
+            decl_folder.extension.initEmptyBuffer();
+            try decl_folder.extension.assignSlice(extension);
+            errdefer decl_folder.extension.deinit();
+
+            decl_folder.defaultType = default_type;
+
+            _ = try manager.declFolders.append(decl_folder);
+        }
+
+        const allocator = global.gpa.allocator();
+        const files = try fs.instance.listFilenames(allocator, folder, extension);
+        defer allocator.free(files);
+
+        var filename_buffer: [256]u8 = undefined;
+        for (files) |filename| {
+            const full_filename = try std.fmt.bufPrint(&filename_buffer, "{s}/{s}", .{ folder, filename });
+
+            const decl_file_ptr = for (manager.loadedFiles.slice()) |decl_file| {
+                if (std.mem.eql(u8, decl_file.fileName.constSlice(), full_filename))
+                    break decl_file;
+            } else file: {
+                const decl_file = try allocator.create(DeclFile);
+                errdefer {
+                    decl_file.fileName.deinit();
+                    allocator.free(decl_file);
+                }
+                decl_file.* = .{ .defaultType = default_type };
+                decl_file.fileName.initEmptyBuffer();
+                try decl_file.fileName.assignSlice(full_filename);
+
+                _ = try manager.loadedFiled.append(decl_file);
+
+                break :file decl_file;
+            };
+
+            try decl_file_ptr.loadAndParse();
+        }
     }
 
     fn registerDeclType(
@@ -201,28 +270,35 @@ pub const DeclManager = extern struct {
         decl_type: DeclType,
         alloc_fn: *const RuntimeDeclType.AllocatorFn,
     ) error{OutOfMemory}!void {
-        if (@intFromEnum(decl_type) < manager.declTypes.num and
-            manager.declTypes.getValue(@intCast(@intFromEnum(decl_type))) != null)
+        const decl_type_index: usize = @intCast(@intFromEnum(decl_type));
         {
-            std.debug.print("[DECL] type {s} already exists\n", .{type_name});
-            return;
+            const decl_types = manager.declTypes.constSlice();
+            if (decl_type_index < decl_types.len and decl_types[decl_type_index] != null) {
+                std.debug.print("[DECL] type {s}({}) already exists\n", .{
+                    type_name,
+                    decl_type_index,
+                });
+                return;
+            }
         }
 
         const allocator = global.gpa.allocator();
         const runtime_decl_type = try allocator.create(RuntimeDeclType);
-        errdefer allocator.destroy(runtime_decl_type);
+        errdefer {
+            runtime_decl_type.typeName.deinit();
+            allocator.destroy(runtime_decl_type);
+        }
         runtime_decl_type.typeName.initEmptyBuffer();
         try runtime_decl_type.typeName.assignSlice(type_name);
         runtime_decl_type.declType = decl_type;
         runtime_decl_type.allocator = alloc_fn;
 
-        if (@intFromEnum(decl_type) + 1 > manager.declTypes.num) {
-            try manager.declTypes.assureSizeInit(@intCast(@intFromEnum(decl_type) + 1), null);
+        const required_size = decl_type_index + 1;
+        if (required_size > manager.declTypes.num) {
+            try manager.declTypes.assureSizeInit(required_size, null);
         }
 
-        if (manager.declTypes.getPtr(@intCast(@intFromEnum(decl_type)))) |ptr| {
-            ptr.* = runtime_decl_type;
-        }
+        manager.declTypes.slice()[decl_type_index] = runtime_decl_type;
     }
 
     pub fn findType(
