@@ -9,6 +9,7 @@ const localization = @import("../sys/localization.zig");
 const decl_manager = @import("decl_manager.zig");
 const event_loop = @import("event_loop.zig");
 const parallel_job_manager = @import("../renderer/parallel_job_manager.zig");
+const render_system = @import("../renderer/render_system.zig");
 
 pub const Common = opaque {
     extern fn c_common_getRendererGPUMicroseconds(*const Common) callconv(.C) u64;
@@ -39,11 +40,11 @@ pub const Common = opaque {
         try parallel_job_manager.instance.init();
         cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec default.cfg\n");
         cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec autoexec.cfg\n");
-        // TODO cmd.instance.executeCommandBuffer();
-        // TODO cmd.instance.clearModifiedFlags(.CVAR_ARCHIVE);
-        // TODO render_system.instance.initBackend();
+        cmd.instance.executeCommandBuffer();
+        cvar.instance.modifiedFlags &= ~cvar.CVarFlags.CVAR_ARCHIVE;
+        try render_system.instance.initBackend(allocator);
         // TODO sound_system.instance.init();
-        // TODO render_system.instance.init();
+        // TODO try render_system.instance.init(allocator);
         // TODO image_manager.instance.loadDeferredImages();
         // TODO decl_manager.instance.init2();
         // TODO common.initLanguageDict();

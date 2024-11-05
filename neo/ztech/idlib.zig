@@ -234,6 +234,16 @@ pub fn idList(T: type) type {
         list: ?[*]T = null,
         memTag: u8 = 0,
 
+        pub fn removeIndex(self: *Self, index: usize) void {
+            std.debug.assert(self.list != null);
+            std.debug.assert(index < self.num);
+
+            self.num -= 1;
+            for (index..@intCast(self.num)) |i| {
+                self.list.?[i] = self.list.?[i + 1];
+            }
+        }
+
         pub fn allocOne(self: *Self) error{OutOfMemory}!*T {
             if (self.list == null) {
                 try self.resize(@intCast(self.granularity));

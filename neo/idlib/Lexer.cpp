@@ -2399,8 +2399,14 @@ idLexer::idLexer( const char* filename, int flags, bool OSPath )
 
 extern "C" {
 
-bool c_lexer_loadMemory( idLexer* lexer, const uint8_t * const ptr, int length, const uint8_t* const name, int startLine ) {
-	lexer->LoadMemory((const char*)ptr, length, (const char*)name, startLine);
+bool c_lexer_loadMemory(
+		idLexer* lexer,
+		uint8_t const * const ptr,
+		int length,
+		uint8_t const * const name,
+		int startLine
+) {
+	return lexer->LoadMemory((const char*)ptr, length, (const char*)name, startLine);
 }
 
 idLexer* c_lexer_create() {

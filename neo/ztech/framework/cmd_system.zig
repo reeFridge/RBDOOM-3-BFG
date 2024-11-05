@@ -47,9 +47,19 @@ pub const CmdArgs = extern struct {
     tokenized: [MAX_COMMAND_STRING]u8 = undefined,
     // WARN: @sizeOf([max:0]u8) != @sizeOf([max]u8)
 
-    pub fn fromText(text: []const u8) CmdArgs {
-        var args = std.mem.zeroes(CmdArgs);
-        if (text.len == 0) return args;
+    pub fn copy(args: *CmdArgs, other: *const CmdArgs) void {
+        args.argc = other.argc;
+        args.tokenized = other.tokenized;
+        for (0..@intCast(args.argc)) |i| {
+            const tok_addr = @intFromPtr(&args.tokenized);
+            const other_tok_addr = @intFromPtr(&other.tokenized);
+            const argv_addr = @intFromPtr(other.argv[i]);
+            args.argv[i] = @ptrFromInt(tok_addr + (argv_addr - other_tok_addr));
+        }
+    }
+
+    pub fn tokenizeString(args: *CmdArgs, text: []const u8) void {
+        if (text.len == 0) return;
 
         const allocator = global.gpa.allocator();
         const text_sentinel = allocator.dupeZ(u8, text) catch unreachable;
@@ -58,7 +68,7 @@ pub const CmdArgs = extern struct {
         const lexer = Lexer.initEmpty();
         defer lexer.deinit();
 
-        if (!lexer.loadMemory(text_sentinel, "CmdArgs.fromText", 0)) return args;
+        if (!lexer.loadMemory(text_sentinel, "CmdArgs.fromText", 0)) return;
 
         lexer.flags = LexerFlags.LEXFL_NOERRORS |
             LexerFlags.LEXFL_NOWARNINGS |
@@ -105,8 +115,6 @@ pub const CmdArgs = extern struct {
             args.appendArg(token.slice());
             total_len += len + 1;
         }
-
-        return args;
     }
 
     pub fn appendArg(cmd_args: *CmdArgs, text: [:0]const u8) void {
@@ -320,7 +328,58 @@ pub const CmdSystem = extern struct {
     }
 
     pub fn executeCommandText(cmd_system: *CmdSystem, text: []const u8) void {
-        cmd_system.executeTokenizedString(&CmdArgs.fromText(text));
+        var args: CmdArgs = .{};
+        args.tokenizeString(text);
+
+        cmd_system.executeTokenizedString(&args);
+    }
+
+    pub fn executeCommandBuffer(cmd_system: *CmdSystem) void {
+        while (cmd_system.textLength != 0) {
+            if (cmd_system.wait != 0) {
+                cmd_system.wait -= 1;
+                break;
+            }
+
+            var quotes: usize = 0;
+            const text = cmd_system.textBuf[0..@intCast(cmd_system.textLength)];
+            const line = for (text, 0..) |char, i| {
+                switch (char) {
+                    '"' => quotes += 1,
+                    ';' => if ((quotes % 2) != 0) break text[0..i],
+                    '\n', '\r' => break text[0..i],
+                    else => continue,
+                }
+            } else text;
+
+            var args: CmdArgs = .{};
+            if (std.mem.eql(u8, line, "_execTokenized")) {
+                args.copy(&(cmd_system.tokenizedCmds.constSlice()[0]));
+                cmd_system.tokenizedCmds.removeIndex(0);
+            } else {
+                args.tokenizeString(line);
+            }
+
+            // delete the text from the command buffer and move remaining commands down
+            // this is necessary because commands (exec) can insert data at the
+            // beginning of the text buffer
+            if (line.len == text.len) {
+                cmd_system.textLength = 0;
+            } else {
+                const line_len_with_delimiter = line.len + 1;
+                const old_len: usize = @intCast(cmd_system.textLength);
+                const len: usize = old_len - line_len_with_delimiter;
+
+                std.mem.copyForwards(
+                    u8,
+                    cmd_system.textBuf[0..len],
+                    cmd_system.textBuf[line_len_with_delimiter..old_len],
+                );
+                cmd_system.textLength = @intCast(len);
+            }
+
+            cmd_system.executeTokenizedString(&args);
+        }
     }
 
     /// Adds command text immediately after the current command

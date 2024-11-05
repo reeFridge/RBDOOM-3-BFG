@@ -30,6 +30,60 @@ const RenderSystem = @import("render_system.zig");
 const RenderWorld = @import("render_world.zig");
 const Decl = @import("../framework/decl_manager.zig").Decl;
 
+pub const VertexLayoutType = enum(c_int) {
+    UNKNOWN = 0, // RB: TODO -1
+    DRAW_VERT,
+    DRAW_IMGUI_VERT, // unused
+    NUM_VERTEX_LAYOUTS,
+};
+
+pub const BindingLayoutType = enum(c_int) {
+    // REGULAR AND SKINNED VERSIONS
+    DEFAULT,
+    DEFAULT_SKINNED,
+
+    CONSTANT_BUFFER_ONLY,
+    CONSTANT_BUFFER_ONLY_SKINNED,
+
+    AMBIENT_LIGHTING_IBL,
+    AMBIENT_LIGHTING_IBL_SKINNED,
+
+    DRAW_INTERACTION,
+    DRAW_INTERACTION_SKINNED,
+    DRAW_INTERACTION_SM,
+    DRAW_INTERACTION_SM_SKINNED,
+
+    FOG,
+    FOG_SKINNED,
+    BLENDLIGHT,
+    BLENDLIGHT_SKINNED,
+
+    NORMAL_CUBE,
+    NORMAL_CUBE_SKINNED,
+
+    // NO GPU SKINNING ANYMORE
+    POST_PROCESS_INGAME,
+    POST_PROCESS_FINAL,
+    POST_PROCESS_FINAL2,
+    POST_PROCESS_CRT,
+
+    BLIT,
+    DRAW_AO,
+    DRAW_AO1,
+
+    LAYOUT_BINK_VIDEO,
+
+    // NVRHI render passes specific
+    TAA_MOTION_VECTORS,
+    TAA_RESOLVE,
+
+    TONEMAP,
+    HISTOGRAM,
+    EXPOSURE,
+
+    NUM_BINDING_LAYOUTS,
+};
+
 const MAX_ENTITY_SHADER_PARAMS = @import("render_entity.zig").MAX_ENTITY_SHADER_PARAMS;
 const MAX_EXPRESSION_REGISTERS = @import("material.zig").MAX_EXPRESSION_REGISTERS;
 

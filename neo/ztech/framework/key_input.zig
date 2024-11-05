@@ -1,5 +1,58 @@
 const std = @import("std");
 const idlib = @import("../idlib.zig");
+const cmd = @import("cmd_system.zig");
+const cvar = @import("cvar_system.zig");
+
+fn cmd_unbindAll(_: *const cmd.CmdArgs) callconv(.C) void {
+    const size: usize = @intFromEnum(KeyNum.K_LAST_KEY);
+
+    for (0..size) |i| {
+        setBinding(@intCast(i), "") catch unreachable;
+    }
+}
+
+fn cmd_bind(args: *const cmd.CmdArgs) callconv(.C) void {
+    const keys = opt_keys orelse return;
+
+    if (args.argc < 2) {
+        std.debug.print("bind <key> [command] : attach a command to a key\n", .{});
+        return;
+    }
+
+    const key_str = std.mem.span(args.argv[1]);
+    const key_num = stringToKeyNum(key_str);
+    if (key_num == .K_NONE) {
+        std.debug.print("[KEY] {s} is not a valid key\n", .{key_str});
+        return;
+    }
+
+    if (args.argc == 2) {
+        const binding = keys[@intCast(@intFromEnum(key_num))].binding.constSlice();
+        std.debug.print(
+            "[KEY] {s} = {s}\n",
+            .{ key_str, if (binding.len > 0) binding else "<not bound>" },
+        );
+        return;
+    }
+
+    var cmd_buffer: [cmd.CmdArgs.MAX_STRING_CHARS]u8 = undefined;
+    var len: usize = 0;
+
+    for (2..@intCast(args.argc)) |i| {
+        const token_str = std.mem.span(args.argv[i]);
+        @memcpy(cmd_buffer[len .. len + token_str.len], token_str);
+        len += token_str.len;
+        if (i != @as(usize, @intCast(args.argc - 1))) {
+            cmd_buffer[len] = ' ';
+            len += 1;
+        }
+    }
+
+    setBinding(
+        @intFromEnum(key_num),
+        cmd_buffer[0..len],
+    ) catch unreachable;
+}
 
 const KeyName = extern struct {
     keynum: KeyNum = .K_NONE,
@@ -261,6 +314,7 @@ const key_names = [_]KeyName{
 
     .{},
 };
+
 const Key = extern struct {
     down: bool = false,
     repeates: c_int = 0,
@@ -289,10 +343,23 @@ pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!void {
 
     opt_keys = keys;
 
-    // TODO: addCommand bind
+    try cmd.instance.addCommand(
+        "unbindall",
+        cmd_unbindAll,
+        cmd.CmdFlags.CMD_FL_SYSTEM,
+        "unbinds any commands from all keys",
+        null,
+    );
+
+    try cmd.instance.addCommand(
+        "bind",
+        cmd_bind,
+        cmd.CmdFlags.CMD_FL_SYSTEM,
+        "binds a command to a key",
+        null,
+    );
     // TODO: addCommand bindunbindtwo
     // TODO: addCommand unbind
-    // TODO: addCommand unbindall
     // TODO: addCommand listBinds
 }
 
@@ -307,9 +374,33 @@ pub fn shutdown(allocator: std.mem.Allocator) void {
     opt_keys = null;
 }
 
-// TODO
-//pub fn setBinding(keynum: c_int, binding: [:0]const u8) void {
-//}
+pub fn stringToKeyNum(str: []const u8) KeyNum {
+    if (str.len == 0) return .K_NONE;
+
+    for (&key_names) |key_name| {
+        const name_ptr = key_name.name orelse continue;
+        const name = std.mem.span(name_ptr);
+        if (std.ascii.eqlIgnoreCase(name, str)) {
+            return key_name.keynum;
+        }
+    }
+
+    return .K_NONE;
+}
+
+pub fn setBinding(keynum: c_int, binding: []const u8) error{OutOfMemory}!void {
+    const keys = opt_keys orelse return;
+    if (keynum == -1) return;
+
+    const index: usize = @intCast(keynum);
+
+    // TODO user_cmd_gen.instance.clear();
+
+    try keys[index].binding.assignSlice(binding);
+
+    // TODO keys[index].usercmdAction = user_cmd_gen.instance.commandStringUserCmdData(binding);
+    cvar.instance.modifiedFlags |= cvar.CVarFlags.CVAR_ARCHIVE;
+}
 
 const KeyNum = enum(c_int) {
     K_NONE,

@@ -154,10 +154,6 @@ pub fn main() !void {
     }
 
     try common.instance.init(allocator);
-    var cmd_args = std.mem.zeroes(cmd.CmdArgs);
-    cmd_args.appendArg("exec");
-    cmd_args.appendArg("default.cfg");
-    cmd.cmd_execFile(&cmd_args);
 
     //lateInit();
 
