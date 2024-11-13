@@ -1,3 +1,4 @@
+//! @exportCVars
 const RenderView = @import("render_world.zig").RenderView;
 const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderWorld = @import("render_world.zig");
@@ -7,7 +8,9 @@ const ParallelJobList = @import("parallel_job_list.zig").ParallelJobList;
 const VertexCache = @import("vertex_cache.zig");
 const DrawSurface = @import("common.zig").DrawSurface;
 const ResolutionScale = @import("resolution_scale.zig");
-const DeclManager = @import("../framework/decl_manager.zig");
+const decl_manager = @import("../framework/decl_manager.zig");
+const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
+const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 
 pub const SMALLCHAR_WIDTH: c_int = 8;
 pub const SMALLCHAR_HEIGHT: c_int = 16;
@@ -16,8 +19,8 @@ pub const BIGCHAR_HEIGHT: c_int = 16;
 
 // all drawing is done to a 640 x 480 virtual screen size
 // and will be automatically scaled to the real resolution
-pub const SCREEN_WIDTH: c_int = 640;
-pub const SCREEN_HEIGHT: c_int = 480;
+pub const SCREEN_WIDTH: u32 = 640;
+pub const SCREEN_HEIGHT: u32 = 480;
 
 pub const VENDOR_NVIDIA: c_int = 0;
 pub const VENDOR_AMD: c_int = 1;
@@ -25,14 +28,20 @@ pub const VENDOR_INTEL: c_int = 2;
 pub const VENDOR_APPLE: c_int = 3;
 pub const graphicsVendor_t = c_int;
 
-pub const STEREO3D_OFF: c_int = 0;
-pub const STEREO3D_SIDE_BY_SIDE_COMPRESSED: c_int = 1;
-pub const STEREO3D_TOP_AND_BOTTOM_COMPRESSED: c_int = 2;
-pub const STEREO3D_SIDE_BY_SIDE: c_int = 3;
-pub const STEREO3D_INTERLACED: c_int = 4;
-pub const STEREO3D_QUAD_BUFFER: c_int = 5;
-pub const STEREO3D_HDMI_720: c_int = 6;
-pub const stereo3DMode_t = c_int;
+pub const AntiAliasingMode = enum(c_int) {
+    NONE,
+    TAA,
+};
+
+pub const Stereo3DMode = enum(c_int) {
+    OFF,
+    SIDE_BY_SIDE_COMPRESSED,
+    TOP_AND_BOTTOM_COMPRESSED,
+    SIDE_BY_SIDE,
+    INTERLACED,
+    QUAD_BUFFER,
+    HDMI_720,
+};
 
 pub const STEREO_DEPTH_TYPE_NONE: c_int = 0;
 pub const STEREO_DEPTH_TYPE_NEAR: c_int = 1;
@@ -44,7 +53,7 @@ pub const glconfig_t = extern struct {
     vendor: graphicsVendor_t,
     uniformBufferOffsetAlignment: c_int,
     timerQueryAvailable: bool,
-    stereo3Dmode: stereo3DMode_t,
+    stereo3Dmode: Stereo3DMode,
     nativeScreenWidth: c_int,
     nativeScreenHeight: c_int,
     displayFrequency: c_int,
@@ -452,21 +461,21 @@ pub var instance = RenderSystem{};
 pub export var backend_ = std.mem.zeroes(RenderBackend);
 //pub var backend_ = std.mem.zeroes(RenderBackend);
 
-const DeviceManager = @import("../sys/device_manager.zig");
-const ImageManager = @import("image_manager.zig");
+const device_manager = @import("../sys/device_manager.zig");
+const image_manager = @import("image_manager.zig");
 const FrameData = @import("frame_data.zig");
-const RenderModelManager = @import("render_model_manager.zig");
-const ParallelJobManager = @import("parallel_job_manager.zig");
+const render_model_manager = @import("render_model_manager.zig");
+const parallel_job_manager = @import("parallel_job_manager.zig");
 const JobListId = @import("parallel_job_list.zig").JobListId;
 const JobListPriority = @import("parallel_job_list.zig").JobListPriority;
 const global = @import("../global.zig");
 
-pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) error{OutOfMemory}!void {
+pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) RenderBackend.InitError!void {
     if (render_system.initialized) return;
     // also inits FrameData
     try backend_.init(allocator);
 
-    const device = DeviceManager.instance().getDevice();
+    const device = device_manager.instance().getDevice();
 
     const command_list_ptr = if (render_system.command_list.ptr_) |ptr|
         ptr
@@ -478,7 +487,7 @@ pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) e
     };
 
     command_list_ptr.open();
-    ImageManager.instance.reloadImages(true, command_list_ptr);
+    image_manager.instance.reloadImages(true, command_list_ptr);
     command_list_ptr.close();
     device.executeCommandList(command_list_ptr);
 }
@@ -539,25 +548,25 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
     gui_model.clear();
     render_system.gui_model = gui_model;
 
-    ImageManager.instance.init();
+    try image_manager.instance.init();
     Framebuffer.init();
 
     // init materials
-    render_system.default_material = DeclManager.instance.findMaterial("_default") orelse
+    render_system.default_material = decl_manager.instance.findMaterial("_default") orelse
         @panic("Default Material not found!");
-    render_system.default_point_light = DeclManager.instance.findMaterialDefault("lights/defaultPointLight");
-    render_system.default_projected_light = DeclManager.instance.findMaterialDefault("lights/defaultProjectedLight");
-    render_system.white_material = DeclManager.instance.findMaterial("_white");
-    render_system.char_set_material = DeclManager.instance.findMaterial("textures/bigchars");
-    render_system.imgui_material = DeclManager.instance.findMaterialDefault("_imguiFont");
+    render_system.default_point_light = decl_manager.instance.findMaterialDefault("lights/defaultPointLight");
+    render_system.default_projected_light = decl_manager.instance.findMaterialDefault("lights/defaultProjectedLight");
+    render_system.white_material = decl_manager.instance.findMaterial("_white");
+    render_system.char_set_material = decl_manager.instance.findMaterial("textures/bigchars");
+    render_system.imgui_material = decl_manager.instance.findMaterialDefault("_imguiFont");
 
     c_renderSystem_initImgui(render_system.imgui_material);
 
     c_renderSystem_initColorMappings((&render_system.gamma_table).ptr);
 
-    RenderModelManager.instance.init();
+    render_model_manager.instance.init();
 
-    render_system.front_end_job_list = ParallelJobManager.instance.allocJobList(
+    render_system.front_end_job_list = parallel_job_manager.instance.allocJobList(
         .RENDERER_FRONTEND,
         .MEDIUM,
         2048,
@@ -565,7 +574,7 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
         null,
     );
 
-    render_system.envprobe_job_list = ParallelJobManager.instance.allocJobList(
+    render_system.envprobe_job_list = parallel_job_manager.instance.allocJobList(
         .UTILITY,
         .MEDIUM,
         2048,
@@ -596,20 +605,20 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     deinitGlobalTris(render_system.zero_one_sphere_triangles, allocator);
     deinitGlobalTris(render_system.test_image_triangles, allocator);
 
-    ImageManager.instance.purgeAllImages();
-    RenderModelManager.instance.shutdown();
-    ImageManager.instance.shutdown();
+    image_manager.instance.purgeAllImages();
+    render_model_manager.instance.shutdown();
+    image_manager.instance.shutdown();
     Framebuffer.shutdown();
     render_system.gui_model.heapDestroy();
     FrameData.shutdown(allocator);
 
-    const device = DeviceManager.instance().getDevice();
+    const device = device_manager.instance().getDevice();
     device.waitForIdle();
 
     VertexCache.instance.shutdown();
 
-    ParallelJobManager.instance.freeJobList(render_system.envprobe_job_list);
-    ParallelJobManager.instance.freeJobList(render_system.front_end_job_list);
+    parallel_job_manager.instance.freeJobList(render_system.envprobe_job_list);
+    parallel_job_manager.instance.freeJobList(render_system.front_end_job_list);
 
     render_system.command_list.deinit();
 
@@ -640,7 +649,6 @@ pub fn finishRendering(render_system: *RenderSystem) void {
 }
 
 extern fn R_InitDrawSurfFromTri(*DrawSurface, *SurfaceTriangles, *nvrhi.ICommandList) callconv(.C) void;
-extern fn Sys_Milliseconds() callconv(.C) c_int;
 
 pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyCommand {
     if (!render_system.initialized) return null;
@@ -718,7 +726,7 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
     render_system.gui_recursion_level = 0;
 
     // set the time for shader effects in 2D rendering
-    render_system.frame_shader_time = @as(f32, @floatFromInt(Sys_Milliseconds())) * 0.001;
+    render_system.frame_shader_time = @as(f32, @floatFromInt(getMilliseconds())) * 0.001;
 
     var cmd2 = FrameData.createCommand(FrameData.SetBufferCommand);
     cmd2.commandId = .RC_SET_BUFFER;
@@ -808,8 +816,8 @@ pub fn frameCount(render_system: *const RenderSystem) usize {
 }
 
 pub fn getWidth(_: *const RenderSystem) c_int {
-    if (glConfig.stereo3Dmode == STEREO3D_SIDE_BY_SIDE or
-        glConfig.stereo3Dmode == STEREO3D_SIDE_BY_SIDE_COMPRESSED)
+    if (glConfig.stereo3Dmode == .SIDE_BY_SIDE or
+        glConfig.stereo3Dmode == .SIDE_BY_SIDE_COMPRESSED)
     {
         return glConfig.nativeScreenWidth >> @intCast(1);
     }
@@ -818,18 +826,18 @@ pub fn getWidth(_: *const RenderSystem) c_int {
 }
 
 pub fn getHeight(_: *const RenderSystem) c_int {
-    if (glConfig.stereo3Dmode == STEREO3D_HDMI_720) {
+    if (glConfig.stereo3Dmode == .HDMI_720) {
         return 720;
     }
 
     const stereoRender_warp = false;
-    if (glConfig.stereo3Dmode == STEREO3D_SIDE_BY_SIDE and stereoRender_warp) {
+    if (glConfig.stereo3Dmode == .SIDE_BY_SIDE and stereoRender_warp) {
         // for the Rift, render a square aspect view that will be symetric for the optics
         return glConfig.nativeScreenWidth >> @intCast(1);
     }
 
-    if (glConfig.stereo3Dmode == STEREO3D_INTERLACED or
-        glConfig.stereo3Dmode == STEREO3D_TOP_AND_BOTTOM_COMPRESSED)
+    if (glConfig.stereo3Dmode == .INTERLACED or
+        glConfig.stereo3Dmode == .TOP_AND_BOTTOM_COMPRESSED)
     {
         return glConfig.nativeScreenHeight >> @intCast(1);
     }
@@ -936,4 +944,181 @@ fn packColorLittle(color: Vec4(f32)) u32 {
 
 pub fn setColor(render_system: *RenderSystem, rgba: Vec4(f32)) void {
     render_system.current_color_native_bytes_order = std.mem.toNative(u32, packColorLittle(rgba), .little);
+}
+
+const cvar = @import("../framework/cvar_system.zig");
+const CVar = cvar.CVar;
+const CFlags = cvar.CVarFlags;
+
+pub var stereo_render_enable = CVar.init(
+    "stereoRender_enable",
+    "0",
+    CFlags.CVAR_INTEGER | CFlags.CVAR_ARCHIVE,
+    "1 = side-by-side compressed, 2 = top and bottom compressed, 3 = side-by-side, 4 = 720 frame packed, 5 = interlaced, 6 = OpenGL quad buffer",
+);
+pub var r_fullscreen = CVar.init(
+    "r_fullscreen",
+    "0",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "-2 = borderless fullscreen, -1 = borderless window, 0 = windowed, 1 = full screen on monitor 1, 2 = full screen on monitor 2, etc",
+);
+pub var r_anti_aliasing = CVar.initMinMax(
+    "r_antiAliasing",
+    "1",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER | CFlags.CVAR_NEW,
+    " 0 = None\n 1 = TAA 1x",
+    0,
+    @intFromEnum(AntiAliasingMode.TAA),
+);
+pub var r_video_mode = CVar.init(
+    "r_vidMode",
+    "0",
+    CFlags.CVAR_ARCHIVE | CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER,
+    "fullscreen video mode number",
+);
+pub var r_display_refresh = CVar.initMinMax(
+    "r_displayRefresh",
+    "0",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER | CFlags.CVAR_NOCHEAT,
+    "optional display refresh rate option for vid mode",
+    0,
+    240,
+);
+pub var r_custom_width = CVar.init(
+    "r_customWidth",
+    "1280",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "custom screen width. set r_vidMode to -1 to activate",
+);
+pub var r_custom_height = CVar.init(
+    "r_customHeight",
+    "720",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "custom screen height. set r_vidMode to -1 to activate",
+);
+pub var r_window_x = CVar.init(
+    "r_windowX",
+    "0",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "Non-fullscreen parameter",
+);
+pub var r_window_y = CVar.init(
+    "r_windowY",
+    "0",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "Non-fullscreen parameter",
+);
+pub var r_window_width = CVar.init(
+    "r_windowWidth",
+    "1280",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "Non-fullscreen parameter",
+);
+pub var r_window_height = CVar.init(
+    "r_windowHeight",
+    "720",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    "Non-fullscreen parameter",
+);
+
+pub const GLImplParams = extern struct {
+    x: u32 = 0,
+    y: u32 = 0,
+    width: u32 = 0,
+    height: u32 = 0,
+    fullscreen_mode: i32 = 0,
+    start_maximized: bool = false,
+    stereo: bool = false,
+    display_hz: u32 = 0,
+    multi_samples: u32 = 0,
+};
+
+pub const VideoMode = extern struct {
+    width: u32 = SCREEN_WIDTH,
+    height: u32 = SCREEN_HEIGHT,
+    display_hz: u32 = 60,
+};
+
+fn getModesForDisplay(allocator: std.mem.Allocator, _: u32) error{OutOfMemory}![]VideoMode {
+    const modes = try allocator.alloc(VideoMode, 1);
+    modes[0] = .{};
+
+    return modes;
+}
+
+pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
+    var arena = std.heap.ArenaAllocator.init(global.gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const stereo = 0;
+    const no_stereo = 1;
+    for ([_]usize{ stereo, no_stereo }) |try_type| {
+        const stereo_mode: Stereo3DMode = @enumFromInt(stereo_render_enable.integerValue);
+        if (try_type == stereo and stereo_mode != .QUAD_BUFFER) continue;
+
+        var params = GLImplParams{};
+
+        if (r_fullscreen.integerValue <= 0) { // windowed
+            params.x = @intCast(r_window_x.integerValue);
+            params.y = @intCast(r_window_y.integerValue);
+            params.width = @intCast(r_window_width.integerValue);
+            params.height = @intCast(r_window_height.integerValue);
+            params.fullscreen_mode = r_fullscreen.integerValue;
+        } else { // fullscreen
+            var current_display: u32 = @intCast(r_fullscreen.integerValue);
+            const modes = getModesForDisplay(allocator, current_display - 1) catch modes: {
+                current_display = 1;
+                try r_fullscreen.setInteger(@intCast(current_display));
+
+                break :modes try getModesForDisplay(allocator, current_display - 1);
+            };
+
+            if (modes.len == 0) {
+                try r_video_mode.setInteger(0);
+                try r_fullscreen.setInteger(1);
+                try r_display_refresh.setInteger(0);
+                try r_anti_aliasing.setInteger(0);
+                continue;
+            }
+
+            params.fullscreen_mode = r_fullscreen.integerValue;
+
+            if (r_video_mode.integerValue < 0) {
+                params.width = @intCast(r_custom_width.integerValue);
+                params.height = @intCast(r_custom_height.integerValue);
+                params.display_hz = @intCast(r_display_refresh.integerValue);
+            } else {
+                if (r_video_mode.integerValue >= modes.len) {
+                    try r_video_mode.setInteger(0);
+                }
+
+                const video_mode: u32 = @intCast(r_video_mode.integerValue);
+                params.width = modes[video_mode].width;
+                params.height = modes[video_mode].height;
+                params.display_hz = modes[video_mode].display_hz;
+            }
+        }
+
+        params.multi_samples = 1;
+
+        params.stereo = if (try_type == stereo)
+            stereo_mode == .QUAD_BUFFER
+        else
+            false;
+
+        if (full_init) {
+            vulkan_impl.init(params) catch continue;
+            // TODO: imgui_hook.init();
+            return;
+        } else {
+            vulkan_impl.setScreenParams(params) catch continue;
+            Framebuffer.resizeFramebuffers(false);
+            // TODO: Framebuffer.resizeFramebuffers(true);
+            // TODO: imgui_hook.notifyDisplaySizeChanged();
+            return;
+        }
+    }
+
+    @panic("Unable to initialize graphics impl");
 }

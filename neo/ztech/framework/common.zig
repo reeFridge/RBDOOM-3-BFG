@@ -10,6 +10,7 @@ const decl_manager = @import("decl_manager.zig");
 const event_loop = @import("event_loop.zig");
 const parallel_job_manager = @import("../renderer/parallel_job_manager.zig");
 const render_system = @import("../renderer/render_system.zig");
+const sound_system = @import("../sound/sound_system.zig");
 
 pub const Common = opaque {
     extern fn c_common_getRendererGPUMicroseconds(*const Common) callconv(.C) u64;
@@ -43,9 +44,8 @@ pub const Common = opaque {
         cmd.instance.executeCommandBuffer();
         cvar.instance.modifiedFlags &= ~cvar.CVarFlags.CVAR_ARCHIVE;
         try render_system.instance.initBackend(allocator);
-        // TODO sound_system.instance.init();
-        // TODO try render_system.instance.init(allocator);
-        // TODO image_manager.instance.loadDeferredImages();
+        try sound_system.instance.init();
+        try render_system.instance.init(allocator);
         // TODO decl_manager.instance.init2();
         // TODO common.initLanguageDict();
         // TODO gameThread.startWorkerThread("Game/Draw");

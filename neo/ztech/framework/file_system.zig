@@ -192,7 +192,7 @@ pub const FileSystem = extern struct {
     }
 
     const MAX_FILE_SIZE = 1000 * 1024;
-    const ReadFileAnyAllocError =
+    pub const ReadFileAnyAllocError =
         OpenOSFileError ||
         std.fs.File.Reader.Error ||
         std.mem.Allocator.Error ||
@@ -201,28 +201,22 @@ pub const FileSystem = extern struct {
     pub fn readFileAnyAlloc(
         fs: *const FileSystem,
         filename: []const u8,
-    ) ReadFileAnyAllocError!?[]u8 {
-        const opt_file = try fs.openFileRead(filename);
+    ) ReadFileAnyAllocError![]u8 {
+        // TODO: search file inside .resource files
+        var file = try fs.openFileRead(filename);
+        defer file.close();
 
-        if (opt_file) |file| {
-            defer file.close();
+        var reader = file.reader();
+        const buffer = try reader.readAllAlloc(global.gpa.allocator(), MAX_FILE_SIZE);
 
-            var reader = file.reader();
-            const buffer = try reader.readAllAlloc(global.gpa.allocator(), MAX_FILE_SIZE);
-
-            return buffer;
-        } else {
-            // TODO: search file inside .resource files
-        }
-
-        return null;
+        return buffer;
     }
 
     pub fn freeFileBuffer(_: *const FileSystem, buffer: []u8) void {
         global.gpa.allocator().free(buffer);
     }
 
-    pub fn openFileRead(fs: *const FileSystem, filename: []const u8) OpenOSFileError!?std.fs.File {
+    pub fn openFileRead(fs: *const FileSystem, filename: []const u8) OpenOSFileError!std.fs.File {
         var paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
         while (paths_iterator.nextPtr()) |search| {
             const abs_path = try buildOSPath(
@@ -237,7 +231,7 @@ pub const FileSystem = extern struct {
             };
         }
 
-        return null;
+        return error.FileNotFound;
     }
 
     const OpenOSFileError = std.fs.File.OpenError || std.fs.File.SeekError;
@@ -469,6 +463,11 @@ pub const instance = @extern(*FileSystem, .{ .name = "fileSystemLocal" });
 
 fn sliceLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
     return std.mem.order(u8, lhs, rhs) == .lt;
+}
+
+pub fn stripExtension(path: []const u8) []const u8 {
+    const dot_index = std.mem.lastIndexOfScalar(u8, path, '.') orelse return path;
+    return path[0..dot_index];
 }
 
 // commands

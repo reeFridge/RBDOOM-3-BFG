@@ -55,7 +55,7 @@ pub const CVar = extern struct {
     valueMax: f32,
     valueStrings: ?[*]?[*:0]const u8,
     valueCompletion: ?*const cmd.ArgCompletionFn,
-    integerValue: c_int,
+    integerValue: i32,
     floatValue: f32,
     internalVar: ?*CVar,
     next: ?*CVar,
@@ -132,6 +132,13 @@ pub const CVar = extern struct {
 
     pub fn setString(cvar: *CVar, value: []const u8) error{OutOfMemory}!void {
         try cvar.set(value, true);
+    }
+
+    pub fn setInteger(cvar: *CVar, value: i32) error{OutOfMemory}!void {
+        var buffer: [256]u8 = undefined;
+        const pos = std.fmt.formatIntBuf(&buffer, value, 10, .lower, .{});
+        const str = buffer[0..pos];
+        try cvar.set(str, true);
     }
 
     pub fn set(cvar: *CVar, value: ?[]const u8, force: bool) error{OutOfMemory}!void {

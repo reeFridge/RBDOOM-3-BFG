@@ -25,14 +25,14 @@ const DebugGraph = opaque {};
 
 pub const Console = extern struct {
     vptr: *anyopaque,
-    LOCALSAFE_LEFT: c_int,
-    LOCALSAFE_RIGHT: c_int,
-    LOCALSAFE_TOP: c_int,
-    LOCALSAFE_BOTTOM: c_int,
-    LOCALSAFE_WIDTH: c_int,
-    LOCALSAFE_HEIGHT: c_int,
-    LINE_WIDTH: c_int,
-    TOTAL_LINES: c_int,
+    LOCALSAFE_LEFT: u32,
+    LOCALSAFE_RIGHT: u32,
+    LOCALSAFE_TOP: u32,
+    LOCALSAFE_BOTTOM: u32,
+    LOCALSAFE_WIDTH: u32,
+    LOCALSAFE_HEIGHT: u32,
+    LINE_WIDTH: u32,
+    TOTAL_LINES: u32,
     keyCatching: bool,
     text: [CON_TEXTSIZE]c_short,
     current: c_int, // line where next message will be printed

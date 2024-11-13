@@ -255,7 +255,7 @@ pub const DeclManager = extern struct {
                 decl_file.fileName.initEmptyBuffer();
                 try decl_file.fileName.assignSlice(full_filename);
 
-                _ = try manager.loadedFiled.append(decl_file);
+                _ = try manager.loadedFiles.append(decl_file);
 
                 break :file decl_file;
             };

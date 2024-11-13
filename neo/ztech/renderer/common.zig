@@ -35,6 +35,10 @@ pub const VertexLayoutType = enum(c_int) {
     DRAW_VERT,
     DRAW_IMGUI_VERT, // unused
     NUM_VERTEX_LAYOUTS,
+
+    pub inline fn toIndex(e: VertexLayoutType) usize {
+        return @intCast(@intFromEnum(e));
+    }
 };
 
 pub const BindingLayoutType = enum(c_int) {
@@ -71,7 +75,7 @@ pub const BindingLayoutType = enum(c_int) {
     DRAW_AO,
     DRAW_AO1,
 
-    LAYOUT_BINK_VIDEO,
+    BINK_VIDEO,
 
     // NVRHI render passes specific
     TAA_MOTION_VECTORS,
@@ -82,6 +86,10 @@ pub const BindingLayoutType = enum(c_int) {
     EXPOSURE,
 
     NUM_BINDING_LAYOUTS,
+
+    pub inline fn toIndex(e: BindingLayoutType) usize {
+        return @intCast(@intFromEnum(e));
+    }
 };
 
 const MAX_ENTITY_SHADER_PARAMS = @import("render_entity.zig").MAX_ENTITY_SHADER_PARAMS;

@@ -136,6 +136,10 @@ DeviceManager* c_deviceManager_create(nvrhi::GraphicsAPI api) {
 	return DeviceManager::Create(api);
 }
 
+nvrhi::GraphicsAPI c_deviceManager_getGraphicsApi(const DeviceManager* instance) {
+	return instance->GetGraphicsAPI();
+}
+
 void c_deviceManager_destroy(DeviceManager* instance) {
 	delete instance;
 }

@@ -451,15 +451,11 @@ pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
 
     const filename = std.mem.span(args.argv[1]);
 
-    const opt_buffer = file_system.instance.readFileAnyAlloc(filename) catch |err| {
-        std.debug.print("[ERR]({s}) While reading file {s}\n", .{
+    const buffer = file_system.instance.readFileAnyAlloc(filename) catch |err| {
+        std.debug.print("[CMD][ERR:{s}] While reading file {s}\n", .{
             @errorName(err),
             filename,
         });
-        return;
-    };
-    const buffer = opt_buffer orelse {
-        std.debug.print("[CMD] File '{s}' not found.\n", .{filename});
         return;
     };
     defer file_system.instance.freeFileBuffer(buffer);

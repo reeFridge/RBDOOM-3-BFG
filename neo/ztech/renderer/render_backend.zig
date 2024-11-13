@@ -2,14 +2,16 @@ const std = @import("std");
 const Vec2 = @import("../math/vector.zig").Vec2;
 const Image = @import("image.zig");
 const RenderSystem = @import("render_system.zig");
-const DeviceManager = @import("../sys/device_manager.zig");
+const device_manager = @import("../sys/device_manager.zig");
 const VertexCache = @import("vertex_cache.zig");
 const ImmediateMode = @import("immediate_mode.zig");
-const RenderLog = @import("render_log.zig");
-const RenderProgManager = @import("render_prog_manager.zig");
+const render_log = @import("render_log.zig");
+const render_prog_manager = @import("render_prog_manager.zig");
+const RenderProgManager = render_prog_manager.RenderProgManager;
 const ResolutionScale = @import("resolution_scale.zig");
 const Common = @import("../framework/common.zig");
-const ImageManager = @import("image_manager.zig");
+const image_manager = @import("image_manager.zig");
+const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 
 pub const BackendCounters = extern struct {
     c_surfaces: c_int,
@@ -295,13 +297,13 @@ pub const RenderBackend = extern struct {
             _ = binding_set.reset();
         }
 
-        RenderProgManager.instance.shutdown();
-        RenderLog.instance.shutdown();
+        render_prog_manager.instance.shutdown();
+        render_log.instance.shutdown();
         _ = backend.commandList.reset();
         ImmediateMode.shutdown();
         VKimp_Shutdown(true);
 
-        DeviceManager.deinit();
+        device_manager.deinit();
     }
 
     pub fn clearCaches(backend: *RenderBackend) void {
@@ -338,7 +340,8 @@ pub const RenderBackend = extern struct {
         backend.currentPipeline.deinit();
     }
 
-    pub fn init(backend: *RenderBackend, allocator: std.mem.Allocator) error{OutOfMemory}!void {
+    pub const InitError = error{OutOfMemory} || RenderProgManager.LoadShaderError;
+    pub fn init(backend: *RenderBackend, allocator: std.mem.Allocator) InitError!void {
         if (RenderSystem.instance.backend_initialized) @panic("RenderBackend already initialized");
 
         // TODO: Remove
@@ -346,16 +349,16 @@ pub const RenderBackend = extern struct {
 
         const api = nvrhi.GraphicsAPI.VULKAN;
 
-        DeviceManager.init(api);
-        VKimp_PreInit();
-        R_SetNewMode(true);
+        try device_manager.init(api);
+        vulkan_impl.beforeInit();
+        try RenderSystem.updateDisplayMode(true);
         Sys_InitInput();
 
         c_renderBackend_clearContext();
 
-        const device = DeviceManager.instance().getDevice();
-        RenderProgManager.instance.init(device);
-        RenderLog.instance.init();
+        const device = device_manager.instance().getDevice();
+        try render_prog_manager.instance.init(device);
+        render_log.instance.init();
 
         const MAX_TILE_RES: usize = 1024; // shadowMapResolutions[0]
         const NUM_QUAD_TREE_LEVELS: usize = 8;
@@ -419,10 +422,10 @@ pub const RenderBackend = extern struct {
     }
 
     pub fn swapBuffersBlocking(_: *RenderBackend) void {
-        const device_manager = DeviceManager.instance();
-        device_manager.present();
-        device_manager.getDevice().runGarbageCollection();
-        RenderLog.instance.endFrame();
+        const device_manager_instance = device_manager.instance();
+        device_manager_instance.present();
+        device_manager_instance.getDevice().runGarbageCollection();
+        render_log.instance.endFrame();
 
         // if api == VULKAN
         // invalidate swap buffers
@@ -439,31 +442,31 @@ pub const RenderBackend = extern struct {
 
         if (cmd_head.commandId == .RC_NOP and cmd_head.next == null) return;
 
-        if (RenderSystem.glConfig.stereo3Dmode != RenderSystem.STEREO3D_OFF) {
+        if (RenderSystem.glConfig.stereo3Dmode != .OFF) {
             backend.stereoRenderExecuteBackendCommands(cmd_head);
             return;
         }
 
         backend.glStartFrame();
 
-        const texture_id = ImageManager.instance.hierarchicalZbufferImage.?.getTextureID();
+        const texture_id = image_manager.instance.hierarchicalZbufferImage.?.getTextureID();
 
         // RB: we need to load all images left before rendering
         // this can be expensive here because of the runtime image compression
-        // ImageManager.instance.loadDeferredImages(backend.commandList.ptr_);
-        const device_manager = DeviceManager.instance();
+        // image_manager.instance.loadDeferredImages(backend.commandList.ptr_);
+        const device_manager_instance = device_manager.instance();
 
         if (backend.ssaoPass == null) {
             backend.ssaoPass = Pass.SsaoPass.create(
-                device_manager.getDevice(),
+                device_manager_instance.getDevice(),
                 &backend.commonPasses,
-                ImageManager.instance.currentDepthImage.?.getTexturePtr(),
-                ImageManager.instance.gbufferNormalsRoughnessImage.?.getTexturePtr(),
-                ImageManager.instance.ambientOcclusionImage[0].?.getTexturePtr(),
+                image_manager.instance.currentDepthImage.?.getTexturePtr(),
+                image_manager.instance.gbufferNormalsRoughnessImage.?.getTexturePtr(),
+                image_manager.instance.ambientOcclusionImage[0].?.getTexturePtr(),
             );
         }
 
-        if (texture_id != ImageManager.instance.hierarchicalZbufferImage.?.getTextureID() or
+        if (texture_id != image_manager.instance.hierarchicalZbufferImage.?.getTextureID() or
             backend.hiZGenPass == null)
         {
             if (backend.hiZGenPass) |pass| {
@@ -471,8 +474,8 @@ pub const RenderBackend = extern struct {
             }
 
             backend.hiZGenPass = Pass.MipMapGenPass.create(
-                device_manager.getDevice(),
-                ImageManager.instance.hierarchicalZbufferImage.?.getTexturePtr(),
+                device_manager_instance.getDevice(),
+                image_manager.instance.hierarchicalZbufferImage.?.getTexturePtr(),
                 .MODE_MAX,
             );
         }
@@ -480,7 +483,7 @@ pub const RenderBackend = extern struct {
         if (backend.toneMapPass == null) {
             const pass = Pass.TonemapPass.create();
             pass.init(
-                device_manager.getDevice(),
+                device_manager_instance.getDevice(),
                 &backend.commonPasses,
                 .{},
                 global_framebuffers.ldrFBO.getApiObject(),
@@ -491,16 +494,16 @@ pub const RenderBackend = extern struct {
         if (backend.taaPass == null) {
             const pass = Pass.TemporalAntiAliasingPass.create();
             pass.init(
-                device_manager.getDevice(),
+                device_manager_instance.getDevice(),
                 &backend.commonPasses,
                 null,
                 .{
-                    .sourceDepth = ImageManager.instance.currentDepthImage.?.getTexturePtr(),
-                    .motionVectors = ImageManager.instance.taaMotionVectorsImage.?.getTexturePtr(),
-                    .unresolvedColor = ImageManager.instance.currentRenderHDRImage.?.getTexturePtr(),
-                    .resolvedColor = ImageManager.instance.taaResolvedImage.?.getTexturePtr(),
-                    .feedback1 = ImageManager.instance.taaFeedback1Image.?.getTexturePtr(),
-                    .feedback2 = ImageManager.instance.taaFeedback2Image.?.getTexturePtr(),
+                    .sourceDepth = image_manager.instance.currentDepthImage.?.getTexturePtr(),
+                    .motionVectors = image_manager.instance.taaMotionVectorsImage.?.getTexturePtr(),
+                    .unresolvedColor = image_manager.instance.currentRenderHDRImage.?.getTexturePtr(),
+                    .resolvedColor = image_manager.instance.taaResolvedImage.?.getTexturePtr(),
+                    .feedback1 = image_manager.instance.taaFeedback1Image.?.getTexturePtr(),
+                    .feedback2 = image_manager.instance.taaFeedback2Image.?.getTexturePtr(),
                     .motionVectorStencilMask = 0, //0x01,
                     .useCatmullRomFilter = true,
                 },
@@ -518,10 +521,10 @@ pub const RenderBackend = extern struct {
                 .RC_NOP => {},
                 .RC_DRAW_VIEW_GUI => {
                     if (draw_view_3d) {
-                        RenderLog.instance.openMainBlock(RenderLog.MRB_DRAW_GUI);
-                        defer RenderLog.instance.closeMainBlock(RenderLog.MRB_DRAW_GUI);
-                        RenderLog.instance.openBlock("Render_DrawViewGUI", .{});
-                        defer RenderLog.instance.closeBlock();
+                        render_log.instance.openMainBlock(render_log.MRB_DRAW_GUI);
+                        defer render_log.instance.closeMainBlock(render_log.MRB_DRAW_GUI);
+                        render_log.instance.openBlock("Render_DrawViewGUI", .{});
+                        defer render_log.instance.closeBlock();
                         RenderSystem.glConfig.timerQueryAvailable = false;
                         defer RenderSystem.glConfig.timerQueryAvailable = timerQueryAvailable;
 
@@ -590,9 +593,9 @@ pub const RenderBackend = extern struct {
             RenderSystem.instance.getHeight(),
         );
 
-        RenderProgManager.instance.unbind();
+        render_prog_manager.instance.unbind();
         framebuffer.unbind();
-        RenderLog.instance.closeBlock();
+        render_log.instance.closeBlock();
     }
 
     fn glScissor(
@@ -624,34 +627,34 @@ pub const RenderBackend = extern struct {
     }
 
     fn glStartFrame(backend: *RenderBackend) void {
-        RenderLog.instance.fetchGPUTimers(&backend.pc);
+        render_log.instance.fetchGPUTimers(&backend.pc);
 
-        DeviceManager.instance().beginFrame();
+        device_manager.instance().beginFrame();
         Image.emptyGarbage();
 
         const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
         command_list.open();
 
-        RenderLog.instance.startFrame(command_list);
-        RenderLog.instance.openMainBlock(RenderLog.MRB_GPU_TIME);
+        render_log.instance.startFrame(command_list);
+        render_log.instance.openMainBlock(render_log.MRB_GPU_TIME);
     }
 
     fn glEndFrame(backend: *RenderBackend) void {
         // for VULKAN only
         // ready to present
         RenderSystem.instance.omit_swap_buffers = false;
-        RenderLog.instance.closeMainBlock(RenderLog.MRB_GPU_TIME);
+        render_log.instance.closeMainBlock(render_log.MRB_GPU_TIME);
 
         const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
         command_list.close();
 
-        DeviceManager.instance().endFrame();
-        DeviceManager.instance().getDevice().executeCommandList(command_list);
+        device_manager.instance().endFrame();
+        device_manager.instance().getDevice().executeCommandList(command_list);
         if (backend.taaPass) |taaPass| taaPass.advanceFrame();
     }
 
     fn resizeImages(_: *RenderBackend) void {
-        DeviceManager.instance().updateWindowSize(.{
+        device_manager.instance().updateWindowSize(.{
             .width = RenderSystem.glConfig.nativeScreenWidth,
             .height = RenderSystem.glConfig.nativeScreenHeight,
             .multiSamples = RenderSystem.glConfig.multisamples,

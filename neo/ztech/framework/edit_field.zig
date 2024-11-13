@@ -4,7 +4,7 @@ const MAX_EDIT_LINE = 256;
 
 const AutoComplete = extern struct {
     valid: bool,
-    length: c_int,
+    length: u32,
     completionString: [MAX_EDIT_LINE]u8,
     currentMatch: [MAX_EDIT_LINE]u8,
     matchCount: c_int,
@@ -15,7 +15,7 @@ const AutoComplete = extern struct {
 pub const EditField = extern struct {
     cursor: c_int = 0,
     scroll: c_int = 0,
-    widthInChars: c_int = 0,
+    widthInChars: u32 = 0,
     buffer: [MAX_EDIT_LINE]u8 = undefined,
     autoComplete: AutoComplete = std.mem.zeroes(AutoComplete),
 

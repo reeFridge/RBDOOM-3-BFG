@@ -5,6 +5,7 @@ const fs = @import("framework/file_system.zig");
 pub const ID_TIME_T = i64;
 
 pub const idStr = extern struct {
+    const FILE_HASH_SIZE: c_int = 1024;
     const STR_ALLOC_BASE: usize = 20;
     const STR_ALLOC_GRAN: u32 = 32;
 
@@ -23,6 +24,15 @@ pub const idStr = extern struct {
         self.setAlloced(STR_ALLOC_BASE);
         self.data = &self.baseBuffer;
         self.len = 0;
+    }
+
+    pub fn move(src: *idStr, dst: *idStr) void {
+        dst.* = src.*;
+
+        const data = src.data orelse return;
+        if (&src.baseBuffer == data) {
+            dst.data = &dst.baseBuffer;
+        }
     }
 
     pub fn empty(self: *idStr) error{OutOfMemory}!void {
@@ -180,6 +190,22 @@ pub const idStr = extern struct {
         return self.allocedAndFlag.flag;
     }
 
+    pub fn fileNameHash(str: []const u8) c_int {
+        var result: c_int = 0;
+        for (str, 0..) |char, i| {
+            var letter = std.ascii.toLower(char);
+            if (letter == '.') break;
+            if (letter == '\\') {
+                letter = '/';
+            }
+            result += @as(c_int, @intCast(letter * (i + 119)));
+        }
+
+        result &= FILE_HASH_SIZE - 1;
+
+        return result;
+    }
+
     pub fn hash(str: []const u8) c_int {
         var result: c_int = 0;
         for (str, 0..) |char, i| {
@@ -244,6 +270,16 @@ pub fn idList(T: type) type {
             }
         }
 
+        pub fn addUnique(self: *Self, obj: *const T) error{OutOfMemory}!usize {
+            return self.findIndex(obj) orelse try self.append(obj.*);
+        }
+
+        pub fn findIndex(self: *const Self, obj: *const T) ?usize {
+            return for (self.constSlice(), 0..) |*item_ptr, i| {
+                if (item_ptr.* == obj.*) break i;
+            } else null;
+        }
+
         pub fn allocOne(self: *Self) error{OutOfMemory}!*T {
             if (self.list == null) {
                 try self.resize(@intCast(self.granularity));
@@ -267,16 +303,27 @@ pub fn idList(T: type) type {
             self.num = @intCast(num);
         }
 
+        pub fn resizeWithGranularity(
+            self: *Self,
+            size: usize,
+            granularity: usize,
+        ) error{OutOfMemory}!void {
+            self.granularity = @intCast(granularity);
+            try self.resize(size);
+        }
+
         pub fn resize(self: *Self, size: usize) error{OutOfMemory}!void {
             if (size == 0) {
                 self.clear();
                 return;
             }
 
+            if (size == @as(usize, @intCast(self.size))) return;
+
             const allocator = global.gpa.allocator();
 
-            const new_list = if (self.list) |list|
-                try allocator.realloc(list[0..@intCast(self.size)], size)
+            const new_list = if (self.list) |_|
+                try self.realloc(allocator, size)
             else
                 try allocator.alloc(T, size);
 
@@ -286,6 +333,26 @@ pub fn idList(T: type) type {
             if (self.size < self.num) {
                 self.num = self.size;
             }
+        }
+
+        pub fn realloc(self: *Self, allocator: std.mem.Allocator, size: usize) error{OutOfMemory}![]T {
+            const list_ptr = self.list orelse @panic("uninitialzied");
+            const list = list_ptr[0..@intCast(self.size)];
+            if (!std.meta.hasMethod(T, "move"))
+                return try allocator.realloc(list, size);
+
+            defer allocator.free(list);
+
+            const new_list = try allocator.alloc(T, size);
+            errdefer allocator.free(new_list);
+
+            const current_len: usize = @intCast(self.num);
+            const current_list = list[0..@min(current_len, size)];
+            for (current_list, new_list[0..current_list.len]) |*old_item, *new_item| {
+                old_item.move(new_item);
+            }
+
+            return new_list;
         }
 
         pub fn append(self: *Self, obj: T) error{OutOfMemory}!usize {
@@ -370,12 +437,39 @@ pub fn idList(T: type) type {
 
 pub fn idStaticList(T: type, size: usize) type {
     return extern struct {
-        num: c_int,
-        list: [size]T,
+        num: c_int = 0,
+        list: [size]T = undefined,
 
         const Self = @This();
 
+        pub fn fromSlice(init_slice: []const T) Self {
+            var static_list = Self{ .num = @intCast(init_slice.len) };
+            @memcpy(static_list.slice(), init_slice);
+
+            return static_list;
+        }
+
+        pub fn append(self: *Self, obj: T) error{OutOfMemory}!usize {
+            if (self.num < size) {
+                const len: usize = @intCast(self.num);
+                self.list[len] = obj;
+                self.num += 1;
+
+                return len;
+            }
+
+            return error.OutOfMemory;
+        }
+
+        pub inline fn memAllocated(self: *const Self) usize {
+            return @sizeOf(@TypeOf(self.list));
+        }
+
         pub inline fn slice(self: *Self) []T {
+            return self.list[0..@intCast(self.num)];
+        }
+
+        pub inline fn constSlice(self: *const Self) []const T {
             return self.list[0..@intCast(self.num)];
         }
 
@@ -487,7 +581,7 @@ pub const idHashIndex = extern struct {
         hash_index.lookupMask = -1;
     }
 
-    fn free(hash_index: *idHashIndex) void {
+    pub fn free(hash_index: *idHashIndex) void {
         var allocator = global.gpa.allocator();
         if (hash_index.hash != &INVALID_INDEX) {
             allocator.free(hash_index.hash[0..@intCast(hash_index.hashSize)]);
@@ -502,7 +596,7 @@ pub const idHashIndex = extern struct {
         hash_index.lookupMask = 0;
     }
 
-    fn resizeIndex(hash_index: *idHashIndex, index_size: usize) error{OutOfMemory}!void {
+    pub fn resizeIndex(hash_index: *idHashIndex, index_size: usize) error{OutOfMemory}!void {
         if (index_size <= hash_index.indexSize) return;
 
         const granularity = @as(usize, @intCast(hash_index.granularity));

@@ -48,8 +48,7 @@ cache_table: idlib.idList(CacheEntry) = .{},
 cache_hash: idlib.idHashIndex = .{},
 
 pub fn init(rc: *ResourceContainer, filename: []const u8) bool {
-    const opt_file = fs.instance.openFileRead(filename) catch return false;
-    var file = opt_file orelse return false;
+    const file = fs.instance.openFileRead(filename) catch return false;
 
     rc.resource_file = file;
 

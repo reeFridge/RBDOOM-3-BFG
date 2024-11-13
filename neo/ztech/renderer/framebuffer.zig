@@ -1,11 +1,24 @@
-const idList = @import("../idlib.zig").idList;
+const idlib = @import("../idlib.zig");
+const idList = idlib.idList;
 const nvrhi = @import("nvrhi.zig");
 
-pub const Framebuffer = opaque {
-    extern fn c_framebuffer_getApiObject(*Framebuffer) callconv(.C) *nvrhi.IFramebuffer;
+pub const Framebuffer = extern struct {
+    vptr: *anyopaque,
+    fboName: idlib.idStr,
+    frameBuffer: u32,
+    colorBuffers: [16]u32,
+    colorFormat: c_int,
+    depthBuffer: u32,
+    depthFormat: c_int,
+    stencilBuffer: u32,
+    stencilFormat: c_int,
+    width: c_int,
+    height: c_int,
+    msaaSamples: bool,
+    apiObject: nvrhi.FramebufferHandle,
 
     pub fn getApiObject(framebuffer: *Framebuffer) *nvrhi.IFramebuffer {
-        return c_framebuffer_getApiObject(framebuffer);
+        return framebuffer.apiObject.ptr_ orelse @panic("apiObject is null");
     }
 };
 
@@ -39,10 +52,15 @@ pub const GlobalFramebuffers = extern struct {
 
 pub const global_framebuffers = @extern(*GlobalFramebuffers, .{ .name = "globalFramebuffers" });
 
-extern fn c_framebuffer_init() callconv(.C) void;
-extern fn c_framebuffer_shutdown() callconv(.C) void;
-extern fn c_framebuffer_checkFramebuffers() callconv(.C) void;
-extern fn c_framebuffer_unbind() callconv(.C) void;
+extern fn c_framebuffer_init() void;
+extern fn c_framebuffer_shutdown() void;
+extern fn c_framebuffer_checkFramebuffers() void;
+extern fn c_framebuffer_unbind() void;
+extern fn c_framebuffer_resizeFramebuffers(bool) void;
+
+pub fn resizeFramebuffers(reload_images: bool) void {
+    c_framebuffer_resizeFramebuffers(reload_images);
+}
 
 pub fn init() void {
     c_framebuffer_init();

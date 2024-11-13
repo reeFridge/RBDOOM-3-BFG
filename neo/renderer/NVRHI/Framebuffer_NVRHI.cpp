@@ -334,4 +334,8 @@ void c_framebuffer_shutdown() {
 	Framebuffer::Shutdown();
 }
 
+void c_framebuffer_resizeFramebuffers(bool reloadImages) {
+	Framebuffer::ResizeFramebuffers(reloadImages);
+}
+
 }
