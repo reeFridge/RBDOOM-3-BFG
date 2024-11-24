@@ -4,6 +4,9 @@
 #include "nvrhi/nvrhi.h"
 #include "nvrhi/utils.h"
 
+#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#include <vulkan/vulkan.hpp>
+
 extern "C" {
 
 void c_nvrhi_device_waitForIdle(nvrhi::IDevice* device);
@@ -13,10 +16,16 @@ void c_nvrhi_device_executeCommandList(
 void c_nvrhi_device_createHandleForNativeTexture(
 		nvrhi::IDevice* device,
 		nvrhi::TextureHandle* handle,
-        nvrhi::ObjectType objectType,
-        nvrhi::Object object,
-        const nvrhi::TextureDesc* desc
-		);
+		nvrhi::ObjectType objectType,
+		nvrhi::Object object,
+		const nvrhi::TextureDesc* desc);
+void c_nvrhi_device_createEventQuery(
+		nvrhi::IDevice* device,
+		nvrhi::EventQueryHandle* handle);
+void c_nvrhi_device_setEventQuery(
+		nvrhi::IDevice* device,
+		nvrhi::IEventQuery* query,
+		nvrhi::CommandQueue queue);
 void c_nvrhi_device_createCommandList(
 		nvrhi::IDevice* device,
 		nvrhi::CommandListHandle* handle,
@@ -76,6 +85,10 @@ const nvrhi::FormatInfo* c_nvrhi_getFormatInfo(nvrhi::Format);
 // vulkan
 
 VkFormat c_nvrhi_vulkan_convertFormat(nvrhi::Format format);
+void c_nvrhi_vulkan_createDevice(
+		const nvrhi::vulkan::DeviceDesc* desc,
+		nvrhi::DeviceHandle* handle,
+		PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr);
 
 // utils
 

@@ -1,5 +1,5 @@
 const nvrhi = @import("nvrhi.zig");
-const vulkan = @cImport(@cInclude("vulkan/vulkan.h"));
+const vulkan = @import("vulkan");
 const vk_mem_alloc = @cImport(@cInclude("vk_mem_alloc.h"));
 const idlib = @import("../idlib.zig");
 
@@ -16,7 +16,7 @@ pub const BufferObject = extern struct {
     bufferHandle: nvrhi.BufferHandle,
     buffer: ?*anyopaque,
     debugName: idlib.idStr,
-    vkBuffer: vulkan.VkBuffer,
+    vkBuffer: vulkan.Buffer,
     allocation: vk_mem_alloc.VmaAllocation,
     allocationInfo: vk_mem_alloc.VmaAllocationInfo,
 };

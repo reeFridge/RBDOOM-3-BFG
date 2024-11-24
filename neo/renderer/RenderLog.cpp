@@ -128,6 +128,15 @@ void idRenderLog::Init()
 	}
 }
 
+void idRenderLog::InitWithDevice(nvrhi::IDevice* device)
+{
+	for( int i = 0; i < MRB_TOTAL * NUM_FRAME_DATA; i++ )
+	{
+		timerQueries.Append( device->createTimerQuery() );
+		timerUsed.Append( false );
+	}
+}
+
 void idRenderLog::Shutdown()
 {
 	commandList = nullptr;
@@ -303,6 +312,104 @@ void idRenderLog::FetchGPUTimers( backEndCounters_t& pc )
 	}
 }
 
+void idRenderLog::FetchGPUTimersWithDevice(backEndCounters_t& pc , nvrhi::IDevice* device)
+{
+	frameCounter++;
+	frameParity = ( frameParity + 1 ) % NUM_FRAME_DATA;
+
+	for( int i = 0; i < MRB_TOTAL; i++ )
+	{
+		int timerIndex = i + frameParity * MRB_TOTAL;
+
+		if( timerUsed[timerIndex] )
+		{
+			double time = device->getTimerQueryTime( timerQueries[ timerIndex ] );
+			time *= 1000000.0; // seconds -> microseconds
+
+			switch( i )
+			{
+				case MRB_GPU_TIME:
+					pc.gpuMicroSec = time;
+					break;
+
+				case MRB_BEGIN_DRAWING_VIEW:
+					pc.gpuBeginDrawingMicroSec = time;
+					break;
+
+				case MRB_FILL_DEPTH_BUFFER:
+					pc.gpuDepthMicroSec = time;
+					break;
+
+				case MRB_FILL_GEOMETRY_BUFFER:
+					pc.gpuGeometryMicroSec = time;
+					break;
+
+				case MRB_SSAO_PASS:
+					pc.gpuScreenSpaceAmbientOcclusionMicroSec = time;
+					break;
+
+				case MRB_AMBIENT_PASS:
+					pc.gpuAmbientPassMicroSec = time;
+					break;
+
+				case MRB_SHADOW_ATLAS_PASS:
+					pc.gpuShadowAtlasPassMicroSec = time;
+					break;
+
+				case MRB_DRAW_INTERACTIONS:
+					pc.gpuInteractionsMicroSec = time;
+					break;
+
+				case MRB_DRAW_SHADER_PASSES:
+					pc.gpuShaderPassMicroSec = time;
+					break;
+
+				case MRB_FOG_ALL_LIGHTS:
+					pc.gpuFogAllLightsMicroSec = time;
+					break;
+
+				case MRB_BLOOM:
+					pc.gpuBloomMicroSec = time;
+					break;
+
+				case MRB_DRAW_SHADER_PASSES_POST:
+					pc.gpuShaderPassPostMicroSec = time;
+					break;
+
+				case MRB_MOTION_VECTORS:
+					pc.gpuMotionVectorsMicroSec = time;
+					break;
+
+				case MRB_TAA:
+					pc.gpuTemporalAntiAliasingMicroSec = time;
+					break;
+
+				case MRB_TONE_MAP_PASS:
+					pc.gpuToneMapPassMicroSec = time;
+					break;
+
+				case MRB_POSTPROCESS:
+					pc.gpuPostProcessingMicroSec = time;
+					break;
+
+				case MRB_DRAW_GUI:
+					pc.gpuDrawGuiMicroSec = time;
+					break;
+
+				case MRB_CRT_POSTPROCESS:
+					pc.gpuCrtPostProcessingMicroSec = time;
+					break;
+
+				default:
+					break;
+			}
+		}
+
+		// reset timer
+		timerUsed[timerIndex] = false;
+	}
+}
+
 
 /*
 ========================
@@ -326,8 +433,8 @@ void idRenderLog::CloseBlock()
 
 extern "C" {
 
-void c_renderLog_init(idRenderLog* renderLog) {
-	renderLog->Init();
+void c_renderLog_init(idRenderLog* renderLog, nvrhi::IDevice* device) {
+	renderLog->InitWithDevice(device);
 }
 
 void c_renderLog_shutdown(idRenderLog* renderLog) {
@@ -342,8 +449,8 @@ void c_renderLog_endFrame(idRenderLog* renderLog) {
 	renderLog->EndFrame();
 }
 
-void c_renderLog_fetchGPUTimers(idRenderLog* renderLog, backEndCounters_t* pc) {
-	renderLog->FetchGPUTimers(*pc);
+void c_renderLog_fetchGPUTimers(idRenderLog* renderLog, backEndCounters_t* pc, nvrhi::IDevice* device) {
+	renderLog->FetchGPUTimersWithDevice(*pc, device);
 }
 
 void c_renderLog_startFrame(idRenderLog* renderLog, nvrhi::ICommandList* _commandList) {

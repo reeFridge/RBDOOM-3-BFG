@@ -152,13 +152,13 @@ const ImageOptions = extern struct {
     isUAV: bool = false,
 };
 
-const vulkan = @cImport(@cInclude("vulkan/vulkan.h"));
-const vk_mem_alloc = @cImport(@cInclude("vk_mem_alloc.h"));
+const vulkan = @import("vulkan");
+const c = @import("../sys/c_import.zig").c;
 
 pub const Image = extern struct {
     var garbage_index: usize = 0;
-    var image_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(vulkan.VkImage) = undefined;
-    var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(vk_mem_alloc.VmaAllocation) = undefined;
+    var image_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(vulkan.Image) = undefined;
+    var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(c.VmaAllocation) = undefined;
 
     imgName: idlib.idStr = .{},
     cubeFiles: CubeFiles = .CF_2D,
@@ -178,8 +178,8 @@ pub const Image = extern struct {
     texture: nvrhi.TextureHandle = .{},
     sampler: nvrhi.SamplerHandle = .{},
     samplerDesc: nvrhi.SamplerDesc = .{},
-    image: vulkan.VkImage = null,
-    allocation: vk_mem_alloc.VmaAllocation = null,
+    image: vulkan.Image = .null_handle,
+    allocation: c.VmaAllocation = null,
 
     pub fn init(image: *Image, name: []const u8) error{OutOfMemory}!void {
         image.imgName.initEmptyBuffer();
@@ -194,13 +194,13 @@ pub const Image = extern struct {
     pub fn purgeImage(image: *Image) void {
         _ = image.texture.reset();
 
-        if (device_manager.vma_allocator != null and image.image != null) {
+        if (device_manager.vma_allocator != null and image.image != .null_handle) {
             _ = Image.image_garbage[Image.garbage_index]
                 .append(image.image) catch unreachable;
             _ = Image.allocation_garbage[Image.garbage_index]
                 .append(image.allocation) catch unreachable;
 
-            image.image = null;
+            image.image = .null_handle;
             image.allocation = null;
         }
 
@@ -584,10 +584,10 @@ pub const Image = extern struct {
             .FMT_DXT1 => .BC1_UNORM,
             .FMT_DXT5 => .BC3_UNORM,
             .FMT_DEPTH, .FMT_SHADOW_ARRAY => .D32,
-            //.FMT_DEPTH_STENCIL => if (device_manager.instance().m_DeviceParams.enableImageFormatD24S8)
-            //    .D24S8
-            //else
-            //    .D32S8,
+            .FMT_DEPTH_STENCIL => if (device_manager.instance().device_params.enable_image_format_d24s8)
+                .D24S8
+            else
+                .D32S8,
             .FMT_RG16F => .RG16_FLOAT,
             .FMT_RGBA16F => .RGBA16_FLOAT,
             .FMT_RGBA16S => .RGBA16_SNORM,
@@ -694,32 +694,31 @@ pub const Image = extern struct {
         }
 
         if (device_manager.vma_allocator) |vma_allocator| {
-            const image_create_info = vulkan.VkImageCreateInfo{
-                .sType = vulkan.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            const image_create_info = vulkan.ImageCreateInfo{
                 .flags = if (image.opts.textureType == .TT_CUBIC)
-                    vulkan.VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+                    .{ .cube_compatible_bit = true }
                 else
-                    0,
-                .imageType = vulkan.VK_IMAGE_TYPE_2D,
-                .format = nvrhi.vulkan.convertFormat(format),
+                    .{},
+                .image_type = .@"2d",
+                .format = @enumFromInt(nvrhi.vulkan.convertFormat(format)),
                 .extent = .{
                     .width = scaled_width,
                     .height = scaled_height,
                     .depth = 1,
                 },
-                .mipLevels = image.opts.numLevels,
-                .arrayLayers = texture_desc.arraySize,
-                .samples = image.opts.samples,
-                .tiling = vulkan.VK_IMAGE_TILING_OPTIMAL,
+                .mip_levels = image.opts.numLevels,
+                .array_layers = texture_desc.arraySize,
+                .samples = vulkan.SampleCountFlags.fromInt(image.opts.samples),
+                .tiling = .optimal,
                 .usage = selectImageUsage(&texture_desc),
-                .sharingMode = vulkan.VK_SHARING_MODE_EXCLUSIVE,
-                .initialLayout = vulkan.VK_IMAGE_LAYOUT_UNDEFINED,
+                .sharing_mode = .exclusive,
+                .initial_layout = .undefined,
             };
 
-            const alloc_create_info = vk_mem_alloc.VmaAllocationCreateInfo{
-                .usage = vk_mem_alloc.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+            const alloc_create_info = c.VmaAllocationCreateInfo{
+                .usage = c.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
             };
-            const result = vk_mem_alloc.vmaCreateImage(
+            const result = c.vmaCreateImage(
                 vma_allocator,
                 @ptrCast(&image_create_info),
                 @ptrCast(&alloc_create_info),
@@ -727,12 +726,12 @@ pub const Image = extern struct {
                 @ptrCast(&image.allocation),
                 null,
             );
-            std.debug.assert(result == vulkan.VK_SUCCESS);
+            std.debug.assert(result == @intFromEnum(vulkan.Result.success));
 
             const device = device_manager.instance().getDevice();
             image.texture = device.createHandleForNativeTexture(
                 nvrhi.ObjectTypes.VK_Image,
-                .{ .u = .{ .pointer = image.image } },
+                .{ .u = .{ .integer = @intFromEnum(image.image) } },
                 &texture_desc,
             );
         }
@@ -838,25 +837,27 @@ pub fn emptyGarbage() void {
     c_image_emptyGarbage();
 }
 
-fn selectImageUsage(desc: *const nvrhi.TextureDesc) vulkan.VkImageUsageFlags {
+fn selectImageUsage(desc: *const nvrhi.TextureDesc) vulkan.ImageUsageFlags {
     const format_info = nvrhi.getFormatInfo(desc.format);
-    var usage_flags =
-        vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-        vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-        vulkan.VK_IMAGE_USAGE_SAMPLED_BIT;
+    var usage_flags = vulkan.ImageUsageFlags{
+        .transfer_src_bit = true,
+        .transfer_dst_bit = true,
+        .sampled_bit = true,
+    };
 
     if (desc.isRenderTarget) {
-        usage_flags |= if (format_info.hasDepth or format_info.hasStencil)
-            vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-        else
-            vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        if (format_info.hasDepth or format_info.hasStencil) {
+            usage_flags.depth_stencil_attachment_bit = true;
+        } else {
+            usage_flags.color_attachment_bit = true;
+        }
     }
 
     if (desc.isUAV)
-        usage_flags |= vulkan.VK_IMAGE_USAGE_STORAGE_BIT;
+        usage_flags.storage_bit = true;
 
     if (desc.isShadingRateSurface)
-        usage_flags |= vulkan.VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+        usage_flags.fragment_shading_rate_attachment_bit_khr = true;
 
-    return @intCast(usage_flags);
+    return usage_flags;
 }

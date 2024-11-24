@@ -3,16 +3,15 @@ const nvrhi = @import("nvrhi.zig");
 const CVec4 = @import("../math/vector.zig").CVec4;
 
 pub const RenderLog = opaque {
-    extern fn c_renderLog_init(*RenderLog) callconv(.C) void;
-    extern fn c_renderLog_shutdown(*RenderLog) callconv(.C) void;
-    extern fn c_renderLog_endFrame(*RenderLog) callconv(.C) void;
-    extern fn c_renderLog_fetchGPUTimers(*RenderLog, *BackendCounters) callconv(.C) void;
-    extern fn c_renderLog_startFrame(*RenderLog, *nvrhi.ICommandList) callconv(.C) void;
-    extern fn c_renderLog_openMainBlock(*RenderLog, renderLogMainBlock_t) callconv(.C) void;
-    extern fn c_renderLog_closeBlock(*RenderLog) callconv(.C) void;
-
-    extern fn c_renderLog_openBlock(*RenderLog, [*c]const u8, *const CVec4) callconv(.C) void;
-    extern fn c_renderLog_closeMainBlock(*RenderLog, c_int) callconv(.C) void;
+    extern fn c_renderLog_init(*RenderLog, *nvrhi.IDevice) void;
+    extern fn c_renderLog_shutdown(*RenderLog) void;
+    extern fn c_renderLog_endFrame(*RenderLog) void;
+    extern fn c_renderLog_fetchGPUTimers(*RenderLog, *BackendCounters, *nvrhi.IDevice) void;
+    extern fn c_renderLog_startFrame(*RenderLog, *nvrhi.ICommandList) void;
+    extern fn c_renderLog_openMainBlock(*RenderLog, renderLogMainBlock_t) void;
+    extern fn c_renderLog_closeBlock(*RenderLog) void;
+    extern fn c_renderLog_openBlock(*RenderLog, [*c]const u8, *const CVec4) void;
+    extern fn c_renderLog_closeMainBlock(*RenderLog, c_int) void;
 
     pub fn openBlock(renderLog: *RenderLog, label: []const u8, color: CVec4) void {
         c_renderLog_openBlock(renderLog, label.ptr, &color);
@@ -30,8 +29,12 @@ pub const RenderLog = opaque {
         c_renderLog_closeMainBlock(render_log, block);
     }
 
-    pub fn fetchGPUTimers(render_log: *RenderLog, pc: *BackendCounters) void {
-        c_renderLog_fetchGPUTimers(render_log, pc);
+    pub fn fetchGPUTimers(
+        render_log: *RenderLog,
+        pc: *BackendCounters,
+        device: *nvrhi.IDevice,
+    ) void {
+        c_renderLog_fetchGPUTimers(render_log, pc, device);
     }
 
     pub fn startFrame(render_log: *RenderLog, command_list: *nvrhi.ICommandList) void {
@@ -42,8 +45,8 @@ pub const RenderLog = opaque {
         c_renderLog_endFrame(render_log);
     }
 
-    pub fn init(render_log: *RenderLog) void {
-        c_renderLog_init(render_log);
+    pub fn init(render_log: *RenderLog, device: *nvrhi.IDevice) void {
+        c_renderLog_init(render_log, device);
     }
 
     pub fn shutdown(render_log: *RenderLog) void {

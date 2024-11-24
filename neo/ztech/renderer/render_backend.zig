@@ -340,7 +340,9 @@ pub const RenderBackend = extern struct {
         backend.currentPipeline.deinit();
     }
 
-    pub const InitError = error{OutOfMemory} || RenderProgManager.LoadShaderError;
+    pub const InitError = error{OutOfMemory} ||
+        RenderProgManager.LoadShaderError ||
+        device_manager.DeviceManagerVulkan.CreateError;
     pub fn init(backend: *RenderBackend, allocator: std.mem.Allocator) InitError!void {
         if (RenderSystem.instance.backend_initialized) @panic("RenderBackend already initialized");
 
@@ -358,7 +360,7 @@ pub const RenderBackend = extern struct {
 
         const device = device_manager.instance().getDevice();
         try render_prog_manager.instance.init(device);
-        render_log.instance.init();
+        render_log.instance.init(device);
 
         const MAX_TILE_RES: usize = 1024; // shadowMapResolutions[0]
         const NUM_QUAD_TREE_LEVELS: usize = 8;
@@ -627,7 +629,7 @@ pub const RenderBackend = extern struct {
     }
 
     fn glStartFrame(backend: *RenderBackend) void {
-        render_log.instance.fetchGPUTimers(&backend.pc);
+        render_log.instance.fetchGPUTimers(&backend.pc, device_manager.instance().getDevice());
 
         device_manager.instance().beginFrame();
         Image.emptyGarbage();
@@ -655,9 +657,9 @@ pub const RenderBackend = extern struct {
 
     fn resizeImages(_: *RenderBackend) void {
         device_manager.instance().updateWindowSize(.{
-            .width = RenderSystem.glConfig.nativeScreenWidth,
-            .height = RenderSystem.glConfig.nativeScreenHeight,
-            .multiSamples = RenderSystem.glConfig.multisamples,
+            .width = @intCast(RenderSystem.glConfig.nativeScreenWidth),
+            .height = @intCast(RenderSystem.glConfig.nativeScreenHeight),
+            .multi_samples = @intCast(RenderSystem.glConfig.multisamples),
         });
     }
 };

@@ -216,7 +216,7 @@ pub const TextureDimension = enum(u8) {
     Texture3D,
 };
 
-pub const ComponentSwizzle = enum(u8) {
+pub const ComponentSwizzle = enum(c_int) {
     Red,
     Green,
     Blue,
@@ -255,6 +255,7 @@ pub const TextureDesc = extern struct {
     useClearValue: bool = false,
     initialState: ResourceStates = .Unknown,
     keepInitialState: bool = false,
+    padding_: [7]u8 = undefined,
 };
 
 pub const Format = enum(u8) {
@@ -538,7 +539,9 @@ pub const DeviceHandle = RefCountPtr(IDevice);
 pub const TextureHandle = RefCountPtr(ITexture);
 pub const SamplerHandle = RefCountPtr(ISampler);
 pub const FramebufferHandle = RefCountPtr(IFramebuffer);
+pub const EventQueryHandle = RefCountPtr(IEventQuery);
 
+pub const IEventQuery = opaque {};
 pub const ITexture = opaque {};
 pub const ISampler = opaque {};
 pub const IShader = opaque {};
@@ -563,7 +566,9 @@ pub const IDevice = opaque {
         *IDevice,
         *CommandListHandle,
         CommandListParameters,
-    ) callconv(.C) void;
+    ) void;
+    extern fn c_nvrhi_device_createEventQuery(*IDevice, *EventQueryHandle) void;
+    extern fn c_nvrhi_device_setEventQuery(*IDevice, *IEventQuery, CommandQueue) void;
     extern fn c_nvrhi_device_createBuffer(
         *IDevice,
         *BufferHandle,
@@ -633,6 +638,15 @@ pub const IDevice = opaque {
         return handle;
     }
 
+    /// increases ref count
+    /// should call handle.deinit on resource release
+    pub fn createEventQuery(device: *IDevice) EventQueryHandle {
+        var handle = EventQueryHandle{};
+        c_nvrhi_device_createEventQuery(device, &handle);
+
+        return handle;
+    }
+
     pub fn createInputLayout(
         device: *IDevice,
         descs: []const VertexAttributeDesc,
@@ -670,6 +684,14 @@ pub const IDevice = opaque {
 
     pub fn waitForIdle(device: *IDevice) void {
         return c_nvrhi_device_waitForIdle(device);
+    }
+
+    pub fn setEventQuery(
+        device: *IDevice,
+        query: *IEventQuery,
+        command_queue: CommandQueue,
+    ) void {
+        c_nvrhi_device_setEventQuery(device, query, command_queue);
     }
 };
 
@@ -863,12 +885,46 @@ pub const utils = struct {
     }
 };
 
+pub const IMessageCallback = opaque {};
+
 pub const vulkan = struct {
     const vk = @cImport(@cInclude("vulkan/vulkan.h"));
 
     extern fn c_nvrhi_vulkan_convertFormat(Format) vk.VkFormat;
+    extern fn c_nvrhi_vulkan_createDevice(
+        *const DeviceDesc,
+        *DeviceHandle,
+        vk.PFN_vkGetInstanceProcAddr,
+    ) void;
 
     pub fn convertFormat(format: Format) vk.VkFormat {
         return c_nvrhi_vulkan_convertFormat(format);
+    }
+
+    pub const DeviceDesc = extern struct {
+        errorCB: ?*IMessageCallback = null,
+        instance: vk.VkInstance,
+        physicalDevice: vk.VkPhysicalDevice,
+        device: vk.VkDevice,
+        graphicsQueue: vk.VkQueue = null,
+        graphicsQueueIndex: c_int = -1,
+        transferQueue: vk.VkQueue = null,
+        transferQueueIndex: c_int = -1,
+        computeQueue: vk.VkQueue = null,
+        computeQueueIndex: c_int = -1,
+        allocationCallbacks: ?*vk.VkAllocationCallbacks = null,
+        instanceExtensions: ?[*][*:0]const u8 = null,
+        numInstanceExtensions: usize = 0,
+        deviceExtensions: ?[*][*:0]const u8 = null,
+        numDeviceExtensions: usize = 0,
+        maxTimerQuerues: u32 = 256,
+        bufferDeviceAddressSupported: bool = false,
+    };
+
+    pub fn createDevice(desc: *const DeviceDesc, vkGetInstanceProcAddr: vk.PFN_vkGetInstanceProcAddr) DeviceHandle {
+        var handle = DeviceHandle{};
+        c_nvrhi_vulkan_createDevice(desc, &handle, vkGetInstanceProcAddr);
+
+        return handle;
     }
 };

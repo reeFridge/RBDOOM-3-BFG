@@ -14,12 +14,26 @@ void c_nvrhi_device_executeCommandList(
 void c_nvrhi_device_createHandleForNativeTexture(
 		nvrhi::IDevice* device,
 		nvrhi::TextureHandle* handle,
-        nvrhi::ObjectType objectType,
-        nvrhi::Object object,
-        const nvrhi::TextureDesc* desc
-		)
+		nvrhi::ObjectType objectType,
+		nvrhi::Object object,
+		const nvrhi::TextureDesc* desc)
 {
 	*handle = device->createHandleForNativeTexture(objectType, object, *desc);
+}
+
+void c_nvrhi_device_createEventQuery(
+		nvrhi::IDevice* device,
+		nvrhi::EventQueryHandle* handle)
+{
+	*handle = device->createEventQuery();
+}
+
+void c_nvrhi_device_setEventQuery(
+		nvrhi::IDevice* device,
+		nvrhi::IEventQuery* query,
+		nvrhi::CommandQueue queue)
+{
+	device->setEventQuery(query, queue);
 }
 
 void c_nvrhi_device_createCommandList(
@@ -139,6 +153,15 @@ const nvrhi::FormatInfo* c_nvrhi_getFormatInfo(nvrhi::Format format) {
 
 VkFormat c_nvrhi_vulkan_convertFormat(nvrhi::Format format) {
 	return nvrhi::vulkan::convertFormat(format);
+}
+
+void c_nvrhi_vulkan_createDevice(
+		const nvrhi::vulkan::DeviceDesc* desc,
+		nvrhi::DeviceHandle* handle,
+		PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr)
+{
+	VULKAN_HPP_DEFAULT_DISPATCHER.init(desc->instance, vkGetInstanceProcAddr, desc->device);
+	*handle = nvrhi::vulkan::createDevice(*desc);
 }
 
 // utils

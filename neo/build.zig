@@ -262,25 +262,25 @@ pub fn build(b: *std.Build) !void {
     exe.addCSourceFiles(.{ .files = exe_src_cpp.items, .flags = &cxxflags });
     exe.addCSourceFiles(.{ .files = exe_src_c.items, .flags = &cflags });
 
-    //const ztech_lib = b.addStaticLibrary(.{
-    //    .name = "libztech",
-    //    .root_source_file = b.path("ztech/lib.zig"),
-    //    .optimize = optimize,
-    //    .target = target,
-    //});
-    //ztech_lib.addIncludePath(b.path("libs/vma/include"));
-    //ztech_lib.linkLibC();
-
     shader_make_pkg.link(exe);
     nvrhi_pkg.link(exe);
     idlib_pkg.link(exe);
-    //exe.linkLibrary(ztech_lib);
 
     exe.linkSystemLibrary("sdl2");
     exe.linkSystemLibrary("vulkan");
     exe.linkSystemLibrary("openal");
     exe.linkLibC();
     exe.linkLibCpp();
+
+    // vulkan-gen
+    const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+    const vk_gen = b.dependency("vulkan", .{}).artifact("vulkan-zig-generator");
+    const vk_generate_cmd = b.addRunArtifact(vk_gen);
+    vk_generate_cmd.addFileArg(registry);
+    const vulkan_zig = b.addModule("vulkan-zig", .{
+        .root_source_file = vk_generate_cmd.addOutputFileArg("vk.zig"),
+    });
+    exe.root_module.addImport("vulkan", vulkan_zig);
 
     b.installArtifact(exe);
     //_ = ztech_lib.getEmittedH();

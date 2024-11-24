@@ -153,6 +153,33 @@ void idVertexCache::Init( int _uniformBufferOffsetAlignment, nvrhi::ICommandList
 	MapGeoBufferSet( frameData[ listNum ] );
 }
 
+void idVertexCache::InitWithDevice( int _uniformBufferOffsetAlignment, nvrhi::ICommandList* commandList, nvrhi::IDevice* device )
+{
+	currentFrame = 0;
+	listNum = 0;
+
+	uniformBufferOffsetAlignment = _uniformBufferOffsetAlignment;
+
+	mostUsedVertex = 0;
+	mostUsedIndex = 0;
+	mostUsedJoint = 0;
+
+	nvrhi::CommandListParameters parms;
+	parms.setQueueType( nvrhi::CommandQueue::Copy );
+
+	for( int i = 0; i < NUM_FRAME_DATA; i++ )
+	{
+		AllocGeoBufferSet( frameData[i], VERTCACHE_VERTEX_MEMORY_PER_FRAME, VERTCACHE_INDEX_MEMORY_PER_FRAME, VERTCACHE_JOINT_MEMORY_PER_FRAME, BU_DYNAMIC, commandList );
+	}
+#if 1
+	AllocGeoBufferSet( staticData, STATIC_VERTEX_MEMORY, STATIC_INDEX_MEMORY, 0, BU_STATIC, commandList );
+#else
+	AllocGeoBufferSet( staticData, STATIC_VERTEX_MEMORY, STATIC_INDEX_MEMORY, 0, BU_DYNAMIC, commandList );
+#endif
+
+	MapGeoBufferSet( frameData[ listNum ] );
+}
+
 /*
 ==============
 idVertexCache::Shutdown

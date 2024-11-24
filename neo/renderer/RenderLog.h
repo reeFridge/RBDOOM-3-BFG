@@ -91,6 +91,7 @@ public:
 	idRenderLog();
 
 	void		Init();
+	void 		InitWithDevice(nvrhi::IDevice* device);
 	void		Shutdown();
 
 	void		StartFrame( nvrhi::ICommandList* _commandList );
@@ -109,6 +110,7 @@ public:
 	void		Printf( VERIFY_FORMAT_STRING const char* fmt, ... ) {}
 
 	void		FetchGPUTimers( backEndCounters_t& pc );
+	void		FetchGPUTimersWithDevice( backEndCounters_t& pc, nvrhi::IDevice* device );
 };
 
 extern idRenderLog renderLog;
