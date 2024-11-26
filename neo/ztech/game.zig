@@ -1,4 +1,3 @@
-//! @exportCVars
 //! @exportConsoleCommands
 const std = @import("std");
 const RenderWorld = @import("renderer/render_world.zig");

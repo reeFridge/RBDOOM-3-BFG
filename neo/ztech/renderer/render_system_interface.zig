@@ -61,11 +61,11 @@ export fn ztech_renderSystem_setBackendInitialized() callconv(.C) void {
 }
 
 export fn ztech_renderSystem_getWidth() callconv(.C) c_int {
-    return RenderSystem.instance.getWidth();
+    return @intCast(RenderSystem.instance.getWidth());
 }
 
 export fn ztech_renderSystem_getHeight() callconv(.C) c_int {
-    return RenderSystem.instance.getWidth();
+    return @intCast(RenderSystem.instance.getWidth());
 }
 
 export fn ztech_renderSystem_isBackendInitialized() callconv(.C) bool {

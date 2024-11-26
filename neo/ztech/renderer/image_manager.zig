@@ -5,6 +5,7 @@ const fs = @import("../framework/file_system.zig");
 const idlib = @import("../idlib.zig");
 const image_ = @import("image.zig");
 const Image = image_.Image;
+const RenderSystem = @import("render_system.zig");
 
 pub const ImageManager = extern struct {
     const MAX_IMAGE_NAME = 256;
@@ -70,9 +71,9 @@ pub const ImageManager = extern struct {
     images: idlib.idList(*Image),
     imageHash: idlib.idHashIndex,
     imagesToLoad: idlib.idList(*Image),
-    insideLevelLoad: bool,
-    preloadingMapImages: bool,
-    commandList: nvrhi.CommandListHandle,
+    insideLevelLoad: bool = false,
+    preloadingMapImages: bool = false,
+    commandList: nvrhi.CommandListHandle = .{},
 
     extern fn c_imageManager_reloadImages(*ImageManager, bool, *nvrhi.ICommandList) void;
     extern fn c_imageManager_init(*ImageManager) void;
@@ -82,13 +83,26 @@ pub const ImageManager = extern struct {
     pub fn reloadImages(
         image_manager: *ImageManager,
         all: bool,
-        command_list_ptr: *nvrhi.ICommandList,
+        command_list: *nvrhi.ICommandList,
+    ) error{OutOfMemory}!void {
+        for (image_manager.images.constSlice()) |image| {
+            try image.reload(all, command_list);
+        }
+
+        image_manager.loadDeferredImages(command_list);
+    }
+
+    fn loadDeferredImages(
+        image_manager: *ImageManager,
+        command_list: *nvrhi.ICommandList,
     ) void {
-        c_imageManager_reloadImages(image_manager, all, command_list_ptr);
+        _ = image_manager;
+        _ = command_list;
     }
 
     pub fn init(image_manager: *ImageManager) error{OutOfMemory}!void {
         try image_manager.images.resizeWithGranularity(1024, 1024);
+        image_manager.imageHash = .{};
         try image_manager.imageHash.resizeIndex(1024);
 
         try image_manager.createIntrinsicImages();
@@ -107,7 +121,111 @@ pub const ImageManager = extern struct {
     }
 
     fn createIntrinsicImages(image_manager: *ImageManager) error{OutOfMemory}!void {
-        image_manager.defaultImage = try image_manager.imageFromFunction("_default", image_gen.defaultImage);
+        image_manager.defaultImage = try image_manager.imageFromFunction(
+            "_default",
+            image_gen.defaultImage,
+        );
+
+        image_manager.ldrImage = try image_manager.imageFromFunction(
+            "_currentRenderLDR",
+            image_gen.ldrNativeImage,
+        );
+
+        image_manager.currentRenderImage = try image_manager.imageFromFunction(
+            "_currentRender",
+            image_gen.hdrRGBA16FImageResNative,
+        );
+
+        image_manager.currentDepthImage = try image_manager.imageFromFunction(
+            "_currentDepth",
+            image_gen.depthImage,
+        );
+
+        image_manager.currentRenderHDRImage = try image_manager.imageFromFunction(
+            "_currentRenderHDR",
+            image_gen.hdrRGBA16FImageResNativeMSAAOpt,
+        );
+
+        image_manager.ambientOcclusionImage[0] = try image_manager.imageFromFunction(
+            "_ao0",
+            image_gen.AmbientOcclusionImage_ResNative,
+        );
+
+        image_manager.ambientOcclusionImage[1] = try image_manager.imageFromFunction(
+            "_ao1",
+            image_gen.AmbientOcclusionImage_ResNative,
+        );
+
+        image_manager.hierarchicalZbufferImage = try image_manager.imageFromFunction(
+            "_cszBuffer",
+            image_gen.HierarchicalZBufferImage_ResNative,
+        );
+
+        image_manager.gbufferNormalsRoughnessImage = try image_manager.imageFromFunction(
+            "_currentNormals",
+            image_gen.GeometryBufferImage_ResNative,
+        );
+
+        image_manager.taaMotionVectorsImage = try image_manager.imageFromFunction(
+            "_taaMotionVectors",
+            image_gen.HDR_RG16FImage_ResNative,
+        );
+
+        image_manager.taaResolvedImage = try image_manager.imageFromFunction(
+            "_taaResolved",
+            image_gen.HDR_RGBA16FImage_ResNative_UAV,
+        );
+
+        image_manager.taaFeedback1Image = try image_manager.imageFromFunction(
+            "_taaFeedback1",
+            image_gen.HDR_RGBA16SImage_ResNative_UAV,
+        );
+
+        image_manager.taaFeedback2Image = try image_manager.imageFromFunction(
+            "_taaFeedback2",
+            image_gen.HDR_RGBA16SImage_ResNative_UAV,
+        );
+
+        image_manager.smaaEdgesImage = try image_manager.imageFromFunction(
+            "_smaaEdges",
+            image_gen.SMAAImage_ResNative,
+        );
+
+        image_manager.smaaBlendImage = try image_manager.imageFromFunction(
+            "_smaaBlend",
+            image_gen.SMAAImage_ResNative,
+        );
+
+        image_manager.shadowAtlasImage = try image_manager.imageFromFunction(
+            "_shadowMapAtlas",
+            image_gen.CreateShadowMapImage_Atlas,
+        );
+
+        image_manager.bloomRenderImage[0] = try image_manager.imageFromFunction(
+            "_bloomRender0",
+            image_gen.HDR_RGBA16FImage_ResQuarter_Linear,
+        );
+
+        image_manager.bloomRenderImage[1] = try image_manager.imageFromFunction(
+            "_bloomRender1",
+            image_gen.HDR_RGBA16FImage_ResQuarter_Linear,
+        );
+
+        image_manager.guiEdit = try image_manager.imageFromFunction(
+            "_guiEdit",
+            image_gen.GuiEditFunction,
+        );
+
+        image_manager.accumImage = try image_manager.imageFromFunction(
+            "_accum",
+            image_gen.RGBA8Image_RT,
+        );
+
+        //image_manager.shadowImage[0] = try image_manager.imageFromFunction( va( "_shadowMapArray0_%i", shadowMapResolutions[0] ), image_gen.createShadowMapImageRes0 );
+        //image_manager.shadowImage[1] = try image_manager.imageFromFunction( va( "_shadowMapArray1_%i", shadowMapResolutions[1] ), image_gen.createShadowMapImageRes1 );
+        //image_manager.shadowImage[2] = try image_manager.imageFromFunction( va( "_shadowMapArray2_%i", shadowMapResolutions[2] ), image_gen.createShadowMapImageRes2 );
+        //image_manager.shadowImage[3] = try image_manager.imageFromFunction( va( "_shadowMapArray3_%i", shadowMapResolutions[3] ), image_gen.createShadowMapImageRes3 );
+        //image_manager.shadowImage[4] = try image_manager.imageFromFunction( va( "_shadowMapArray4_%i", shadowMapResolutions[4] ), image_gen.createShadowMapImageRes4 );
     }
 
     fn imageFromFunction(
@@ -166,10 +284,78 @@ pub const ImageManager = extern struct {
 pub const instance = @extern(*ImageManager, .{ .name = "imageManager" });
 
 const image_gen = struct {
-    fn defaultImage(image: *Image, commandList: *nvrhi.ICommandList) callconv(.C) void {
-        image.makeDefault(commandList) catch |err| {
-            std.debug.print("[IMAGE][ERR:{s}] While image gen\n", .{@errorName(err)});
-            @panic("fatal");
-        };
+    fn defaultImage(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        image.makeDefault(command_list) catch |err| genFatal(image, err);
+    }
+
+    fn ldrNativeImage(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_LOOKUP_TABLE_RGBA,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hdrRGBA16FImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_RGBA16F,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hdrRGBA16FImageResNativeMSAAOpt(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        const sample_count = 1;
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_RGBA16F,
+            null,
+            true,
+            sample_count == 1,
+            sample_count,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn depthImage(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        const sample_count = 1;
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_DEPTH_STENCIL,
+            null,
+            true,
+            false,
+            sample_count,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    inline fn genFatal(image: *const Image, err: anytype) noreturn {
+        std.debug.print("[IMAGE][ERR:{s}] While image gen {s}\n", .{ @errorName(err), image.imgName.constSlice() });
+        @panic("fatal");
     }
 };

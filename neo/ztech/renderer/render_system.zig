@@ -5,7 +5,7 @@ const RenderWorld = @import("render_world.zig");
 const ViewDef = @import("common.zig").ViewDef;
 const ViewEntity = @import("common.zig").ViewEntity;
 const ParallelJobList = @import("parallel_job_list.zig").ParallelJobList;
-const VertexCache = @import("vertex_cache.zig");
+const vertex_cache = @import("vertex_cache.zig");
 const DrawSurface = @import("common.zig").DrawSurface;
 const ResolutionScale = @import("resolution_scale.zig");
 const decl_manager = @import("../framework/decl_manager.zig");
@@ -51,21 +51,21 @@ pub const sereoDepthType_t = c_int;
 
 pub const glconfig_t = extern struct {
     vendor: graphicsVendor_t,
-    uniformBufferOffsetAlignment: c_int,
+    uniformBufferOffsetAlignment: u32,
     timerQueryAvailable: bool,
     stereo3Dmode: Stereo3DMode,
-    nativeScreenWidth: c_int,
-    nativeScreenHeight: c_int,
-    displayFrequency: c_int,
-    isFullscreen: c_int,
+    nativeScreenWidth: u32,
+    nativeScreenHeight: u32,
+    displayFrequency: u32,
+    isFullscreen: i32,
     isStereoPixelFormat: bool,
     stereoPixelFormatAvailable: bool,
-    multisamples: c_int,
+    multisamples: u32,
     physicalScreenWidthInCentimeters: f32,
     pixelAspect: f32,
 };
 
-pub const glConfig = @extern(*glconfig_t, .{ .name = "glConfig" });
+pub const gl_config = @extern(*glconfig_t, .{ .name = "glConfig" });
 
 const nvrhi = @import("nvrhi.zig");
 
@@ -463,7 +463,7 @@ pub export var backend_ = std.mem.zeroes(RenderBackend);
 
 const device_manager = @import("../sys/device_manager.zig");
 const image_manager = @import("image_manager.zig");
-const FrameData = @import("frame_data.zig");
+const frame_data = @import("frame_data.zig");
 const render_model_manager = @import("render_model_manager.zig");
 const parallel_job_manager = @import("parallel_job_manager.zig");
 const JobListId = @import("parallel_job_list.zig").JobListId;
@@ -472,7 +472,7 @@ const global = @import("../global.zig");
 
 pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) RenderBackend.InitError!void {
     if (render_system.initialized) return;
-    // also inits FrameData
+    // also inits frame_data
     try backend_.init(allocator);
 
     const device = device_manager.instance().getDevice();
@@ -487,14 +487,14 @@ pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) R
     };
 
     command_list_ptr.open();
-    image_manager.instance.reloadImages(true, command_list_ptr);
+    try image_manager.instance.reloadImages(true, command_list_ptr);
     command_list_ptr.close();
     device.executeCommandList(command_list_ptr);
 }
 
 extern fn c_renderSystem_initColorMappings([*]c_ushort) callconv(.C) void;
 extern fn c_renderSystem_initImgui(?*const Material) callconv(.C) void;
-const Framebuffer = @import("framebuffer.zig");
+const framebuffer = @import("framebuffer.zig");
 
 pub fn createRenderWorld(render_system: *RenderSystem, allocator: std.mem.Allocator) !*RenderWorld {
     if (!render_system.initialized) unreachable;
@@ -543,13 +543,17 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
 
     // TODO: UpdateStereo3DMode();
     // TODO: idCinematic::InitCinematic();
-    try FrameData.init(allocator);
+    try frame_data.init(allocator);
     var gui_model = GuiModel.heapCreate();
     gui_model.clear();
     render_system.gui_model = gui_model;
 
     try image_manager.instance.init();
-    Framebuffer.init();
+    try framebuffer.init(
+        &backend_,
+        device_manager.instance(),
+        allocator,
+    );
 
     // init materials
     render_system.default_material = decl_manager.instance.findMaterial("_default") orelse
@@ -608,14 +612,14 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     image_manager.instance.purgeAllImages();
     render_model_manager.instance.shutdown();
     image_manager.instance.shutdown();
-    Framebuffer.shutdown();
+    framebuffer.shutdown();
     render_system.gui_model.heapDestroy();
-    FrameData.shutdown(allocator);
+    frame_data.shutdown(allocator);
 
     const device = device_manager.instance().getDevice();
     device.waitForIdle();
 
-    VertexCache.instance.shutdown();
+    vertex_cache.instance.shutdown(device_manager.vma_allocator);
 
     parallel_job_manager.instance.freeJobList(render_system.envprobe_job_list);
     parallel_job_manager.instance.freeJobList(render_system.front_end_job_list);
@@ -627,7 +631,7 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     render_system.* = RenderSystem{};
 }
 
-pub fn swapCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyCommand {
+pub fn swapCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyCommand {
     render_system.finishRendering();
 
     return render_system.finishCommandBuffers();
@@ -645,23 +649,23 @@ pub fn finishRendering(render_system: *RenderSystem) void {
     }
 
     backend_.checkCVars();
-    Framebuffer.checkFramebuffers();
+    //framebuffer.checkFramebuffers();
 }
 
 extern fn R_InitDrawSurfFromTri(*DrawSurface, *SurfaceTriangles, *nvrhi.ICommandList) callconv(.C) void;
 
-pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyCommand {
+pub fn finishCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyCommand {
     if (!render_system.initialized) return null;
 
     render_system.gui_model.emitFullScreen(null);
     render_system.gui_model.clear();
 
     // unmap the buffer objects so they can be used by the GPU
-    VertexCache.instance.beginBackend();
+    vertex_cache.instance.beginBackend();
 
     // save off this command buffer
-    const command_buffer_head = if (FrameData.frame_data) |frame_data|
-        frame_data.cmdHead
+    const command_buffer_head = if (frame_data.frame_data) |data|
+        data.cmdHead
     else
         null;
 
@@ -674,7 +678,7 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
 
     // use the other buffers next frame, because another CPU
     // may still be rendering into the current buffers
-    FrameData.toggleSmpFrame();
+    frame_data.toggleSmpFrame();
 
     // possibly change the stereo3D mode
     // TODO: UpdateStereo3DMode();
@@ -728,7 +732,7 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
     // set the time for shader effects in 2D rendering
     render_system.frame_shader_time = @as(f32, @floatFromInt(getMilliseconds())) * 0.001;
 
-    var cmd2 = FrameData.createCommand(FrameData.SetBufferCommand);
+    var cmd2 = frame_data.createCommand(frame_data.SetBufferCommand);
     cmd2.commandId = .RC_SET_BUFFER;
     cmd2.buffer = 0;
 
@@ -737,7 +741,7 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*FrameData.EmptyComma
     return command_buffer_head;
 }
 
-pub fn renderCommandBuffers(_: *RenderSystem, opt_cmd_head: ?*FrameData.EmptyCommand) void {
+pub fn renderCommandBuffers(_: *RenderSystem, opt_cmd_head: ?*frame_data.EmptyCommand) void {
     var opt_cmd = opt_cmd_head;
     const cmd_head = opt_cmd orelse return;
 
@@ -762,8 +766,8 @@ pub fn renderCommandBuffers(_: *RenderSystem, opt_cmd_head: ?*FrameData.EmptyCom
 
 pub fn performResolutionScaling(
     render_system: *const RenderSystem,
-    width: *c_int,
-    height: *c_int,
+    width: *u32,
+    height: *u32,
 ) void {
     var x_scale: f32 = 1;
     var y_scale: f32 = 1;
@@ -793,7 +797,7 @@ pub fn getCroppedViewport(render_system: *const RenderSystem) ScreenRect {
     return render_system.render_crops[render_system.current_render_crop];
 }
 
-pub fn cropRenderSize(render_system: *RenderSystem, width: c_int, height: c_int) void {
+pub fn cropRenderSize(render_system: *RenderSystem, width: u32, height: u32) void {
     if (!render_system.initialized) return;
 
     render_system.gui_model.emitFullScreen(null);
@@ -815,34 +819,34 @@ pub fn frameCount(render_system: *const RenderSystem) usize {
     return render_system.frame_count;
 }
 
-pub fn getWidth(_: *const RenderSystem) c_int {
-    if (glConfig.stereo3Dmode == .SIDE_BY_SIDE or
-        glConfig.stereo3Dmode == .SIDE_BY_SIDE_COMPRESSED)
+pub fn getWidth(_: *const RenderSystem) u32 {
+    if (gl_config.stereo3Dmode == .SIDE_BY_SIDE or
+        gl_config.stereo3Dmode == .SIDE_BY_SIDE_COMPRESSED)
     {
-        return glConfig.nativeScreenWidth >> @intCast(1);
+        return gl_config.nativeScreenWidth >> @intCast(1);
     }
 
-    return glConfig.nativeScreenWidth;
+    return gl_config.nativeScreenWidth;
 }
 
-pub fn getHeight(_: *const RenderSystem) c_int {
-    if (glConfig.stereo3Dmode == .HDMI_720) {
+pub fn getHeight(_: *const RenderSystem) u32 {
+    if (gl_config.stereo3Dmode == .HDMI_720) {
         return 720;
     }
 
     const stereoRender_warp = false;
-    if (glConfig.stereo3Dmode == .SIDE_BY_SIDE and stereoRender_warp) {
+    if (gl_config.stereo3Dmode == .SIDE_BY_SIDE and stereoRender_warp) {
         // for the Rift, render a square aspect view that will be symetric for the optics
-        return glConfig.nativeScreenWidth >> @intCast(1);
+        return gl_config.nativeScreenWidth >> @intCast(1);
     }
 
-    if (glConfig.stereo3Dmode == .INTERLACED or
-        glConfig.stereo3Dmode == .TOP_AND_BOTTOM_COMPRESSED)
+    if (gl_config.stereo3Dmode == .INTERLACED or
+        gl_config.stereo3Dmode == .TOP_AND_BOTTOM_COMPRESSED)
     {
-        return glConfig.nativeScreenHeight >> @intCast(1);
+        return gl_config.nativeScreenHeight >> @intCast(1);
     }
 
-    return glConfig.nativeScreenHeight;
+    return gl_config.nativeScreenHeight;
 }
 
 pub fn setView(render_system: *RenderSystem, view_def: ?*ViewDef) void {
@@ -1113,8 +1117,12 @@ pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
             return;
         } else {
             vulkan_impl.setScreenParams(params) catch continue;
-            Framebuffer.resizeFramebuffers(false);
-            // TODO: Framebuffer.resizeFramebuffers(true);
+            try framebuffer.resizeFramebuffers(
+                &backend_,
+                device_manager.instance(),
+                global.gpa.allocator(),
+                true,
+            );
             // TODO: imgui_hook.notifyDisplaySizeChanged();
             return;
         }

@@ -181,6 +181,35 @@ pub const Image = extern struct {
     image: vulkan.Image = .null_handle,
     allocation: c.VmaAllocation = null,
 
+    pub fn reload(
+        image: *Image,
+        force: bool,
+        command_list: *nvrhi.ICommandList,
+    ) error{OutOfMemory}!void {
+        if (image.generatorFunction) |gen_fn| {
+            gen_fn(image, command_list);
+            return;
+        }
+
+        if (!force) {
+            const current_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP;
+            if (image.cubeFiles == .CF_NATIVE or
+                image.cubeFiles == .CF_CAMERA or
+                image.cubeFiles == .CF_QUAKE1 or
+                image.cubeFiles == .CF_SINGLE)
+            {
+                // TODO: loadCubeImages();
+            } else {
+                // TODO: loadImageProgram();
+            }
+
+            if (current_time <= image.sourceFileTime) return;
+        }
+
+        image.purgeImage();
+        try image.addToDeferredLoad();
+    }
+
     pub fn init(image: *Image, name: []const u8) error{OutOfMemory}!void {
         image.imgName.initEmptyBuffer();
         try image.imgName.assignSlice(name);
@@ -344,7 +373,7 @@ pub const Image = extern struct {
                 command_list.beginTrackingTextureState(
                     image.texture.ptr_.?,
                     nvrhi.AllSubresources,
-                    nvrhi.ResourceStates.Common,
+                    .{ .Common = true },
                 );
 
                 for (im.images.constSlice()) |*image_data| {
@@ -364,7 +393,7 @@ pub const Image = extern struct {
 
                 command_list.setPermanentTextureState(
                     image.texture.ptr_.?,
-                    .ShaderResource,
+                    .{ .ShaderResource = true },
                 );
                 command_list.commitBarriers();
             }
@@ -661,7 +690,7 @@ pub const Image = extern struct {
         }
 
         if (image.opts.isRenderTarget) {
-            texture_desc.initialState = .RenderTarget;
+            texture_desc.initialState = .{ .RenderTarget = true };
             texture_desc.clearValue = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
             texture_desc.isRenderTarget = true;
             texture_desc.keepInitialState = true;
@@ -670,7 +699,7 @@ pub const Image = extern struct {
                 image.opts.format == .FMT_DEPTH_STENCIL or
                 image.opts.format == .FMT_SHADOW_ARRAY)
             {
-                texture_desc.initialState = .DepthWrite;
+                texture_desc.initialState = .{ .DepthWrite = true };
                 texture_desc.clearValue = .{ .r = 1, .g = 1, .b = 1, .a = 1 };
             }
 
@@ -718,6 +747,7 @@ pub const Image = extern struct {
             const alloc_create_info = c.VmaAllocationCreateInfo{
                 .usage = c.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
             };
+
             const result = c.vmaCreateImage(
                 vma_allocator,
                 @ptrCast(&image_create_info),
@@ -816,6 +846,10 @@ pub const Image = extern struct {
 
     fn addToDeferredLoad(image: *Image) error{OutOfMemory}!void {
         _ = try image_manager.instance.imagesToLoad.addUnique(&image);
+    }
+
+    fn removeFromDeferredLoad(image: *Image) void {
+        _ = image_manager.instance.imagesToLoad.remove(&image);
     }
 
     pub fn getTextureHandle(image: *Image) nvrhi.TextureHandle {

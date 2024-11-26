@@ -7,8 +7,8 @@ pub const GraphicsAPI = enum(u8) {
 };
 
 pub const IResource = opaque {
-    extern fn c_nvrhi_resource_addRef(*IResource) callconv(.C) c_ulong;
-    extern fn c_nvrhi_resource_release(*IResource) callconv(.C) c_ulong;
+    extern fn c_nvrhi_resource_addRef(*IResource) c_ulong;
+    extern fn c_nvrhi_resource_release(*IResource) c_ulong;
 
     pub fn addRef(resource: *IResource) c_ulong {
         return c_nvrhi_resource_addRef(resource);
@@ -91,6 +91,7 @@ pub const BufferHandle = RefCountPtr(IBuffer);
 pub const BindingLayoutHandle = RefCountPtr(IBindingLayout);
 pub const GraphicsPipelineHandle = RefCountPtr(IGraphicsPipeline);
 pub const BindingSetHandle = RefCountPtr(IBindingSet);
+pub const c_MaxRenderTargets: usize = 8;
 pub const c_MaxBindingLayouts: usize = 5;
 pub const c_MaxBindingsPerLayout: usize = 128;
 
@@ -140,9 +141,9 @@ pub fn static_vector(T: type, max_elements: u32) type {
         base: [max_elements]T = undefined,
         current_size: usize = 0,
 
-        pub fn fromSlice(comptime slice: []const T) Self {
+        pub fn fromSlice(slice: []const T) Self {
             var base: [max_elements]T = undefined;
-            inline for (base[0..slice.len], slice) |*item, in| {
+            for (base[0..slice.len], slice) |*item, in| {
                 item.* = in;
             }
 
@@ -167,20 +168,19 @@ pub const Color = extern struct {
 };
 
 pub const SamplerAddressMode = enum(u8) {
-    pub const D3D = struct {
-        pub const Clamp = SamplerAddressMode.ClampToEdge;
-        pub const Wrap = SamplerAddressMode.Repeat;
-        pub const Border = SamplerAddressMode.ClampToBorder;
-        pub const Mirror = SamplerAddressMode.MirroredRepeat;
-        pub const MirrorOnce = SamplerAddressMode.MirrorClampToEdge;
-    };
-
     // Vulkan names
     ClampToEdge,
     Repeat,
     ClampToBorder,
     MirroredRepeat,
     MirrorClampToEdge,
+
+    // D3D names
+    pub const Clamp = SamplerAddressMode.ClampToEdge;
+    pub const Wrap = SamplerAddressMode.Repeat;
+    pub const Border = SamplerAddressMode.ClampToBorder;
+    pub const Mirror = SamplerAddressMode.MirroredRepeat;
+    pub const MirrorOnce = SamplerAddressMode.MirrorClampToEdge;
 };
 
 pub const SamplerReductionType = enum(u8) {
@@ -253,7 +253,7 @@ pub const TextureDesc = extern struct {
     isVirtual: bool = false,
     clearValue: Color = .{},
     useClearValue: bool = false,
-    initialState: ResourceStates = .Unknown,
+    initialState: ResourceStates = ResourceStates.unknown,
     keepInitialState: bool = false,
     padding_: [7]u8 = undefined,
 };
@@ -361,7 +361,7 @@ pub fn getFormatInfo(format: Format) FormatInfo {
 const CppString = [24]u8;
 
 pub const VertexAttributeDesc = extern struct {
-    name: CppString = std.mem.zeroes([24]u8),
+    name: CppString = std.mem.zeroes(CppString),
     format: Format = .UNKNOWN,
     arraySize: u32 = 1,
     bufferIndex: u32 = 0,
@@ -545,7 +545,28 @@ pub const IEventQuery = opaque {};
 pub const ITexture = opaque {};
 pub const ISampler = opaque {};
 pub const IShader = opaque {};
-pub const IFramebuffer = opaque {};
+
+pub const FramebufferInfo = extern struct {
+    colorFormats: static_vector(Format, c_MaxRenderTargets) = .{},
+    depthFormat: Format = .UNKNOWN,
+    sampleCount: u32 = 1,
+    sampleQuality: u32 = 0,
+};
+
+pub const FramebufferInfoEx = extern struct {
+    framebuffer_info: FramebufferInfo,
+    width: u32 = 0,
+    height: u32 = 0,
+};
+
+pub const IFramebuffer = opaque {
+    extern fn c_nvrhi_framebuffer_getFramebufferInfo(*const IFramebuffer) FramebufferInfoEx;
+
+    pub fn getFramebufferInfo(framebuffer: *const IFramebuffer) FramebufferInfoEx {
+        return c_nvrhi_framebuffer_getFramebufferInfo(framebuffer);
+    }
+};
+
 pub const IInputLayout = opaque {};
 pub const IBindingSet = opaque {};
 pub const IGraphicsPipeline = opaque {};
@@ -559,9 +580,16 @@ pub const IDevice = opaque {
         Object,
         *const TextureDesc,
     ) void;
-    extern fn c_nvrhi_device_runGarbageCollection(*IDevice) callconv(.C) void;
-    extern fn c_nvrhi_device_waitForIdle(*IDevice) callconv(.C) void;
-    extern fn c_nvrhi_device_executeCommandList(*IDevice, *ICommandList) callconv(.C) void;
+    extern fn c_nvrhi_device_createHandleForNativeBuffer(
+        device: *IDevice,
+        handle: *BufferHandle,
+        object_type: ObjectType,
+        buffer: Object,
+        desc: *const BufferDesc,
+    ) void;
+    extern fn c_nvrhi_device_runGarbageCollection(*IDevice) void;
+    extern fn c_nvrhi_device_waitForIdle(*IDevice) void;
+    extern fn c_nvrhi_device_executeCommandList(*IDevice, *ICommandList) void;
     extern fn c_nvrhi_device_createCommandList(
         *IDevice,
         *CommandListHandle,
@@ -573,6 +601,11 @@ pub const IDevice = opaque {
         *IDevice,
         *BufferHandle,
         *const BufferDesc,
+    ) void;
+    extern fn c_nvrhi_device_createFramebuffer(
+        *IDevice,
+        *FramebufferHandle,
+        *const FramebufferDesc,
     ) void;
     extern fn c_nvrhi_device_createShader(
         *IDevice,
@@ -664,6 +697,20 @@ pub const IDevice = opaque {
         return handle;
     }
 
+    pub fn createFramebuffer(
+        device: *IDevice,
+        desc: *const FramebufferDesc,
+    ) FramebufferHandle {
+        var handle = FramebufferHandle{};
+        c_nvrhi_device_createFramebuffer(
+            device,
+            &handle,
+            desc,
+        );
+
+        return handle;
+    }
+
     pub fn createHandleForNativeTexture(
         device: *IDevice,
         object_type: ObjectType,
@@ -676,6 +723,24 @@ pub const IDevice = opaque {
             &handle,
             object_type,
             object,
+            desc,
+        );
+
+        return handle;
+    }
+
+    pub fn createHandleForNativeBuffer(
+        device: *IDevice,
+        object_type: ObjectType,
+        buffer: Object,
+        desc: *const BufferDesc,
+    ) BufferHandle {
+        var handle = BufferHandle{};
+        c_nvrhi_device_createHandleForNativeBuffer(
+            device,
+            &handle,
+            object_type,
+            buffer,
             desc,
         );
 
@@ -745,6 +810,23 @@ pub const ICommandList = opaque {
         ResourceStates,
     ) void;
     extern fn c_nvrhi_commandList_commitBarriers(*ICommandList) void;
+    extern fn c_nvrhi_commandList_setPermanentBufferState(
+        *ICommandList,
+        *IBuffer,
+        ResourceStates,
+    ) void;
+    extern fn c_nvrhi_commandList_beginTrackingBufferState(
+        *ICommandList,
+        *IBuffer,
+        ResourceStates,
+    ) void;
+    extern fn c_nvrhi_commandList_writeBuffer(
+        *ICommandList,
+        *IBuffer,
+        ?[*]const u8,
+        usize,
+        u64,
+    ) void;
 
     pub fn open(command_list: *ICommandList) void {
         c_nvrhi_commandList_open(command_list);
@@ -799,33 +881,67 @@ pub const ICommandList = opaque {
     ) void {
         c_nvrhi_commandList_setPermanentTextureState(command_list, texture, state_bits);
     }
+
+    pub fn beginTrackingBufferState(
+        command_list: *ICommandList,
+        buffer: *IBuffer,
+        state_bits: ResourceStates,
+    ) void {
+        c_nvrhi_commandList_beginTrackingBufferState(command_list, buffer, state_bits);
+    }
+
+    pub fn writeBuffer(
+        command_list: *ICommandList,
+        buffer: *IBuffer,
+        data: ?[*]const u8,
+        data_size: usize,
+        dest_offset_bytes: u64,
+    ) void {
+        c_nvrhi_commandList_writeBuffer(
+            command_list,
+            buffer,
+            data,
+            data_size,
+            dest_offset_bytes,
+        );
+    }
+
+    pub fn setPermanentBufferState(
+        command_list: *ICommandList,
+        buffer: *IBuffer,
+        state_bits: ResourceStates,
+    ) void {
+        c_nvrhi_commandList_setPermanentBufferState(command_list, buffer, state_bits);
+    }
 };
 
-pub const ResourceStates = enum(u32) {
-    Unknown = 0,
-    Common = 0x00000001,
-    ConstantBuffer = 0x00000002,
-    VertexBuffer = 0x00000004,
-    IndexBuffer = 0x00000008,
-    IndirectArgument = 0x00000010,
-    ShaderResource = 0x00000020,
-    UnorderedAccess = 0x00000040,
-    RenderTarget = 0x00000080,
-    DepthWrite = 0x00000100,
-    DepthRead = 0x00000200,
-    StreamOut = 0x00000400,
-    CopyDest = 0x00000800,
-    CopySource = 0x00001000,
-    ResolveDest = 0x00002000,
-    ResolveSource = 0x00004000,
-    Present = 0x00008000,
-    AccelStructRead = 0x00010000,
-    AccelStructWrite = 0x00020000,
-    AccelStructBuildInput = 0x00040000,
-    AccelStructBuildBlas = 0x00080000,
-    ShadingRateSurface = 0x00100000,
-    OpacityMicromapWrite = 0x00200000,
-    OpacityMicromapBuildInput = 0x00400000,
+pub const ResourceStates = packed struct(u32) {
+    pub const unknown: ResourceStates = .{};
+
+    Common: bool = false,
+    ConstantBuffer: bool = false,
+    VertexBuffer: bool = false,
+    IndexBuffer: bool = false,
+    IndirectArgument: bool = false,
+    ShaderResource: bool = false,
+    UnorderedAccess: bool = false,
+    RenderTarget: bool = false,
+    DepthWrite: bool = false,
+    DepthRead: bool = false,
+    StreamOut: bool = false,
+    CopyDest: bool = false,
+    CopySource: bool = false,
+    ResolveDest: bool = false,
+    ResolveSource: bool = false,
+    Present: bool = false,
+    AccelStructRead: bool = false,
+    AccelStructWrite: bool = false,
+    AccelStructBuildInput: bool = false,
+    AccelStructBuildBlas: bool = false,
+    ShadingRateSurface: bool = false,
+    OpacityMicromapWrite: bool = false,
+    OpacityMicromapBuildInput: bool = false,
+    _reserved: u9 = 0,
 };
 
 pub const CpuAccessMode = enum(u8) {
@@ -845,7 +961,7 @@ pub const BufferDesc = extern struct {
     byteSize: u64 = 0,
     structStride: u32 = 0,
     maxVersions: u32 = 0,
-    debugName: CppString,
+    debugName: CppString = std.mem.zeroes(CppString),
     format: Format = .UNKNOWN,
     canHaveUAVs: bool = false,
     canHaveTypedViews: bool = false,
@@ -859,10 +975,25 @@ pub const BufferDesc = extern struct {
     isShaderBindingTable: bool = false,
     isVolatile: bool = false,
     isVirtual: bool = false,
-    initialState: ResourceStates = .Common,
+    initialState: ResourceStates = .{ .Common = true },
     keepInitialState: bool = false,
     cpuAccess: CpuAccessMode = .None,
     sharedResourceFlags: SharedResourceFlags = .None,
+};
+
+pub const FramebufferAttachment = extern struct {
+    texture: ?*ITexture = null,
+    subresources: TextureSubresourceSet = .{},
+    format: Format = .UNKNOWN,
+    isReadOnly: bool = false,
+};
+
+pub const FramebufferDesc = extern struct {
+    pub const ColorAttachments = static_vector(FramebufferAttachment, c_MaxRenderTargets);
+
+    colorAttachments: ColorAttachments = .{},
+    depthAttachment: FramebufferAttachment = .{},
+    shadingRateAttachment: FramebufferAttachment = .{},
 };
 
 pub const utils = struct {

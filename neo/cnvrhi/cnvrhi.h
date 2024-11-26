@@ -19,6 +19,12 @@ void c_nvrhi_device_createHandleForNativeTexture(
 		nvrhi::ObjectType objectType,
 		nvrhi::Object object,
 		const nvrhi::TextureDesc* desc);
+void c_nvrhi_device_createHandleForNativeBuffer(
+		nvrhi::IDevice* device,
+		nvrhi::BufferHandle* handle,
+		nvrhi::ObjectType objectType,
+		nvrhi::Object buffer,
+		const nvrhi::BufferDesc* desc);
 void c_nvrhi_device_createEventQuery(
 		nvrhi::IDevice* device,
 		nvrhi::EventQueryHandle* handle);
@@ -34,6 +40,10 @@ void c_nvrhi_device_createBuffer(
 		nvrhi::IDevice* device,
 		nvrhi::BufferHandle* handle,
 		const nvrhi::BufferDesc* desc);
+void c_nvrhi_device_createFramebuffer(
+		nvrhi::IDevice* device,
+		nvrhi::FramebufferHandle* handle,
+		const nvrhi::FramebufferDesc* desc);
 void c_nvrhi_device_createShader(
 		nvrhi::IDevice* device,
 		nvrhi::ShaderHandle* handle,
@@ -72,7 +82,23 @@ void c_nvrhi_commandList_setPermanentTextureState(
 		nvrhi::ICommandList* commandList,
 		nvrhi::ITexture* texture,
 		nvrhi::ResourceStates stateBits);
+void c_nvrhi_commandList_beginTrackingBufferState(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IBuffer* buffer,
+		nvrhi::ResourceStates stateBits);
+void c_nvrhi_commandList_writeBuffer(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IBuffer* b,
+		const void* data,
+		size_t dataSize,
+		uint64_t destOffsetBytes);
+void c_nvrhi_commandList_setPermanentBufferState(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IBuffer* buffer,
+		nvrhi::ResourceStates stateBits);
 void c_nvrhi_commandList_commitBarriers(nvrhi::ICommandList* commandList);
+
+nvrhi::FramebufferInfoEx c_nvrhi_framebuffer_getFramebufferInfo(const nvrhi::IFramebuffer* framebuffer);
 
 unsigned long c_nvrhi_resource_addRef(nvrhi::IResource* res);
 unsigned long c_nvrhi_resource_release(nvrhi::IResource* res);

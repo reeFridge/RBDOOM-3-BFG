@@ -1,6 +1,7 @@
 const nvrhi = @import("nvrhi.zig");
 const FrameData = @import("frame_data.zig");
 const buffer_object = @import("buffer_object.zig");
+const c = @import("../sys/c_import.zig").c;
 
 pub const VertexCacheHandle = c_ulonglong;
 
@@ -9,6 +10,13 @@ pub const CacheType = enum(c_int) {
     CACHE_INDEX,
     CACHE_JOINT,
 };
+
+const INDEX_MEMORY_PER_FRAME: u32 = 31 * 1024 * 1024;
+const VERTEX_MEMORY_PER_FRAME: u32 = 31 * 1024 * 1024;
+const JOINT_MEMORY_PER_FRAME: u32 = 256 * 1024;
+
+const STATIC_INDEX_MEMORY: u32 = 31 * 1024 * 1024;
+const STATIC_VERTEX_MEMORY: u32 = 31 * 1024 * 1024;
 
 pub const GeoBufferSet = extern struct {
     const InterlockedInt = c_int;
@@ -25,26 +33,119 @@ pub const GeoBufferSet = extern struct {
     indexMemUsed: SysInterlockedInteger,
     vertexMemUsed: SysInterlockedInteger,
     jointMemUsed: SysInterlockedInteger,
-    alloactions: c_int,
+    allocations: u32,
+
+    fn alloc(
+        gbs: *GeoBufferSet,
+        vertex_bytes: u32,
+        index_bytes: u32,
+        joint_bytes: u32,
+        usage: buffer_object.BufferUsageType,
+        command_list: *nvrhi.ICommandList,
+        vma_allocator: c.VmaAllocator,
+        device: *nvrhi.IDevice,
+        buffer_device_address_enabled: bool,
+    ) void {
+        _ = gbs.vertexBuffer.allocBufferObject(
+            null,
+            vertex_bytes,
+            usage,
+            command_list,
+            vma_allocator,
+            device,
+            buffer_device_address_enabled,
+        );
+        _ = gbs.indexBuffer.allocBufferObject(
+            null,
+            index_bytes,
+            usage,
+            command_list,
+            vma_allocator,
+            device,
+            buffer_device_address_enabled,
+        );
+
+        if (joint_bytes > 0) {
+            _ = gbs.jointBuffer.allocBufferObject(
+                null,
+                joint_bytes,
+                usage,
+                command_list,
+                vma_allocator,
+                device,
+                buffer_device_address_enabled,
+            );
+        }
+
+        gbs.clear();
+    }
+
+    fn clear(gbs: *GeoBufferSet) void {
+        gbs.indexMemUsed.value = 0;
+        gbs.vertexMemUsed.value = 0;
+        gbs.jointMemUsed.value = 0;
+        gbs.allocations = 0;
+    }
+
+    fn map(gbs: *GeoBufferSet) void {
+        if (gbs.mappedVertexBase == null) {
+            gbs.mappedVertexBase = gbs.vertexBuffer.mapBuffer();
+        }
+
+        if (gbs.mappedIndexBase == null) {
+            gbs.mappedIndexBase = gbs.indexBuffer.mapBuffer();
+        }
+
+        if (gbs.mappedJointBase == null and gbs.jointBuffer.getAllocedSize() != 0) {
+            gbs.mappedJointBase = gbs.jointBuffer.mapBuffer();
+        }
+    }
+
+    fn unmap(gbs: *GeoBufferSet) void {
+        if (gbs.mappedVertexBase != null) {
+            gbs.vertexBuffer.unmapBuffer();
+            gbs.mappedVertexBase = null;
+        }
+
+        if (gbs.mappedIndexBase != null) {
+            gbs.indexBuffer.unmapBuffer();
+            gbs.mappedIndexBase = null;
+        }
+
+        if (gbs.mappedJointBase != null) {
+            gbs.jointBuffer.unmapBuffer();
+            gbs.mappedJointBase = null;
+        }
+    }
 };
 
 pub const VertexCache = extern struct {
-    currentFrame: c_int,
-    listNum: c_int,
-    drawListNum: c_int,
+    currentFrame: u32,
+    listNum: u32,
+    drawListNum: u32,
     staticData: GeoBufferSet,
     frameData: [FrameData.NUM_FRAME_DATA]GeoBufferSet,
-    uniformBufferOffsetAlignment: c_int,
-    mostUsedVertex: c_int,
-    mostUsedIndex: c_int,
-    mostUsedJoint: c_int,
+    uniformBufferOffsetAlignment: u32,
+    mostUsedVertex: u32,
+    mostUsedIndex: u32,
+    mostUsedJoint: u32,
 
     extern fn c_vertexCache_cacheIsCurrent(*VertexCache, VertexCacheHandle) bool;
-    extern fn c_vertexCache_allocStaticIndex(*VertexCache, *const anyopaque, c_int, *nvrhi.ICommandList) callconv(.C) VertexCacheHandle;
-    extern fn c_vertexCache_allocStaticVertex(*VertexCache, *const anyopaque, c_int, *nvrhi.ICommandList) callconv(.C) VertexCacheHandle;
-    extern fn c_vertexCache_shutdown(*VertexCache) callconv(.C) void;
-    extern fn c_vertexCache_init(*VertexCache, c_int, *nvrhi.ICommandList) callconv(.C) void;
-    extern fn c_vertexCache_beginBackend(*VertexCache) callconv(.C) void;
+    extern fn c_vertexCache_allocStaticIndex(
+        *VertexCache,
+        *const anyopaque,
+        c_int,
+        *nvrhi.ICommandList,
+    ) VertexCacheHandle;
+    extern fn c_vertexCache_allocStaticVertex(
+        *VertexCache,
+        *const anyopaque,
+        c_int,
+        *nvrhi.ICommandList,
+    ) VertexCacheHandle;
+    extern fn c_vertexCache_shutdown(*VertexCache) void;
+    extern fn c_vertexCache_init(*VertexCache, c_int, *nvrhi.ICommandList) void;
+    extern fn c_vertexCache_beginBackend(*VertexCache) void;
     extern fn c_vertexCache_actuallyAlloc(
         *VertexCache,
         *GeoBufferSet,
@@ -158,18 +259,58 @@ pub const VertexCache = extern struct {
 
     pub fn init(
         vertex_cache: *VertexCache,
-        uniform_buffer_offset_alignment: usize,
+        uniform_buffer_offset_alignment: u32,
         command_list: *nvrhi.ICommandList,
+        vma_allocator: c.VmaAllocator,
+        device: *nvrhi.IDevice,
+        buffer_device_address_enabled: bool,
     ) void {
-        c_vertexCache_init(
-            vertex_cache,
-            @intCast(uniform_buffer_offset_alignment),
+        vertex_cache.currentFrame = 0;
+        vertex_cache.listNum = 0;
+
+        vertex_cache.uniformBufferOffsetAlignment = uniform_buffer_offset_alignment;
+
+        vertex_cache.mostUsedVertex = 0;
+        vertex_cache.mostUsedIndex = 0;
+        vertex_cache.mostUsedJoint = 0;
+
+        for (&vertex_cache.frameData) |*frame_data| {
+            frame_data.alloc(
+                VERTEX_MEMORY_PER_FRAME,
+                INDEX_MEMORY_PER_FRAME,
+                JOINT_MEMORY_PER_FRAME,
+                .DYNAMIC,
+                command_list,
+                vma_allocator,
+                device,
+                buffer_device_address_enabled,
+            );
+        }
+
+        vertex_cache.staticData.alloc(
+            STATIC_VERTEX_MEMORY,
+            STATIC_INDEX_MEMORY,
+            0,
+            .STATIC,
             command_list,
+            vma_allocator,
+            device,
+            buffer_device_address_enabled,
         );
+
+        vertex_cache.frameData[0].map();
     }
 
-    pub fn shutdown(vertex_cache: *VertexCache) void {
-        c_vertexCache_shutdown(vertex_cache);
+    pub fn shutdown(vertex_cache: *VertexCache, vma_allocator: c.VmaAllocator) void {
+        for (&vertex_cache.frameData) |*frame_data| {
+            frame_data.vertexBuffer.freeBufferObject(vma_allocator);
+            frame_data.indexBuffer.freeBufferObject(vma_allocator);
+            frame_data.jointBuffer.freeBufferObject(vma_allocator);
+        }
+
+        vertex_cache.staticData.vertexBuffer.freeBufferObject(vma_allocator);
+        vertex_cache.staticData.indexBuffer.freeBufferObject(vma_allocator);
+        vertex_cache.staticData.jointBuffer.freeBufferObject(vma_allocator);
     }
 
     pub fn beginBackend(vertex_cache: *VertexCache) void {

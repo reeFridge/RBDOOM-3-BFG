@@ -274,6 +274,15 @@ pub fn idList(T: type) type {
             return self.findIndex(obj) orelse try self.append(obj.*);
         }
 
+        pub fn remove(self: *Self, obj: *const T) bool {
+            if (self.findIndex(obj)) |index| {
+                removeIndex(index);
+                return true;
+            }
+
+            return false;
+        }
+
         pub fn findIndex(self: *const Self, obj: *const T) ?usize {
             return for (self.constSlice(), 0..) |*item_ptr, i| {
                 if (item_ptr.* == obj.*) break i;

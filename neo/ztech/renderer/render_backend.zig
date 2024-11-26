@@ -3,7 +3,7 @@ const Vec2 = @import("../math/vector.zig").Vec2;
 const Image = @import("image.zig");
 const RenderSystem = @import("render_system.zig");
 const device_manager = @import("../sys/device_manager.zig");
-const VertexCache = @import("vertex_cache.zig");
+const vertex_cache = @import("vertex_cache.zig");
 const ImmediateMode = @import("immediate_mode.zig");
 const render_log = @import("render_log.zig");
 const render_prog_manager = @import("render_prog_manager.zig");
@@ -12,6 +12,7 @@ const ResolutionScale = @import("resolution_scale.zig");
 const Common = @import("../framework/common.zig");
 const image_manager = @import("image_manager.zig");
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
+const vulkan = @import("vulkan");
 
 pub const BackendCounters = extern struct {
     c_surfaces: c_int,
@@ -265,21 +266,20 @@ pub const RenderBackend = extern struct {
     pixelShader: nvrhi.ShaderHandle,
     prevBindingLayoutType: c_int,
 
-    extern fn c_renderBackend_clearContext() callconv(.C) void;
-    extern fn c_renderBackend_checkCVars(*RenderBackend) callconv(.C) void;
-    extern fn c_renderBackend_stereoRenderExecuteBackEndCommands(*RenderBackend, *FrameData.EmptyCommand) callconv(.C) void;
-    extern fn c_renderBackend_constructInPlace(*RenderBackend) callconv(.C) void;
-
-    extern fn c_renderBackend_drawView(*RenderBackend, *anyopaque, c_int) callconv(.C) void;
-    extern fn c_renderBackend_setBuffer(*RenderBackend, *anyopaque) callconv(.C) void;
-    extern fn c_renderBackend_copyRender(*RenderBackend, *anyopaque) callconv(.C) void;
-    extern fn c_renderBackend_postProcess(*RenderBackend, *anyopaque) callconv(.C) void;
-    extern fn c_renderBackend_crtPostProcess(*RenderBackend) callconv(.C) void;
-
-    extern fn VKimp_PreInit() callconv(.C) void;
-    extern fn VKimp_Shutdown(bool) callconv(.C) void;
-    extern fn R_SetNewMode(bool) callconv(.C) void;
-    extern fn Sys_InitInput() callconv(.C) void;
+    extern fn c_renderBackend_clearContext() void;
+    extern fn c_renderBackend_checkCVars(*RenderBackend) void;
+    extern fn c_renderBackend_stereoRenderExecuteBackEndCommands(
+        *RenderBackend,
+        *FrameData.EmptyCommand,
+    ) void;
+    extern fn c_renderBackend_constructInPlace(*RenderBackend) void;
+    extern fn c_renderBackend_drawView(*RenderBackend, *anyopaque, c_int) void;
+    extern fn c_renderBackend_setBuffer(*RenderBackend, *anyopaque) void;
+    extern fn c_renderBackend_copyRender(*RenderBackend, *anyopaque) void;
+    extern fn c_renderBackend_postProcess(*RenderBackend, *anyopaque) void;
+    extern fn c_renderBackend_crtPostProcess(*RenderBackend) void;
+    extern fn VKimp_Shutdown(bool) void;
+    extern fn Sys_InitInput() void;
 
     pub fn getCurrentPixelOffset(backend: *RenderBackend) Vec2(f32) {
         return if (backend.taaPass) |taa|
@@ -343,8 +343,12 @@ pub const RenderBackend = extern struct {
     pub const InitError = error{OutOfMemory} ||
         RenderProgManager.LoadShaderError ||
         device_manager.DeviceManagerVulkan.CreateError;
-    pub fn init(backend: *RenderBackend, allocator: std.mem.Allocator) InitError!void {
-        if (RenderSystem.instance.backend_initialized) @panic("RenderBackend already initialized");
+    pub fn init(
+        backend: *RenderBackend,
+        allocator: std.mem.Allocator,
+    ) InitError!void {
+        if (RenderSystem.instance.backend_initialized)
+            @panic("RenderBackend already initialized");
 
         // TODO: Remove
         c_renderBackend_constructInPlace(backend);
@@ -358,7 +362,8 @@ pub const RenderBackend = extern struct {
 
         c_renderBackend_clearContext();
 
-        const device = device_manager.instance().getDevice();
+        const device_manager_instance = device_manager.instance();
+        const device = device_manager_instance.getDevice();
         try render_prog_manager.instance.init(device);
         render_log.instance.init(device);
 
@@ -392,13 +397,18 @@ pub const RenderBackend = extern struct {
         };
 
         command_list_ptr.open();
-        VertexCache.instance.init(
-            @intCast(RenderSystem.glConfig.uniformBufferOffsetAlignment),
+        vertex_cache.instance.init(
+            @intCast(RenderSystem.gl_config.uniformBufferOffsetAlignment),
             command_list_ptr,
+            device_manager.vma_allocator,
+            device,
+            device_manager_instance.isDeviceExtensionEnabled(
+                vulkan.extensions.khr_buffer_device_address.name,
+            ),
         );
         command_list_ptr.close();
         device.executeCommandList(command_list_ptr);
-        ImmediateMode.init(command_list_ptr);
+        // TODO: ImmediateMode.init(command_list_ptr);
 
         try FrameData.init(allocator);
         backend.slopeScaleBias = 0;
@@ -444,7 +454,7 @@ pub const RenderBackend = extern struct {
 
         if (cmd_head.commandId == .RC_NOP and cmd_head.next == null) return;
 
-        if (RenderSystem.glConfig.stereo3Dmode != .OFF) {
+        if (RenderSystem.gl_config.stereo3Dmode != .OFF) {
             backend.stereoRenderExecuteBackendCommands(cmd_head);
             return;
         }
@@ -515,7 +525,7 @@ pub const RenderBackend = extern struct {
 
         backend.glSetDefaultState();
 
-        const timerQueryAvailable = RenderSystem.glConfig.timerQueryAvailable;
+        const timerQueryAvailable = RenderSystem.gl_config.timerQueryAvailable;
         var draw_view_3d = false;
         var opt_cmd: ?*FrameData.EmptyCommand = cmd_head;
         while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
@@ -527,8 +537,8 @@ pub const RenderBackend = extern struct {
                         defer render_log.instance.closeMainBlock(render_log.MRB_DRAW_GUI);
                         render_log.instance.openBlock("Render_DrawViewGUI", .{});
                         defer render_log.instance.closeBlock();
-                        RenderSystem.glConfig.timerQueryAvailable = false;
-                        defer RenderSystem.glConfig.timerQueryAvailable = timerQueryAvailable;
+                        RenderSystem.gl_config.timerQueryAvailable = false;
+                        defer RenderSystem.gl_config.timerQueryAvailable = timerQueryAvailable;
 
                         backend.drawView(@ptrCast(cmd), 0);
                     } else {
@@ -596,16 +606,16 @@ pub const RenderBackend = extern struct {
         );
 
         render_prog_manager.instance.unbind();
-        framebuffer.unbind();
+        framebuffer.unbind(backend, device_manager.instance());
         render_log.instance.closeBlock();
     }
 
     fn glScissor(
         _: *RenderBackend,
-        x: c_int,
-        y: c_int,
-        w: c_int,
-        h: c_int,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
     ) void {
         nvrhi_context.scissor.clear();
         nvrhi_context.scissor.addPoint(@floatFromInt(x), @floatFromInt(y));
@@ -657,9 +667,9 @@ pub const RenderBackend = extern struct {
 
     fn resizeImages(_: *RenderBackend) void {
         device_manager.instance().updateWindowSize(.{
-            .width = @intCast(RenderSystem.glConfig.nativeScreenWidth),
-            .height = @intCast(RenderSystem.glConfig.nativeScreenHeight),
-            .multi_samples = @intCast(RenderSystem.glConfig.multisamples),
+            .width = @intCast(RenderSystem.gl_config.nativeScreenWidth),
+            .height = @intCast(RenderSystem.gl_config.nativeScreenHeight),
+            .multi_samples = @intCast(RenderSystem.gl_config.multisamples),
         });
     }
 };

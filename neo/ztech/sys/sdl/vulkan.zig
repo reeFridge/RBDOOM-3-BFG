@@ -1,7 +1,8 @@
 const std = @import("std");
 const vulkan = @import("vulkan");
 const c = @import("../c_import.zig").c;
-const GLImplParams = @import("../../renderer/render_system.zig").GLImplParams;
+const RenderSystem = @import("../../renderer/render_system.zig");
+const GLImplParams = RenderSystem.GLImplParams;
 const device_manager = @import("../device_manager.zig");
 
 var window: ?*c.SDL_Window = null;
@@ -55,7 +56,7 @@ pub fn init(params: GLImplParams) InitError!void {
 
     var instance_extensions_count: u32 = 0;
     const max_size = 256;
-    _ = c.SDL_Vulkan_GetInstanceExtensions(@ptrCast(window), &instance_extensions_count, null);
+    _ = c.SDL_Vulkan_GetInstanceExtensions(window, &instance_extensions_count, null);
     var instance_extensions = std.BoundedArray([*:0]const u8, max_size)
         .init(instance_extensions_count) catch return error.OutOfMemory;
     _ = c.SDL_Vulkan_GetInstanceExtensions(
@@ -65,6 +66,72 @@ pub fn init(params: GLImplParams) InitError!void {
     );
 
     try manager.createDeviceAndSwapChain(create_params, instance_extensions.constSlice());
+
+    if (params.fullscreen_mode > 0) {
+        if (params.display_hz > 0 and params.display_hz != getDisplayFrequency(params)) {
+            var mode = c.SDL_DisplayMode{};
+            _ = c.SDL_GetWindowDisplayMode(window, &mode);
+
+            mode.refresh_rate = @intCast(params.display_hz);
+            if (c.SDL_SetWindowDisplayMode(window, &mode) < 0) {
+                std.debug.print("Couldn't set display refresh rate to {} Hz, reason: {s}\n", .{
+                    params.display_hz,
+                    c.SDL_GetError(),
+                });
+            }
+        }
+
+        if (c.SDL_SetWindowFullscreen(window, c.SDL_WINDOW_FULLSCREEN) < 0) {
+            std.debug.print("Couldn't switch to fullscreen mode, reason: {s}\n", .{c.SDL_GetError()});
+        }
+    } else if (params.fullscreen_mode == -2) {
+        if (c.SDL_SetWindowFullscreen(window, c.SDL_WINDOW_FULLSCREEN_DESKTOP) < 0) {
+            std.debug.print("Couldn't switch to borderless fullscreen mode, reason: {s}\n", .{c.SDL_GetError()});
+        }
+    } else if (params.fullscreen_mode == -1) {
+        c.SDL_SetWindowPosition(window, @intCast(create_params.x), @intCast(create_params.y));
+    }
+
+    const gl_config = RenderSystem.gl_config;
+
+    if (params.fullscreen_mode != 0) {
+        c.SDL_GetWindowSize(
+            window,
+            @ptrCast(&gl_config.nativeScreenWidth),
+            @ptrCast(&gl_config.nativeScreenHeight),
+        );
+    } else {
+        manager.getWindowDimensions(
+            &gl_config.nativeScreenWidth,
+            &gl_config.nativeScreenHeight,
+        );
+    }
+
+    const is_fullscreen_bit_set = (c.SDL_GetWindowFlags(window) & c.SDL_WINDOW_FULLSCREEN) != 0;
+    gl_config.isFullscreen = if (is_fullscreen_bit_set or params.fullscreen_mode == -1)
+        params.fullscreen_mode
+    else
+        0;
+
+    gl_config.displayFrequency = getDisplayFrequency(params);
+    gl_config.isStereoPixelFormat = params.stereo;
+    gl_config.multisamples = params.multi_samples;
+    // FIXME: some monitor modes may be distorted
+    gl_config.pixelAspect = 1.0;
+
+    _ = c.SDL_ShowCursor(c.SDL_DISABLE);
+}
+
+fn getDisplayFrequency(params: GLImplParams) u32 {
+    const display_index = getDisplayIndex(params) orelse 0;
+
+    var mode = c.SDL_DisplayMode{};
+    if (c.SDL_GetCurrentDisplayMode(@intCast(display_index), &mode) != 0) {
+        std.debug.print("Couldn't get display refresh rate, reason: {s}\n", .{c.SDL_GetError()});
+        return params.display_hz;
+    }
+
+    return @intCast(mode.refresh_rate);
 }
 
 pub fn setScreenParams(_: GLImplParams) error{}!void {}

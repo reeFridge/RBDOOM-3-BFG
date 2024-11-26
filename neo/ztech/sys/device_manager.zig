@@ -440,7 +440,7 @@ pub const DeviceManagerVulkan = struct {
                 .width = device_manager.device_params.back_buffer_width,
                 .height = device_manager.device_params.back_buffer_height,
                 .format = device_manager.device_params.swap_chain_format,
-                .initialState = .Present,
+                .initialState = .{ .Present = true },
                 .keepInitialState = true,
                 .isRenderTarget = true,
             };
@@ -1287,6 +1287,32 @@ pub const DeviceManagerVulkan = struct {
             (!device_manager.device_params.enable_copy_queue or queue_family.transfer != null);
 
         if (!required_found or !enabled_found) return error.QueueFamilyNotFound;
+    }
+
+    pub fn isDeviceExtensionEnabled(device_manager: *const DeviceManagerVulkan, target_ext_name: []const u8) bool {
+        return for (device_manager.enabled_device_extensions) |ext_name_ptr| {
+            if (std.mem.eql(u8, std.mem.span(ext_name_ptr), target_ext_name))
+                break true;
+        } else false;
+    }
+
+    pub fn getBackBufferCount(device_manager: *const DeviceManagerVulkan) usize {
+        return device_manager.swapchain_images.len;
+    }
+
+    pub fn getCurrentBackBufferIndex(device_manager: *const DeviceManagerVulkan) u32 {
+        return device_manager.swapchain_index;
+    }
+
+    pub fn getWindowDimensions(device_manager: *const DeviceManagerVulkan, width: *u32, height: *u32) void {
+        width.* = device_manager.device_params.back_buffer_width;
+        height.* = device_manager.device_params.back_buffer_height;
+    }
+
+    pub fn getBackBuffer(device_manager: *const DeviceManagerVulkan, index: usize) ?*nvrhi.ITexture {
+        if (index >= device_manager.swapchain_images.len) return null;
+
+        return device_manager.swapchain_images[index].handle.ptr_;
     }
 
     pub fn beginFrame(_: *DeviceManagerVulkan) void {

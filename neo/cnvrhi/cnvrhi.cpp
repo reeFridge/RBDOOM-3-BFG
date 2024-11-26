@@ -18,7 +18,18 @@ void c_nvrhi_device_createHandleForNativeTexture(
 		nvrhi::Object object,
 		const nvrhi::TextureDesc* desc)
 {
-	*handle = device->createHandleForNativeTexture(objectType, object, *desc);
+	const nvrhi::TextureDesc desc_copy = *desc;
+	*handle = device->createHandleForNativeTexture(objectType, object, desc_copy);
+}
+
+void c_nvrhi_device_createHandleForNativeBuffer(
+		nvrhi::IDevice* device,
+		nvrhi::BufferHandle* handle,
+		nvrhi::ObjectType objectType,
+		nvrhi::Object buffer,
+		const nvrhi::BufferDesc* desc)
+{
+	*handle = device->createHandleForNativeBuffer(objectType, buffer, *desc);
 }
 
 void c_nvrhi_device_createEventQuery(
@@ -50,6 +61,14 @@ void c_nvrhi_device_createBuffer(
 		const nvrhi::BufferDesc* desc)
 {
 	*handle = device->createBuffer(*desc);
+}
+
+void c_nvrhi_device_createFramebuffer(
+		nvrhi::IDevice* device,
+		nvrhi::FramebufferHandle* handle,
+		const nvrhi::FramebufferDesc* desc)
+{
+	*handle = device->createFramebuffer(*desc);
 }
 
 void c_nvrhi_device_createBindingLayout(
@@ -126,6 +145,32 @@ void c_nvrhi_commandList_beginTrackingTextureState(
 	commandList->beginTrackingTextureState(texture, subresources, stateBits);
 }
 
+void c_nvrhi_commandList_beginTrackingBufferState(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IBuffer* buffer,
+		nvrhi::ResourceStates stateBits)
+{
+	commandList->beginTrackingBufferState(buffer, stateBits);
+}
+
+void c_nvrhi_commandList_writeBuffer(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IBuffer* b,
+		const void* data,
+		size_t dataSize,
+		uint64_t destOffsetBytes)
+{
+	commandList->writeBuffer(b, data, dataSize, destOffsetBytes);
+}
+
+void c_nvrhi_commandList_setPermanentBufferState(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IBuffer* buffer,
+		nvrhi::ResourceStates stateBits)
+{
+	commandList->setPermanentBufferState(buffer, stateBits);
+}
+
 unsigned long c_nvrhi_resource_addRef(nvrhi::IResource* res) {
 	return res->AddRef();
 }
@@ -139,6 +184,11 @@ void c_nvrhi_vertexAttributeDesc_setName(
 		const char* name)
 {
 	desc->setName(name);
+}
+
+nvrhi::FramebufferInfoEx c_nvrhi_framebuffer_getFramebufferInfo(const nvrhi::IFramebuffer* framebuffer)
+{
+	return framebuffer->getFramebufferInfo();
 }
 
 const char* c_nvrhi_vertexAttributeDesc_getName(const nvrhi::VertexAttributeDesc* desc) {

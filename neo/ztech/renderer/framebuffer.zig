@@ -1,24 +1,66 @@
+const std = @import("std");
 const idlib = @import("../idlib.zig");
 const idList = idlib.idList;
 const nvrhi = @import("nvrhi.zig");
+const RenderBackend = @import("render_backend.zig").RenderBackend;
+const DeviceManager = @import("../sys/device_manager.zig").DeviceManagerVulkan;
+const image_manager = @import("image_manager.zig");
+
+var framebuffers: idlib.idList(*Framebuffer) = .{};
 
 pub const Framebuffer = extern struct {
-    vptr: *anyopaque,
-    fboName: idlib.idStr,
-    frameBuffer: u32,
-    colorBuffers: [16]u32,
-    colorFormat: c_int,
-    depthBuffer: u32,
-    depthFormat: c_int,
-    stencilBuffer: u32,
-    stencilFormat: c_int,
-    width: c_int,
-    height: c_int,
-    msaaSamples: bool,
-    apiObject: nvrhi.FramebufferHandle,
+    vptr: *anyopaque = undefined,
+    fboName: idlib.idStr = .{},
+    frameBuffer: u32 = 0,
+    colorBuffers: [16]u32 = std.mem.zeroes([16]u32),
+    colorFormat: c_int = 0,
+    depthBuffer: u32 = 0,
+    depthFormat: c_int = 0,
+    stencilBuffer: u32 = 0,
+    stencilFormat: c_int = 0,
+    width: u32 = 0,
+    height: u32 = 0,
+    msaaSamples: bool = false,
+    apiObject: nvrhi.FramebufferHandle = .{},
+
+    pub fn create(
+        allocator: std.mem.Allocator,
+        device: *nvrhi.IDevice,
+        name: []const u8,
+        desc: *const nvrhi.FramebufferDesc,
+    ) error{OutOfMemory}!*Framebuffer {
+        var ptr = try allocator.create(Framebuffer);
+        ptr.* = .{};
+
+        ptr.fboName.initEmptyBuffer();
+        try ptr.fboName.assignSlice(name);
+
+        ptr.apiObject = device.createFramebuffer(desc);
+        const framebuffer_info = ptr.apiObject.ptr_.?.getFramebufferInfo();
+        ptr.width = framebuffer_info.width;
+        ptr.height = framebuffer_info.height;
+
+        _ = try framebuffers.append(ptr);
+
+        return ptr;
+    }
+
+    pub fn deinit(framebuffer: *Framebuffer) void {
+        framebuffer.fboName.deinit();
+        _ = framebuffer.apiObject.reset();
+    }
 
     pub fn getApiObject(framebuffer: *Framebuffer) *nvrhi.IFramebuffer {
         return framebuffer.apiObject.ptr_ orelse @panic("apiObject is null");
+    }
+
+    pub fn bind(framebuffer: *Framebuffer, backend: *RenderBackend) void {
+        if (backend.currentFramebuffer != framebuffer) {
+            backend.currentPipeline.ptr_ = null;
+        }
+
+        backend.lastFramebuffer = backend.currentFramebuffer;
+        backend.currentFramebuffer = framebuffer;
     }
 };
 
@@ -58,22 +100,303 @@ extern fn c_framebuffer_checkFramebuffers() void;
 extern fn c_framebuffer_unbind() void;
 extern fn c_framebuffer_resizeFramebuffers(bool) void;
 
-pub fn resizeFramebuffers(reload_images: bool) void {
-    c_framebuffer_resizeFramebuffers(reload_images);
+pub fn resizeFramebuffers(
+    backend: *RenderBackend,
+    device_manager: *DeviceManager,
+    allocator: std.mem.Allocator,
+    reload_images: bool,
+) error{OutOfMemory}!void {
+    backend.clearCaches();
+
+    for (framebuffers.slice()) |framebuffer_ptr| {
+        framebuffer_ptr.deinit();
+    }
+    framebuffers.clear();
+
+    const device = device_manager.getDevice();
+
+    if (reload_images) {
+        try reloadImages(device, backend.commandList.ptr_.?);
+    }
+
+    const back_buffer_count = device_manager.getBackBufferCount();
+    try global_framebuffers.swapFramebuffers.resize(back_buffer_count);
+    try global_framebuffers.swapFramebuffers.setNum(back_buffer_count);
+
+    const Attachments = nvrhi.FramebufferDesc.ColorAttachments;
+    const global_images = image_manager.instance;
+
+    for (global_framebuffers.swapFramebuffers.slice(), 0..) |*fb, index| {
+        fb.* = try Framebuffer.create(
+            allocator,
+            device,
+            "_swapChain%d",
+            &.{
+                .colorAttachments = Attachments.fromSlice(&.{
+                    .{ .texture = device_manager.getBackBuffer(index) },
+                }),
+            },
+        );
+    }
+
+    for (0..6) |arr| {
+        for (0..GlobalFramebuffers.MAX_SHADOWMAP_RESOLUTIONS) |mip| {
+            const texture = global_images.shadowImage[mip].?.texture.ptr_;
+            global_framebuffers.shadowFBO[mip][arr] = try Framebuffer.create(
+                allocator,
+                device,
+                "_shadowMap%i_%i",
+                &.{
+                    .depthAttachment = .{
+                        .texture = texture,
+                        .subresources = .{
+                            .baseArraySlice = @intCast(arr),
+                            .numArraySlices = 1,
+                        },
+                    },
+                },
+            );
+        }
+    }
+
+    global_framebuffers.shadowAtlasFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_shadowAtlas",
+        &.{
+            .depthAttachment = .{
+                .texture = global_images.shadowAtlasImage.?.texture.ptr_,
+            },
+        },
+    );
+
+    global_framebuffers.ldrFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_ldr",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.ldrImage.?.texture.ptr_ },
+            }),
+            .depthAttachment = .{ .texture = global_images.currentDepthImage.?.texture.ptr_ },
+        },
+    );
+
+    global_framebuffers.hdrFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_hdr",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.currentRenderHDRImage.?.texture.ptr_ },
+            }),
+            .depthAttachment = .{ .texture = global_images.currentDepthImage.?.texture.ptr_ },
+        },
+    );
+
+    global_framebuffers.postProcFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_postProc",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.currentRenderImage.?.texture.ptr_ },
+            }),
+        },
+    );
+
+    global_framebuffers.taaMotionVectorsFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_taaMotionVectors",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.taaMotionVectorsImage.?.texture.ptr_ },
+            }),
+        },
+    );
+
+    global_framebuffers.taaResolvedFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_taaResolved",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.taaResolvedImage.?.texture.ptr_ },
+            }),
+        },
+    );
+
+    global_framebuffers.envprobeFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_envprobeRender",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{.{ .texture = global_images.envprobeHDRImage.?.texture.ptr_ }}),
+            .depthAttachment = .{ .texture = global_images.envprobeDepthImage.?.texture.ptr_ },
+        },
+    );
+
+    for (&global_framebuffers.ambientOcclusionFBO, &global_images.ambientOcclusionImage) |*fb, image_ptr| {
+        fb.* = try Framebuffer.create(
+            allocator,
+            device,
+            "_aoRender%i",
+            &.{
+                .colorAttachments = Attachments.fromSlice(&.{
+                    .{ .texture = image_ptr.?.texture.ptr_ },
+                }),
+            },
+        );
+    }
+
+    for (&global_framebuffers.csDepthFBO, 0..) |*fb, i| {
+        fb.* = try Framebuffer.create(
+            allocator,
+            device,
+            "_csz%d",
+            &.{
+                .colorAttachments = Attachments.fromSlice(&.{
+                    .{
+                        .texture = global_images.hierarchicalZbufferImage.?.texture.ptr_,
+                        .subresources = .{
+                            .baseMipLevel = @intCast(i),
+                            .numMipLevels = 1,
+                        },
+                    },
+                }),
+            },
+        );
+    }
+
+    global_framebuffers.geometryBufferFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_gbuffer",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.gbufferNormalsRoughnessImage.?.texture.ptr_ },
+            }),
+            .depthAttachment = .{ .texture = global_images.currentDepthImage.?.texture.ptr_ },
+        },
+    );
+
+    global_framebuffers.smaaEdgesFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_smaaEdges",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.smaaEdgesImage.?.texture.ptr_ },
+            }),
+        },
+    );
+
+    global_framebuffers.smaaBlendFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_smaaBlend",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.smaaBlendImage.?.texture.ptr_ },
+            }),
+        },
+    );
+
+    for (&global_framebuffers.bloomRenderFBO, &global_images.bloomRenderImage) |*fb, image_ptr| {
+        fb.* = try Framebuffer.create(
+            allocator,
+            device,
+            "_bloomRender%i",
+            &.{
+                .colorAttachments = Attachments.fromSlice(&.{
+                    .{ .texture = image_ptr.?.texture.ptr_ },
+                }),
+            },
+        );
+    }
+
+    global_framebuffers.geometryBufferFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_guiEdit",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.guiEdit.?.texture.ptr_ },
+            }),
+            .depthAttachment = .{ .texture = global_images.guiEditDepthStencilImage.?.texture.ptr_ },
+        },
+    );
+
+    global_framebuffers.accumFBO = try Framebuffer.create(
+        allocator,
+        device,
+        "_accum",
+        &.{
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.accumImage.?.texture.ptr_ },
+            }),
+        },
+    );
+
+    unbind(backend, device_manager);
 }
 
-pub fn init() void {
-    c_framebuffer_init();
+pub fn init(
+    backend: *RenderBackend,
+    device_manager: *DeviceManager,
+    allocator: std.mem.Allocator,
+) error{OutOfMemory}!void {
+    try resizeFramebuffers(backend, device_manager, allocator, true);
+}
+
+fn reloadImages(device: *nvrhi.IDevice, command_list: *nvrhi.ICommandList) error{OutOfMemory}!void {
+    const global_images = image_manager.instance;
+
+    command_list.open();
+
+    try global_images.ldrImage.?.reload(false, command_list);
+    try global_images.currentRenderImage.?.reload(false, command_list);
+    try global_images.currentDepthImage.?.reload(false, command_list);
+    try global_images.currentRenderHDRImage.?.reload(false, command_list);
+
+    for (&global_images.ambientOcclusionImage) |image_ptr| {
+        try image_ptr.?.reload(false, command_list);
+    }
+
+    try global_images.hierarchicalZbufferImage.?.reload(false, command_list);
+    try global_images.gbufferNormalsRoughnessImage.?.reload(false, command_list);
+    try global_images.taaMotionVectorsImage.?.reload(false, command_list);
+    try global_images.taaResolvedImage.?.reload(false, command_list);
+    try global_images.taaFeedback1Image.?.reload(false, command_list);
+    try global_images.taaFeedback2Image.?.reload(false, command_list);
+    try global_images.smaaEdgesImage.?.reload(false, command_list);
+    try global_images.smaaBlendImage.?.reload(false, command_list);
+    try global_images.shadowAtlasImage.?.reload(false, command_list);
+
+    for (&global_images.shadowImage) |image_ptr| {
+        try image_ptr.?.reload(false, command_list);
+    }
+
+    for (&global_images.bloomRenderImage) |image_ptr| {
+        try image_ptr.?.reload(false, command_list);
+    }
+
+    try global_images.guiEdit.?.reload(false, command_list);
+    try global_images.accumImage.?.reload(false, command_list);
+
+    command_list.close();
+    device.executeCommandList(command_list);
 }
 
 pub fn shutdown() void {
-    c_framebuffer_shutdown();
+    for (framebuffers.slice()) |framebuffer_ptr| {
+        framebuffer_ptr.deinit();
+    }
+    framebuffers.clear();
 }
 
-pub fn checkFramebuffers() void {
-    c_framebuffer_checkFramebuffers();
-}
-
-pub fn unbind() void {
-    c_framebuffer_unbind();
+pub fn unbind(backend: *RenderBackend, device_manager: *const DeviceManager) void {
+    const swap = global_framebuffers.swapFramebuffers.slice();
+    swap[device_manager.getCurrentBackBufferIndex()].bind(backend);
 }
