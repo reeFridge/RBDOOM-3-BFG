@@ -1406,7 +1406,7 @@ fn addSingleModel(
         if (entity_def.parms.customShader) |custom_shader| {
             // this is sort of a hack, but causes deformed surfaces to map to empty surfaces,
             // so the item highlight overlay doesn't highlight the autosprite surface
-            if (shader.deformType() != .DFRM_NONE) continue;
+            if (shader.deformType() != .none) continue;
             shader = custom_shader;
         } else if (entity_def.parms.customSkin) |custom_skin| {
             shader = custom_skin.remapShaderBySkin(shader) orelse continue;
@@ -1470,7 +1470,7 @@ fn addSingleModel(
             opt_shader_regs = base_surf.shaderRegisters;
 
             const shader_deform = shader.deformType();
-            if (shader_deform != .DFRM_NONE) {
+            if (shader_deform != .none) {
                 if (base_surf.deform(view_def)) |deform_draw_surf| {
                     // any deforms may have created multiple draw surfaces
                     var opt_draw_surf: ?*DrawSurface = deform_draw_surf;
@@ -1484,9 +1484,9 @@ fn addSingleModel(
                 }
             }
 
-            if (shader_deform == .DFRM_NONE or
-                shader_deform == .DFRM_PARTICLE or
-                shader_deform == .DFRM_PARTICLE2)
+            if (shader_deform == .none or
+                shader_deform == .particle or
+                shader_deform == .particle2)
             {
                 if (!VertexCache.instance.cacheIsCurrent(tri.indexCache)) {
                     tri.indexCache = VertexCache.instance.allocIndex(
@@ -1596,10 +1596,10 @@ fn addSingleModel(
                         // Determine which linked list to add the light surface to.
                         // There will only be localSurfaces if the light casts shadows and
                         // there are surfaces with NOSELFSHADOW.
-                        if (shader.coverage == .MC_TRANSLUCENT) {
+                        if (shader.coverage == .translucent) {
                             light_draw_surf.linkChain = &view_light.translucentInteractions;
                         } else if (!light_def.parms.noShadows and
-                            shader.testMaterialFlag(material.Flags.MF_NOSELFSHADOW))
+                            shader.testMaterialFlag(.{ .noselfshadow = true }))
                         {
                             light_draw_surf.linkChain = &view_light.localInteractions;
                         } else {
@@ -1615,7 +1615,7 @@ fn addSingleModel(
             // surface shadows
             if (!shader.surfaceCastsShadow() and
                 !(r_force_shadow_maps_on_alpha_surfs and
-                shader.coverage == .MC_PERFORATED))
+                shader.coverage == .perforated))
             {
                 continue;
             }
@@ -1681,7 +1681,7 @@ fn addSingleModel(
                     shadow_draw_surf.shaderRegisters = base_surf.shaderRegisters;
                 }
 
-                if (shader.coverage == .MC_PERFORATED) {
+                if (shader.coverage == .perforated) {
                     shadow_draw_surf.setupShader(shader, render_entity, view_def);
                 }
 

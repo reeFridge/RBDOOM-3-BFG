@@ -40,8 +40,12 @@ pub const DeclEntityDef = extern struct {
         \\}
     ;
 
-    base: Decl,
-    dict: idlib.idDict,
+    base: Decl = .{},
+    dict: idlib.idDict = .{},
+
+    pub fn init(self: *DeclEntityDef) void {
+        self.* = .{};
+    }
 
     pub fn freeData(decl: *DeclEntityDef, allocator: std.mem.Allocator) void {
         _ = decl;

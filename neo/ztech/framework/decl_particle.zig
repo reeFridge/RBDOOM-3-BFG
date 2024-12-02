@@ -1,3 +1,4 @@
+const std = @import("std");
 const decl = @import("decl_manager.zig");
 const Decl = decl.Decl;
 const DeclTable = decl.DeclTable;
@@ -83,8 +84,12 @@ const ParticleStage = extern struct {
 };
 
 pub const DeclParticle = extern struct {
-    base: Decl,
-    stages: idlib.idList(*ParticleStage),
-    bounds: CBounds,
-    depthHack: f32,
+    base: Decl = .{},
+    stages: idlib.idList(*ParticleStage) = .{},
+    bounds: CBounds = .{},
+    depthHack: f32 = 0,
+
+    pub fn init(self: *DeclParticle) void {
+        self.* = .{};
+    }
 };

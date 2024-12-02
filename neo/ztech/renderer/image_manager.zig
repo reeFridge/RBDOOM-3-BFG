@@ -350,14 +350,14 @@ const image_gen = struct {
             null,
             framebuffer.ENVPROBE_CAPTURE_SIZE,
             framebuffer.ENVPROBE_CAPTURE_SIZE,
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_RGBA16F,
+            .nearest,
+            .clamp,
+            .rgba16f,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -366,14 +366,14 @@ const image_gen = struct {
             null,
             RenderSystem.SCREEN_WIDTH,
             RenderSystem.SCREEN_HEIGHT,
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_DEPTH_STENCIL,
+            .nearest,
+            .clamp,
+            .depth_stencil,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -382,14 +382,14 @@ const image_gen = struct {
             null,
             framebuffer.ENVPROBE_CAPTURE_SIZE,
             framebuffer.ENVPROBE_CAPTURE_SIZE,
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_DEPTH_STENCIL,
+            .nearest,
+            .clamp,
+            .depth_stencil,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -398,14 +398,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_LOOKUP_TABLE_RGBA,
+            .nearest,
+            .clamp,
+            .lookup_table_rgba,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -414,14 +414,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_RGBA16F,
+            .nearest,
+            .clamp,
+            .rgba16f,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -431,14 +431,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_RGBA16F,
+            .nearest,
+            .clamp,
+            .rgba16f,
             null,
             true,
             sample_count == 1,
             sample_count,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -448,14 +448,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_DEPTH_STENCIL,
+            .nearest,
+            .clamp,
+            .depth_stencil,
             null,
             true,
             false,
             sample_count,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -464,14 +464,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_LINEAR,
-            .TR_CLAMP,
-            .TD_R8F,
+            .linear,
+            .clamp,
+            .r8f,
             null,
             true,
             true,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -480,14 +480,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST_MIPMAP,
-            .TR_CLAMP,
-            .TD_R32F,
+            .nearest_mipmap,
+            .clamp,
+            .r32f,
             null,
             true,
             true,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -497,14 +497,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_LINEAR,
-            .TR_CLAMP,
-            .TD_RGBA16F,
+            .linear,
+            .clamp,
+            .rgba16f,
             null,
             true,
             false,
             sample_count,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -513,14 +513,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_RGBA16F,
+            .nearest,
+            .clamp,
+            .rgba16f,
             null,
             true,
             true,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -529,14 +529,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_RGBA16S,
+            .nearest,
+            .clamp,
+            .rgba16s,
             null,
             true,
             true,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -545,14 +545,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth() / 4,
             RenderSystem.instance.getHeight() / 4,
-            .TF_LINEAR,
-            .TR_CLAMP,
-            .TD_LOOKUP_TABLE_RGBA,
+            .linear,
+            .clamp,
+            .lookup_table_rgba,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -561,14 +561,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_RG16F,
+            .nearest,
+            .clamp,
+            .rg16f,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -577,14 +577,14 @@ const image_gen = struct {
             null,
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
-            .TF_LINEAR,
-            .TR_CLAMP,
-            .TD_LOOKUP_TABLE_RGBA,
+            .linear,
+            .clamp,
+            .lookup_table_rgba,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -593,14 +593,14 @@ const image_gen = struct {
             null,
             512,
             512,
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_LOOKUP_TABLE_RGBA,
+            .nearest,
+            .clamp,
+            .lookup_table_rgba,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -609,14 +609,14 @@ const image_gen = struct {
             null,
             RenderSystem.SCREEN_WIDTH,
             RenderSystem.SCREEN_HEIGHT,
-            .TF_NEAREST,
-            .TR_CLAMP,
-            .TD_LOOKUP_TABLE_RGBA,
+            .nearest,
+            .clamp,
+            .lookup_table_rgba,
             null,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -625,14 +625,14 @@ const image_gen = struct {
             null,
             @intCast(RenderSystem.r_shadow_map_atlas_size.integerValue),
             @intCast(RenderSystem.r_shadow_map_atlas_size.integerValue),
-            .TF_LINEAR,
-            .TR_CLAMP_TO_ZERO_ALPHA,
-            .TD_DEPTH,
+            .linear,
+            .clamp_to_zero_alpha,
+            .depth,
             command_list,
             true,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         ) catch |err| genFatal(image, err);
     }
 
@@ -641,9 +641,9 @@ const image_gen = struct {
         image.generateShadowArray(
             size,
             size,
-            .TF_LINEAR,
-            .TR_CLAMP_TO_ZERO_ALPHA,
-            .TD_SHADOW_ARRAY,
+            .linear,
+            .clamp_to_zero_alpha,
+            .shadow_array,
             command_list,
         ) catch |err| genFatal(image, err);
     }
@@ -653,9 +653,9 @@ const image_gen = struct {
         image.generateShadowArray(
             size,
             size,
-            .TF_LINEAR,
-            .TR_CLAMP_TO_ZERO_ALPHA,
-            .TD_SHADOW_ARRAY,
+            .linear,
+            .clamp_to_zero_alpha,
+            .shadow_array,
             command_list,
         ) catch |err| genFatal(image, err);
     }
@@ -665,9 +665,9 @@ const image_gen = struct {
         image.generateShadowArray(
             size,
             size,
-            .TF_LINEAR,
-            .TR_CLAMP_TO_ZERO_ALPHA,
-            .TD_SHADOW_ARRAY,
+            .linear,
+            .clamp_to_zero_alpha,
+            .shadow_array,
             command_list,
         ) catch |err| genFatal(image, err);
     }
@@ -677,9 +677,9 @@ const image_gen = struct {
         image.generateShadowArray(
             size,
             size,
-            .TF_LINEAR,
-            .TR_CLAMP_TO_ZERO_ALPHA,
-            .TD_SHADOW_ARRAY,
+            .linear,
+            .clamp_to_zero_alpha,
+            .shadow_array,
             command_list,
         ) catch |err| genFatal(image, err);
     }
@@ -689,9 +689,9 @@ const image_gen = struct {
         image.generateShadowArray(
             size,
             size,
-            .TF_LINEAR,
-            .TR_CLAMP_TO_ZERO_ALPHA,
-            .TD_SHADOW_ARRAY,
+            .linear,
+            .clamp_to_zero_alpha,
+            .shadow_array,
             command_list,
         ) catch |err| genFatal(image, err);
     }

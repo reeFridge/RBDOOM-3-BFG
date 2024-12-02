@@ -12,136 +12,92 @@ const BinaryImage = @import("binary_image.zig").BinaryImage;
 pub const ImageGeneratorFunction = fn (*Image, *nvrhi.ICommandList) callconv(.C) void;
 
 const TextureUsage = enum(c_int) {
-    TD_SPECULAR, // may be compressed, and always zeros the alpha channel
-    TD_DIFFUSE, // may be compressed
-    TD_DEFAULT, // generic RGBA texture (particles, etc...)
-    TD_BUMP, // may be compressed with 8 bit lookup
-    TD_FONT, // Font image
-    TD_LIGHT, // Light image
-    TD_LOOKUP_TABLE_MONO, // Mono lookup table (including alpha)
-    TD_LOOKUP_TABLE_ALPHA, // Alpha lookup table with a white color channel
-    TD_LOOKUP_TABLE_RGB1, // RGB lookup table with a solid white alpha
-    TD_LOOKUP_TABLE_RGBA, // RGBA lookup table
-    TD_COVERAGE, // coverage map for fill depth pass when YCoCG is used
-    TD_DEPTH, // depth buffer copy for motion blur
-    // RB begin
-    TD_SPECULAR_PBR_RMAO, // may be compressed, and always zeros the alpha channel, linear RGB R = roughness, G = metal, B = ambient occlusion
-    TD_SPECULAR_PBR_RMAOD, // may be compressed, alpha channel contains displacement map
-    TD_HIGHQUALITY_CUBE, // motorsep - Uncompressed cubemap texture (RGB colorspace)
-    TD_LOWQUALITY_CUBE, // motorsep - Compressed cubemap texture (RGB colorspace DXT5)
-    TD_SHADOW_ARRAY, // 2D depth buffer array for shadow mapping
-    TD_RG16F,
-    TD_RGBA16F,
-    TD_RGBA16S,
-    TD_RGBA32F,
-    TD_R32F,
-    TD_R11G11B10F, // memory efficient HDR RGB format with only 32bpp
-    // RB end
-    TD_R8F, // Stephen: Added for ambient occlusion render target.
-    TD_LDR, // Stephen: Added for SRGB render target when tonemapping.
-    TD_DEPTH_STENCIL, // depth buffer and stencil buffer
+    specular, // may be compressed, and always zeros the alpha channel
+    diffuse, // may be compressed
+    default, // generic RGBA texture (particles, etc...)
+    bump, // may be compressed with 8 bit lookup
+    font, // Font image
+    light, // Light image
+    lookup_table_mono, // Mono lookup table (including alpha)
+    lookup_table_alpha, // Alpha lookup table with a white color channel
+    lookup_table_rgb1, // RGB lookup table with a solid white alpha
+    lookup_table_rgba, // RGBA lookup table
+    coverage, // coverage map for fill depth pass when YCoCG is used
+    depth, // depth buffer copy for motion blur
+    specular_pbr_rmao, // may be compressed, and always zeros the alpha channel, linear RGB R = roughness, G = metal, B = ambient occlusion
+    specular_pbr_rmaod, // may be compressed, alpha channel contains displacement map
+    highquality_cube, // motorsep - Uncompressed cubemap texture (RGB colorspace)
+    lowquality_cube, // motorsep - Compressed cubemap texture (RGB colorspace DXT5)
+    shadow_array, // 2D depth buffer array for shadow mapping
+    rg16f,
+    rgba16f,
+    rgba16s,
+    rgba32f,
+    r32f,
+    r11g11b10f, // memory efficient HDR RGB format with only 32bpp
+    r8f, // Stephen: Added for ambient occlusion render target.
+    ldr, // Stephen: Added for SRGB render target when tonemapping.
+    depth_stencil, // depth buffer and stencil buffer
 };
 
 const CubeFiles = enum(c_int) {
-    CF_2D, // not a cube map
-    CF_NATIVE, // _px, _nx, _py, etc, directly sent to GL
-    CF_CAMERA, // _forward, _back, etc, rotated and flipped as needed before sending to GL
-    CF_QUAKE1, // _ft, _bk, etc, rotated and flipped as needed before sending to GL
-    CF_PANORAMA, // TODO latlong encoded HDRI panorama typically used by Substance or Blender
-    CF_2D_ARRAY, // not a cube map but not a single 2d texture either
-    CF_2D_PACKED_MIPCHAIN, // usually 2d but can be an octahedron, packed mipmaps into single 2d texture atlas and limited to dim^2
-    CF_SINGLE, // SP: A single texture cubemap. All six sides in one image.
+    @"2d", // not a cube map
+    native, // _px, _nx, _py, etc, directly sent to GL
+    camera, // _forward, _back, etc, rotated and flipped as needed before sending to GL
+    quake1, // _ft, _bk, etc, rotated and flipped as needed before sending to GL
+    panorama, // TODO latlong encoded HDRI panorama typically used by Substance or Blender
+    @"2d_array", // not a cube map but not a single 2d texture either
+    @"2d_packed_mipchain", // usually 2d but can be an octahedron, packed mipmaps into single 2d texture atlas and limited to dim^2
+    single, // SP: A single texture cubemap. All six sides in one image.
 };
 
 const TextureType = enum(c_int) {
-    TT_DISABLED,
-    TT_2D,
-    TT_CUBIC,
-    // RB begin
-    TT_2D_ARRAY,
-    TT_2D_MULTISAMPLE,
-    // RB end
+    disabled,
+    @"2d",
+    cubic,
+    @"2d_array",
+    @"2d_multisample",
 };
 
 pub const TextureFormat = enum(c_int) {
-    FMT_NONE,
-
-    //------------------------
-    // Standard color image formats
-    //------------------------
-
-    FMT_RGBA8, // 32 bpp
-    FMT_XRGB8, // 32 bpp
-
-    //------------------------
-    // Alpha channel only
-    //------------------------
-
-    // Alpha ends up being the same as L8A8 in our current implementation, because straight
-    // alpha gives 0 for color, but we want 1.
-    FMT_ALPHA,
-
-    //------------------------
-    // Luminance replicates the value across RGB with a constant A of 255
-    // Intensity replicates the value across RGBA
-    //------------------------
-
-    FMT_L8A8, // 16 bpp
-    FMT_LUM8, //  8 bpp
-    FMT_INT8, //  8 bpp
-
-    //------------------------
-    // Compressed texture formats
-    //------------------------
-
-    FMT_DXT1, // 4 bpp
-    FMT_DXT5, // 8 bpp
-
-    //------------------------
-    // Depth buffer formats
-    //------------------------
-
-    FMT_DEPTH, // 24 bpp
-
-    //------------------------
-    //
-    //------------------------
-
-    FMT_X16, // 16 bpp
-    FMT_Y16_X16, // 32 bpp
-    FMT_RGB565, // 16 bpp
-
-    // RB: don't change above for .bimage compatibility up until RBDOOM-3-BFG 1.1
-    FMT_ETC1_RGB8_OES, // 4 bpp
-    FMT_SHADOW_ARRAY, // 32 bpp * 6
-    FMT_RG16F, // 32 bpp
-    FMT_RGBA16F, // 64 bpp
-    FMT_RGBA32F, // 128 bpp
-    FMT_R32F, // 32 bpp
-    FMT_R11G11B10F, // 32 bpp
-
-    // ^-- used up until RBDOOM-3-BFG 1.3
-    FMT_R8,
-    FMT_DEPTH_STENCIL, // 32 bpp
-    FMT_RGBA16S, // 64 bpp
-    FMT_SRGB8,
+    none,
+    rgba8, // 32 bpp
+    xrgb8, // 32 bpp
+    alpha,
+    l8a8, // 16 bpp
+    lum8, //  8 bpp
+    int8, //  8 bpp
+    dxt1, // 4 bpp
+    dxt5, // 8 bpp
+    depth, // 24 bpp
+    x16, // 16 bpp
+    y16_x16, // 32 bpp
+    rgb565, // 16 bpp
+    etc1_rgb8_oes, // 4 bpp
+    shadow_array, // 32 bpp * 6
+    rg16f, // 32 bpp
+    rgba16f, // 64 bpp
+    rgba32f, // 128 bpp
+    r32f, // 32 bpp
+    r11g11b10f, // 32 bpp
+    r8,
+    depth_stencil, // 32 bpp
+    rgba16s, // 64 bpp
+    srgb8,
 };
 
 pub const TextureColor = enum(c_int) {
-    CFM_DEFAULT, // RGBA
-    CFM_NORMAL_DXT5, // XY format and use the fast DXT5 compressor
-    CFM_YCOCG_DXT5, // convert RGBA to CoCg_Y format
-    CFM_GREEN_ALPHA, // Copy the alpha channel to green
-
-    // RB: don't change above for legacy .bimage compatibility
-    CFM_YCOCG_RGBA8,
-    // RB end
+    default, // RGBA
+    normal_dxt5, // XY format and use the fast DXT5 compressor
+    ycocg_dxt5, // convert RGBA to CoCg_Y format
+    green_alpha, // Copy the alpha channel to green
+    ycocg_rgba8,
 };
 
 const ImageOptions = extern struct {
-    textureType: TextureType = .TT_2D,
-    format: TextureFormat = .FMT_NONE,
-    colorFormat: TextureColor = .CFM_DEFAULT,
+    textureType: TextureType = .@"2d",
+    format: TextureFormat = .none,
+    colorFormat: TextureColor = .default,
     samples: u32 = 1,
     width: u32 = 0,
     height: u32 = 0,
@@ -161,13 +117,13 @@ pub const Image = extern struct {
     var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(c.VmaAllocation) = undefined;
 
     imgName: idlib.idStr = .{},
-    cubeFiles: CubeFiles = .CF_2D,
+    cubeFiles: CubeFiles = .@"2d",
     cubeMapSize: u32 = 0,
     generatorFunction: ?*const ImageGeneratorFunction = null,
-    usage: TextureUsage = .TD_DEFAULT,
+    usage: TextureUsage = .default,
     opts: ImageOptions = .{},
-    filter: material.TextureFilter = .TF_DEFAULT,
-    repeat: material.TextureRepeat = .TR_REPEAT,
+    filter: material.TextureFilter = .default,
+    repeat: material.TextureRepeat = .repeat,
     isLoaded: bool = false,
     referencedOutsideLevelLoad: bool = false,
     levelLoadReferenced: bool = false,
@@ -193,10 +149,10 @@ pub const Image = extern struct {
 
         if (!force) {
             const current_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP;
-            if (image.cubeFiles == .CF_NATIVE or
-                image.cubeFiles == .CF_CAMERA or
-                image.cubeFiles == .CF_QUAKE1 or
-                image.cubeFiles == .CF_SINGLE)
+            if (image.cubeFiles == .native or
+                image.cubeFiles == .camera or
+                image.cubeFiles == .quake1 or
+                image.cubeFiles == .single)
             {
                 // TODO: loadCubeImages();
             } else {
@@ -289,14 +245,14 @@ pub const Image = extern struct {
             @ptrCast(&data),
             size,
             size,
-            .TF_DEFAULT,
-            .TR_REPEAT,
-            .TD_DEFAULT,
+            .default,
+            .repeat,
+            .default,
             opt_command_list,
             false,
             false,
             1,
-            .CF_2D,
+            .@"2d",
         );
 
         image.defaulted = true;
@@ -316,9 +272,9 @@ pub const Image = extern struct {
         image.filter = filter;
         image.repeat = repeat;
         image.usage = usage;
-        image.cubeFiles = .CF_2D_ARRAY;
+        image.cubeFiles = .@"2d_array";
 
-        image.opts.textureType = .TT_2D_ARRAY;
+        image.opts.textureType = .@"2d_array";
         image.opts.width = width;
         image.opts.height = height;
         image.opts.numLevels = 0;
@@ -353,7 +309,7 @@ pub const Image = extern struct {
         image.usage = usage;
         image.cubeFiles = cube_files;
 
-        image.opts.textureType = if (sample_count > 1) .TT_2D_MULTISAMPLE else .TT_2D;
+        image.opts.textureType = if (sample_count > 1) .@"2d_multisample" else .@"2d";
         image.opts.width = width;
         image.opts.height = height;
         image.opts.numLevels = 0;
@@ -361,20 +317,20 @@ pub const Image = extern struct {
         image.opts.isRenderTarget = is_render_target;
         image.opts.isUAV = is_uav;
 
-        if (image.cubeFiles == .CF_2D_PACKED_MIPCHAIN) {
+        if (image.cubeFiles == .@"2d_packed_mipchain") {
             image.opts.width = @intFromFloat(@as(f32, @floatFromInt(width)) * (2.0 / 3.0));
         }
 
         image.deriveOpts();
 
-        if (pic == null or image.opts.textureType == .TT_2D_MULTISAMPLE) {
+        if (pic == null or image.opts.textureType == .@"2d_multisample") {
             image.createTexture();
             image.isLoaded = true;
         } else {
             var im = BinaryImage{};
             try im.init(image.imgName.constSlice());
 
-            if (image.cubeFiles == .CF_2D_PACKED_MIPCHAIN) {
+            if (image.cubeFiles == .@"2d_packed_mipchain") {
                 im.load2DAtlasMipchainFromMemory(
                     width,
                     image.opts.height,
@@ -433,7 +389,7 @@ pub const Image = extern struct {
     }
 
     fn getRowPitch(format: TextureFormat, width: u32) u32 {
-        if (format == .FMT_DXT1 or format == .FMT_DXT5) {
+        if (format == .dxt1 or format == .dxt5) {
             const block_size = blockSizeForFormat(format);
 
             return @max(1, (width + 3) / 4) * block_size;
@@ -445,38 +401,38 @@ pub const Image = extern struct {
 
     fn bitsForFormat(format: TextureFormat) u32 {
         return switch (format) {
-            .FMT_NONE => 0,
-            .FMT_RGBA8 => 32,
-            .FMT_XRGB8 => 32,
-            .FMT_RGB565 => 16,
-            .FMT_L8A8 => 16,
-            .FMT_ALPHA => 8,
-            .FMT_LUM8 => 8,
-            .FMT_INT8 => 8,
-            .FMT_DXT1 => 4,
-            .FMT_DXT5 => 8,
-            .FMT_ETC1_RGB8_OES => 4,
-            .FMT_SHADOW_ARRAY => (32 * 6),
-            .FMT_RG16F => 32,
-            .FMT_RGBA16F => 64,
-            .FMT_RGBA16S => 64,
-            .FMT_RGBA32F => 128,
-            .FMT_R32F => 32,
-            .FMT_R11G11B10F => 32,
-            .FMT_DEPTH => 32,
-            .FMT_DEPTH_STENCIL => 32,
-            .FMT_X16 => 16,
-            .FMT_Y16_X16 => 32,
-            .FMT_R8 => 4,
+            .none => 0,
+            .rgba8 => 32,
+            .xrgb8 => 32,
+            .rgb565 => 16,
+            .l8a8 => 16,
+            .alpha => 8,
+            .lum8 => 8,
+            .int8 => 8,
+            .dxt1 => 4,
+            .dxt5 => 8,
+            .etc1_rgb8_oes => 4,
+            .shadow_array => (32 * 6),
+            .rg16f => 32,
+            .rgba16f => 64,
+            .rgba16s => 64,
+            .rgba32f => 128,
+            .r32f => 32,
+            .r11g11b10f => 32,
+            .depth => 32,
+            .depth_stencil => 32,
+            .x16 => 16,
+            .y16_x16 => 32,
+            .r8 => 4,
             else => unreachable,
         };
     }
 
     fn blockSizeForFormat(format: TextureFormat) u32 {
         return switch (format) {
-            .FMT_NONE => 0,
-            .FMT_DXT1 => 8,
-            .FMT_DXT5 => 16,
+            .none => 0,
+            .dxt1 => 8,
+            .dxt5 => 16,
             else => 1,
         };
     }
@@ -484,125 +440,108 @@ pub const Image = extern struct {
     fn deriveOpts(image: *Image) void {
         const opts = &image.opts;
 
-        if (opts.format == .FMT_NONE) {
-            opts.colorFormat = .CFM_DEFAULT;
+        if (opts.format == .none) {
+            opts.colorFormat = .default;
 
             switch (image.usage) {
-                .TD_COVERAGE => {
-                    opts.format = .FMT_DXT1;
-                    opts.colorFormat = .CFM_GREEN_ALPHA;
+                .coverage => {
+                    opts.format = .dxt1;
+                    opts.colorFormat = .green_alpha;
                 },
-
-                .TD_DEPTH => {
-                    opts.format = .FMT_DEPTH;
+                .depth => {
+                    opts.format = .depth;
                 },
-
-                // sp begin
-                .TD_DEPTH_STENCIL => {
-                    opts.format = .FMT_DEPTH_STENCIL;
+                .depth_stencil => {
+                    opts.format = .depth_stencil;
                 },
-                // sp end
-
-                .TD_SHADOW_ARRAY => {
-                    opts.format = .FMT_SHADOW_ARRAY;
+                .shadow_array => {
+                    opts.format = .shadow_array;
                 },
-
-                .TD_RG16F => {
-                    opts.format = .FMT_RG16F;
+                .rg16f => {
+                    opts.format = .rg16f;
                 },
-
-                .TD_RGBA16F => {
-                    opts.format = .FMT_RGBA16F;
+                .rgba16f => {
+                    opts.format = .rgba16f;
                 },
-
-                .TD_RGBA16S => {
-                    opts.format = .FMT_RGBA16S;
+                .rgba16s => {
+                    opts.format = .rgba16s;
                 },
-
-                .TD_RGBA32F => {
-                    opts.format = .FMT_RGBA32F;
+                .rgba32f => {
+                    opts.format = .rgba32f;
                 },
-
-                .TD_R32F => {
-                    opts.format = .FMT_R32F;
+                .r32f => {
+                    opts.format = .r32f;
                 },
-
-                .TD_R8F => {
-                    opts.format = .FMT_R8;
+                .r8f => {
+                    opts.format = .r8;
                 },
-
-                .TD_R11G11B10F => {
-                    opts.format = .FMT_R11G11B10F;
+                .r11g11b10f => {
+                    opts.format = .r11g11b10f;
                 },
-
-                .TD_DIFFUSE => {
+                .diffuse => {
                     // TD_DIFFUSE gets only set to when its a diffuse texture for an interaction
                     opts.gammaMips = true;
-                    opts.format = .FMT_DXT5;
-                    opts.colorFormat = .CFM_YCOCG_DXT5;
+                    opts.format = .dxt5;
+                    opts.colorFormat = .ycocg_dxt5;
                 },
-                .TD_SPECULAR => {
+                .specular => {
                     opts.gammaMips = true;
-                    opts.format = .FMT_DXT1;
-                    opts.colorFormat = .CFM_DEFAULT;
+                    opts.format = .dxt1;
+                    opts.colorFormat = .default;
                 },
-
-                .TD_SPECULAR_PBR_RMAO => {
+                .specular_pbr_rmao => {
                     opts.gammaMips = false;
-                    opts.format = .FMT_DXT1;
-                    opts.colorFormat = .CFM_DEFAULT;
+                    opts.format = .dxt1;
+                    opts.colorFormat = .default;
                 },
-
-                .TD_SPECULAR_PBR_RMAOD => {
+                .specular_pbr_rmaod => {
                     opts.gammaMips = false;
-                    opts.format = .FMT_DXT5;
-                    opts.colorFormat = .CFM_DEFAULT;
+                    opts.format = .dxt5;
+                    opts.colorFormat = .default;
                 },
-
-                .TD_DEFAULT => {
+                .default => {
                     opts.gammaMips = true;
-                    opts.format = .FMT_DXT5;
-                    opts.colorFormat = .CFM_DEFAULT;
+                    opts.format = .dxt5;
+                    opts.colorFormat = .default;
                 },
-                .TD_BUMP => {
-                    opts.format = .FMT_DXT5;
-                    opts.colorFormat = .CFM_NORMAL_DXT5;
+                .bump => {
+                    opts.format = .dxt5;
+                    opts.colorFormat = .normal_dxt5;
                 },
-                .TD_FONT => {
-                    opts.format = .FMT_DXT1;
-                    opts.colorFormat = .CFM_GREEN_ALPHA;
+                .font => {
+                    opts.format = .dxt1;
+                    opts.colorFormat = .green_alpha;
                     opts.numLevels = 4; // We only support 4 levels because we align to 16 in the exporter
                     opts.gammaMips = true;
                 },
-                .TD_LIGHT => {
+                .light => {
                     // TODO check binary format version
                     // D3 BFG assets require RGB565 but it introduces color banding
                     // mods would prefer .FMT_RGBA8
-                    opts.format = .FMT_RGB565; //.FMT_RGBA8;
+                    opts.format = .rgb565; //.FMT_RGBA8;
                     opts.gammaMips = true;
                 },
-                .TD_LOOKUP_TABLE_MONO => {
-                    opts.format = .FMT_INT8;
+                .lookup_table_mono => {
+                    opts.format = .int8;
                 },
-                .TD_LOOKUP_TABLE_ALPHA => {
-                    opts.format = .FMT_ALPHA;
+                .lookup_table_alpha => {
+                    opts.format = .alpha;
                 },
-                .TD_LOOKUP_TABLE_RGB1, .TD_LOOKUP_TABLE_RGBA => {
-                    opts.format = .FMT_RGBA8;
+                .lookup_table_rgb1, .lookup_table_rgba => {
+                    opts.format = .rgba8;
                 },
-                // motorsep 05-17-2015; added this for uncompressed cubemap/skybox textures
-                .TD_HIGHQUALITY_CUBE => {
-                    opts.colorFormat = .CFM_DEFAULT;
-                    opts.format = .FMT_RGBA8;
+                .highquality_cube => {
+                    opts.colorFormat = .default;
+                    opts.format = .rgba8;
                     opts.gammaMips = true;
                 },
-                .TD_LOWQUALITY_CUBE => {
-                    opts.colorFormat = .CFM_DEFAULT; // .CFM_YCOCG_DXT5;
-                    opts.format = .FMT_DXT5;
+                .lowquality_cube => {
+                    opts.colorFormat = .default; // .CFM_YCOCG_DXT5;
+                    opts.format = .dxt5;
                     opts.gammaMips = true;
                 },
                 else => {
-                    opts.format = .FMT_RGBA8;
+                    opts.format = .rgba8;
                     unreachable;
                 },
             }
@@ -611,7 +550,7 @@ pub const Image = extern struct {
         if (opts.numLevels == 0) {
             opts.numLevels = 1;
 
-            if (image.filter == .TF_LINEAR or image.filter == .TF_NEAREST) {
+            if (image.filter == .linear or image.filter == .nearest) {
                 // don't create mip maps if we aren't going to be using them
             } else {
                 var temp_width = opts.width;
@@ -619,7 +558,9 @@ pub const Image = extern struct {
                 while (temp_width > 1 or temp_height > 1) {
                     temp_width >>= 1;
                     temp_height >>= 1;
-                    if ((opts.format == .FMT_DXT1 or opts.format == .FMT_DXT5 or opts.format == .FMT_ETC1_RGB8_OES) and
+                    if ((opts.format == .dxt1 or
+                        opts.format == .dxt5 or
+                        opts.format == .etc1_rgb8_oes) and
                         ((temp_width & 0x3) != 0 or (temp_height & 0x3) != 0))
                     {
                         break;
@@ -635,27 +576,27 @@ pub const Image = extern struct {
         image.createSamplerDesc();
 
         const format: nvrhi.Format = switch (image.opts.format) {
-            .FMT_RGBA8 => .RGBA8_UNORM,
-            .FMT_XRGB8 => .X32G8_UINT,
-            .FMT_RGB565 => .B5G6R5_UNORM,
-            .FMT_ALPHA, .FMT_LUM8, .FMT_INT8, .FMT_R8 => .R8_UNORM,
-            .FMT_L8A8 => .RG8_UNORM,
-            .FMT_DXT1 => .BC1_UNORM,
-            .FMT_DXT5 => .BC3_UNORM,
-            .FMT_DEPTH, .FMT_SHADOW_ARRAY => .D32,
-            .FMT_DEPTH_STENCIL => if (device_manager.instance().device_params.enable_image_format_d24s8)
+            .rgba8 => .RGBA8_UNORM,
+            .xrgb8 => .X32G8_UINT,
+            .rgb565 => .B5G6R5_UNORM,
+            .alpha, .lum8, .int8, .r8 => .R8_UNORM,
+            .l8a8 => .RG8_UNORM,
+            .dxt1 => .BC1_UNORM,
+            .dxt5 => .BC3_UNORM,
+            .depth, .shadow_array => .D32,
+            .depth_stencil => if (device_manager.instance().device_params.enable_image_format_d24s8)
                 .D24S8
             else
                 .D32S8,
-            .FMT_RG16F => .RG16_FLOAT,
-            .FMT_RGBA16F => .RGBA16_FLOAT,
-            .FMT_RGBA16S => .RGBA16_SNORM,
-            .FMT_RGBA32F => .RGBA32_FLOAT,
-            .FMT_R32F => .R32_FLOAT,
-            .FMT_X16, .FMT_Y16_X16 => .RGBA8_UINT,
+            .rg16f => .RG16_FLOAT,
+            .rgba16f => .RGBA16_FLOAT,
+            .rgba16s => .RGBA16_SNORM,
+            .rgba32f => .RGBA32_FLOAT,
+            .r32f => .R32_FLOAT,
+            .x16, .y16_x16 => .RGBA8_UINT,
             // see http://what-when-how.com/Tutorial/topic-615ll9ug/Praise-for-OpenGL-ES-30-Programming-Guide-291.html
-            .FMT_R11G11B10F => .R11G11B10_FLOAT,
-            .FMT_SRGB8 => .SRGBA8_UNORM,
+            .r11g11b10f => .R11G11B10_FLOAT,
+            .srgb8 => .SRGBA8_UNORM,
             else => {
                 std.debug.print(
                     "[IMAGE][ERR] Unhandled image format {} in {s}\n",
@@ -687,32 +628,32 @@ pub const Image = extern struct {
             .mipLevels = image.opts.numLevels,
         };
 
-        if (image.opts.colorFormat == .CFM_GREEN_ALPHA) {
+        if (image.opts.colorFormat == .green_alpha) {
             texture_desc.componentMapping.r = .One;
             texture_desc.componentMapping.g = .One;
             texture_desc.componentMapping.b = .One;
             texture_desc.componentMapping.a = .Green;
-        } else if (image.opts.format == .FMT_LUM8) {
+        } else if (image.opts.format == .lum8) {
             texture_desc.componentMapping.r = .Red;
             texture_desc.componentMapping.g = .Red;
             texture_desc.componentMapping.b = .Red;
             texture_desc.componentMapping.a = .One;
-        } else if (image.opts.format == .FMT_L8A8) {
+        } else if (image.opts.format == .l8a8) {
             texture_desc.componentMapping.r = .Red;
             texture_desc.componentMapping.g = .Red;
             texture_desc.componentMapping.b = .Red;
             texture_desc.componentMapping.a = .Green;
-        } else if (image.opts.format == .FMT_ALPHA) {
+        } else if (image.opts.format == .alpha) {
             texture_desc.componentMapping.r = .One;
             texture_desc.componentMapping.g = .One;
             texture_desc.componentMapping.b = .One;
             texture_desc.componentMapping.a = .Red;
-        } else if (image.opts.format == .FMT_INT8) {
+        } else if (image.opts.format == .int8) {
             texture_desc.componentMapping.r = .Red;
             texture_desc.componentMapping.g = .Red;
             texture_desc.componentMapping.b = .Red;
             texture_desc.componentMapping.a = .Red;
-        } else if (image.opts.format == .FMT_R11G11B10F) {
+        } else if (image.opts.format == .r11g11b10f) {
             texture_desc.componentMapping.r = .Red;
             texture_desc.componentMapping.g = .Green;
             texture_desc.componentMapping.b = .Blue;
@@ -725,9 +666,9 @@ pub const Image = extern struct {
             texture_desc.isRenderTarget = true;
             texture_desc.keepInitialState = true;
 
-            if (image.opts.format == .FMT_DEPTH or
-                image.opts.format == .FMT_DEPTH_STENCIL or
-                image.opts.format == .FMT_SHADOW_ARRAY)
+            if (image.opts.format == .depth or
+                image.opts.format == .depth_stencil or
+                image.opts.format == .shadow_array)
             {
                 texture_desc.initialState = .{ .DepthWrite = true };
                 texture_desc.clearValue = .{ .r = 1, .g = 1, .b = 1, .a = 1 };
@@ -739,22 +680,22 @@ pub const Image = extern struct {
             }
         }
 
-        if (image.opts.textureType == .TT_2D) {
+        if (image.opts.textureType == .@"2d") {
             texture_desc.dimension = .Texture2D;
-        } else if (image.opts.textureType == .TT_CUBIC) {
+        } else if (image.opts.textureType == .cubic) {
             texture_desc.dimension = .TextureCube;
             texture_desc.arraySize = 6;
-        } else if (image.opts.textureType == .TT_2D_ARRAY) {
+        } else if (image.opts.textureType == .@"2d_array") {
             texture_desc.dimension = .Texture2DArray;
             texture_desc.arraySize = 6;
-        } else if (image.opts.textureType == .TT_2D_MULTISAMPLE) {
+        } else if (image.opts.textureType == .@"2d_multisample") {
             texture_desc.dimension = .Texture2DMS;
             texture_desc.arraySize = 1;
         }
 
         if (device_manager.vma_allocator) |vma_allocator| {
             const image_create_info = vulkan.ImageCreateInfo{
-                .flags = if (image.opts.textureType == .TT_CUBIC)
+                .flags = if (image.opts.textureType == .cubic)
                     .{ .cube_compatible_bit = true }
                 else
                     .{},
@@ -800,7 +741,7 @@ pub const Image = extern struct {
     }
 
     pub inline fn isCompressed(image: *const Image) bool {
-        return image.opts.format == .FMT_DXT1 or image.opts.format == .FMT_DXT5;
+        return image.opts.format == .dxt1 or image.opts.format == .dxt5;
     }
 
     fn createSamplerDesc(image: *Image) void {
@@ -812,33 +753,30 @@ pub const Image = extern struct {
             .maxAnisotropy = 1.0,
         };
 
-        if (image.opts.format == .FMT_DEPTH or image.opts.format == .FMT_DEPTH_STENCIL) {
+        if (image.opts.format == .depth or image.opts.format == .depth_stencil) {
             image.samplerDesc.reductionType = .Comparison;
         }
 
         const r_maxAnisotropicFiltering = 8;
 
         switch (image.filter) {
-            .TF_DEFAULT => {
+            .default => {
                 image.samplerDesc.minFilter = true;
                 image.samplerDesc.magFilter = true;
                 image.samplerDesc.mipFilter = true;
                 image.samplerDesc.maxAnisotropy = r_maxAnisotropicFiltering;
             },
-
-            .TF_LINEAR => {
+            .linear => {
                 image.samplerDesc.minFilter = true;
                 image.samplerDesc.magFilter = true;
                 image.samplerDesc.mipFilter = true;
             },
-
-            .TF_NEAREST => {
+            .nearest => {
                 image.samplerDesc.minFilter = false;
                 image.samplerDesc.magFilter = false;
                 image.samplerDesc.mipFilter = false;
             },
-
-            .TF_NEAREST_MIPMAP => {
+            .nearest_mipmap => {
                 image.samplerDesc.minFilter = true;
                 image.samplerDesc.magFilter = true;
                 image.samplerDesc.mipFilter = true;
@@ -846,26 +784,23 @@ pub const Image = extern struct {
         }
 
         switch (image.repeat) {
-            .TR_REPEAT => {
+            .repeat => {
                 image.samplerDesc.addressU = .Repeat;
                 image.samplerDesc.addressV = .Repeat;
                 image.samplerDesc.addressW = .Repeat;
             },
-
-            .TR_CLAMP => {
+            .clamp => {
                 image.samplerDesc.addressU = .ClampToEdge;
                 image.samplerDesc.addressV = .ClampToEdge;
                 image.samplerDesc.addressW = .ClampToEdge;
             },
-
-            .TR_CLAMP_TO_ZERO_ALPHA => {
+            .clamp_to_zero_alpha => {
                 image.samplerDesc.borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
                 image.samplerDesc.addressU = .ClampToBorder;
                 image.samplerDesc.addressV = .ClampToBorder;
                 image.samplerDesc.addressW = .ClampToBorder;
             },
-
-            .TR_CLAMP_TO_ZERO => {
+            .clamp_to_zero => {
                 image.samplerDesc.borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 };
                 image.samplerDesc.addressU = .ClampToBorder;
                 image.samplerDesc.addressV = .ClampToBorder;

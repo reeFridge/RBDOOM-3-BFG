@@ -176,7 +176,7 @@ pub const RenderLightLocal = extern struct {
         light.foggedPortals = null;
 
         if (light.lightShader) |shader| {
-            if (shader.isFogLight() or shader.testMaterialFlag(MaterialFlags.MF_NOPORTALFOG))
+            if (shader.isFogLight() or shader.testMaterialFlag(.{ .noportalfog = true }))
                 return;
         }
 

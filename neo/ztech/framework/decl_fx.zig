@@ -1,3 +1,4 @@
+const std = @import("std");
 const Decl = @import("decl_manager.zig").Decl;
 const idlib = @import("../idlib.zig");
 const CVec3 = @import("../math/vector.zig").CVec3;
@@ -54,7 +55,12 @@ const FXSingleAction = extern struct {
 };
 
 pub const DeclFX = extern struct {
-    base: Decl,
-    events: idlib.idList(FXSingleAction),
-    joint: idlib.idStr,
+    base: Decl = .{},
+    events: idlib.idList(FXSingleAction) = .{},
+    joint: idlib.idStr = .{},
+
+    pub fn init(self: *DeclFX) void {
+        self.* = .{};
+        self.joint.initEmptyBuffer();
+    }
 };

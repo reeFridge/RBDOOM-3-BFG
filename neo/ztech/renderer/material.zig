@@ -19,7 +19,7 @@ pub fn remapShaderBySkin(
     if (opt_custom_shader) |custom_shader| {
         // this is sort of a hack, but cause deformed surfaces to map to empty surfaces,
         // so the item highlight overlay doesn't highlight the autosprite surface
-        return if (shader.deformType() != .DFRM_NONE)
+        return if (shader.deformType() != .none)
             null
         else
             custom_shader;
@@ -31,23 +31,50 @@ pub fn remapShaderBySkin(
         shader;
 }
 
-pub const Flags = struct {
-    pub const MF_DEFAULTED: c_int = 1;
-    pub const MF_POLYGONOFFSET: c_int = 2;
-    pub const MF_NOSHADOWS: c_int = 4;
-    pub const MF_FORCESHADOWS: c_int = 8;
-    pub const MF_NOSELFSHADOW: c_int = 16;
-    pub const MF_NOPORTALFOG: c_int = 32;
-    pub const MF_EDITOR_VISIBLE: c_int = 64;
-    pub const MF_LOD1_SHIFT: c_int = 7;
-    pub const MF_LOD1: c_int = 128;
-    pub const MF_LOD2: c_int = 256;
-    pub const MF_LOD3: c_int = 512;
-    pub const MF_LOD4: c_int = 1024;
-    pub const MF_LOD_PERSISTENT: c_int = 2048;
-    pub const MF_GUITARGET: c_int = 4096;
-    pub const MF_AUTOGEN_TEMPLATE: c_int = 8192;
-    pub const MF_ORIGIN: c_int = 16384;
+pub const ContentFlags = packed struct(u32) {
+    solid: bool = false, // an eye is never valid in a solid
+    @"opaque": bool = false, // blocks visibility (for ai)
+    water: bool = false, // used for water
+    playerclip: bool = false, // solid to players
+    monsterclip: bool = false, // solid to monsters
+    moveableclip: bool = false, // solid to moveable entities
+    ikclip: bool = false, // solid to IK
+    blood: bool = false, // used to detect blood decals
+    body: bool = false, // used for actors
+    projectile: bool = false, // used for projectiles
+    corpse: bool = false, // used for dead bodies
+    rendermodel: bool = false, // used for render models for collision detection
+    trigger: bool = false, // used for triggers
+    aas_solid: bool = false, // solid for AAS
+    aas_obstacle: bool = false, // used to compile an obstacle into AAS that can be enabled/disabled
+    flashlight_trigger: bool = false, // used for triggers that are activated by the flashlight
+    slime: bool = false, // used for slime
+    fog: bool = false, // used for fog
+    lava: bool = false,
+    areaportal: bool = false, // portal separating renderer areas
+    nocsg: bool = false, // don't cut this brush with CSG operations in the editor
+    origin: bool = false,
+    reserved_: u10 = 0,
+};
+
+pub const Flags = packed struct(u32) {
+    defaulted: bool = false,
+    polygonoffset: bool = false,
+    noshadows: bool = false,
+    forceshadows: bool = false,
+    noselfshadow: bool = false,
+    noportalfog: bool = false,
+    editor_visible: bool = false,
+    lod1_shift: bool = false,
+    lod1: bool = false,
+    lod2: bool = false,
+    lod3: bool = false,
+    lod4: bool = false,
+    lod_persistent: bool = false,
+    guitarget: bool = false,
+    autogen_template: bool = false,
+    origin: bool = false,
+    reserved_: u16 = 0,
 };
 
 pub const MAX_VERTEX_PARAMS: usize = 4;
@@ -60,8 +87,12 @@ pub const DecalInfo = extern struct {
     end: [4]f32,
 };
 
+pub const Cinematic = extern struct {
+    vptr: *anyopaque,
+};
+
 pub const TextureStage = extern struct {
-    cinematic: ?*anyopaque,
+    cinematic: ?*Cinematic,
     image: ?*Image,
     texgen: TexGen,
     hasMatrix: bool,
@@ -73,59 +104,59 @@ pub const TextureStage = extern struct {
 };
 
 pub const MaterialCoverage = enum(c_int) {
-    MC_BAD,
-    MC_OPAQUE, // completely fills the triangle, will have black drawn on fillDepthBuffer
-    MC_PERFORATED, // may have alpha tested holes
-    MC_TRANSLUCENT, // blended with background
+    bad,
+    @"opaque", // completely fills the triangle, will have black drawn on fillDepthBuffer
+    perforated, // may have alpha tested holes
+    translucent, // blended with background
 };
 
 pub const DynamicImage = enum(c_int) {
-    DI_STATIC,
-    DI_SCRATCH,
-    DI_CUBE_RENDER,
-    DI_MIRROR_RENDER,
-    DI_XRAY_RENDER,
-    DI_REMOTE_RENDER,
-    DI_GUI_RENDER,
-    DI_RENDER_TARGET,
+    static,
+    scratch,
+    cube_render,
+    mirror_render,
+    xray_render,
+    remote_render,
+    gui_render,
+    render_target,
 };
 
 pub const Deform = enum(c_int) {
-    DFRM_NONE,
-    DFRM_SPRITE,
-    DFRM_TUBE,
-    DFRM_FLARE,
-    DFRM_EXPAND,
-    DFRM_MOVE,
-    DFRM_EYEBALL,
-    DFRM_PARTICLE,
-    DFRM_PARTICLE2,
-    DFRM_TURB,
+    none,
+    sprite,
+    tube,
+    flare,
+    expand,
+    move,
+    eyeball,
+    particle,
+    particle2,
+    turb,
 };
 
 pub const TexGen = enum(c_int) {
-    TG_EXPLICIT,
-    TG_DIFFUSE_CUBE,
-    TG_REFLECT_CUBE,
-    TG_SKYBOX_CUBE,
-    TG_WOBBLESKY_CUBE,
-    TG_SCREEN,
-    TG_SCREEN2,
-    TG_GLASSWARP,
+    explicit,
+    diffuse_cube,
+    reflect_cube,
+    skybox_cube,
+    wobblesky_cube,
+    screen,
+    screen2,
+    glasswarp,
 };
 
 pub const StageLighting = enum(c_int) {
-    SL_AMBIENT,
-    SL_BUMP,
-    SL_DIFFUSE,
-    SL_SPECULAR,
-    SL_COVERAGE,
+    ambient,
+    bump,
+    diffuse,
+    specular,
+    coverage,
 };
 
 pub const StageVertexColor = enum(c_int) {
-    SVC_IGNORE,
-    SVC_MODULATE,
-    SVC_INVERSE_MODULATE,
+    ignore,
+    modulate,
+    inverse_modulate,
 };
 
 pub const ColorStage = extern struct {
@@ -133,39 +164,39 @@ pub const ColorStage = extern struct {
 };
 
 pub const StencilComp = enum(c_int) {
-    STENCIL_COMP_GREATER,
-    STENCIL_COMP_GEQUAL,
-    STENCIL_COMP_LESS,
-    STENCIL_COMP_LEQUAL,
-    STENCIL_COMP_EQUAL,
-    STENCIL_COMP_NOTEQUAL,
-    STENCIL_COMP_ALWAYS,
-    STENCIL_COMP_NEVER,
+    greater,
+    gequal,
+    less,
+    lequal,
+    equal,
+    notequal,
+    always,
+    never,
 };
 
 pub const StencilOperation = enum(c_int) {
-    STENCIL_OP_KEEP,
-    STENCIL_OP_ZERO,
-    STENCIL_OP_REPLACE,
-    STENCIL_OP_INCRSAT,
-    STENCIL_OP_DECRSAT,
-    STENCIL_OP_INVERT,
-    STENCIL_OP_INCRWRAP,
-    STENCIL_OP_DECRWRAP,
+    keep,
+    zero,
+    replace,
+    incrsat,
+    decrsat,
+    invert,
+    incrwrap,
+    decrwrap,
 };
 
 pub const TextureFilter = enum(c_int) {
-    TF_LINEAR,
-    TF_NEAREST,
-    TF_NEAREST_MIPMAP, // RB: no linear interpolation but explicit mip-map levels for hierarchical depth buffer
-    TF_DEFAULT, // use the user-specified r_textureFilter
+    linear,
+    nearest,
+    nearest_mipmap,
+    default,
 };
 
 pub const TextureRepeat = enum(c_int) {
-    TR_REPEAT,
-    TR_CLAMP,
-    TR_CLAMP_TO_ZERO, // guarantee 0,0,0,255 edge for projected textures
-    TR_CLAMP_TO_ZERO_ALPHA, // guarantee 0 alpha edge for projected textures
+    repeat,
+    clamp,
+    clamp_to_zero, // guarantee 0,0,0,255 edge for projected textures
+    clamp_to_zero_alpha, // guarantee 0 alpha edge for projected textures
 };
 
 pub const StencilStage = extern struct {
@@ -204,33 +235,33 @@ pub const ShaderStage = extern struct {
 };
 
 pub const CullType = enum(c_int) {
-    CT_FRONT_SIDED,
-    CT_BACK_SIDED,
-    CT_TWO_SIDED,
+    front_sided,
+    back_sided,
+    two_sided,
 };
 
 pub const SubViewType = enum(u16) {
-    SUBVIEW_NONE,
-    SUBVIEW_MIRROR,
-    SUBVIEW_DIRECT_PORTAL,
+    none,
+    mirror,
+    direct_portal,
 };
 
 pub const ExpOpType = enum(c_int) {
-    OP_TYPE_ADD,
-    OP_TYPE_SUBTRACT,
-    OP_TYPE_MULTIPLY,
-    OP_TYPE_DIVIDE,
-    OP_TYPE_MOD,
-    OP_TYPE_TABLE,
-    OP_TYPE_GT,
-    OP_TYPE_GE,
-    OP_TYPE_LT,
-    OP_TYPE_LE,
-    OP_TYPE_EQ,
-    OP_TYPE_NE,
-    OP_TYPE_AND,
-    OP_TYPE_OR,
-    OP_TYPE_SOUND,
+    add,
+    subtract,
+    multiply,
+    divide,
+    mod,
+    table,
+    gt,
+    ge,
+    lt,
+    le,
+    eq,
+    ne,
+    @"and",
+    @"or",
+    sound,
 };
 
 pub const ExpOp = extern struct {
@@ -256,6 +287,10 @@ pub const MAX_EXPRESSION_REGISTERS: usize = 4096;
 pub const MAX_SHADER_STAGES: usize = 256;
 pub const MAX_TEXGEN_REGISTERS: usize = 4;
 
+pub const MaterialSort = enum(c_int) {
+    bad = -1,
+};
+
 pub const Material = extern struct {
     pub const default_definition =
         \\{
@@ -266,55 +301,60 @@ pub const Material = extern struct {
         \\}
     ;
 
-    base: decl.Decl,
-    desc: idlib.idStr,
-    renderBump: idlib.idStr,
-    lightFalloffImage: ?*Image,
-    fastPathBumpImage: ?*Image,
-    fastPathDiffuseImage: ?*Image,
-    fastPathSpecularImage: ?*Image,
-    entityGui: c_int,
-    gui: ?*UserInterface,
-    noFog: bool,
-    spectrum: c_int,
-    polygonOffset: f32,
-    contentFlags: c_int,
-    surfaceFlags: c_int,
-    materialFlags: c_int,
-    decalInfo: DecalInfo,
-    sort: f32,
-    stereoEye: f32,
-    deform: Deform,
-    deformRegisters: [4]c_int,
-    deformDecl: ?*const decl.Decl,
-    texGenRegisters: [MAX_TEXGEN_REGISTERS]c_int,
-    coverage: MaterialCoverage,
-    cullType: CullType,
-    subViewType: SubViewType,
-    shouldCreateBackSides: bool,
-    fogLight: bool,
-    blendLight: bool,
-    ambientLight: bool,
-    unsmoothedTangents: bool,
-    mikktspace: bool,
-    hasSubview: bool,
-    allowOverlays: bool,
-    numOps: c_int,
-    ops: ?[*]ExpOp,
-    numRegisters: c_int,
-    expressionRegisters: ?[*]f32,
-    constantRegisters: ?[*]f32,
-    numStages: c_int,
-    numAmbientStages: c_int,
-    stages: ?[*]ShaderStage,
-    pd: ?*MtrParsingData,
-    surfaceArea: f32,
-    editorImageName: idlib.idStr,
-    editorImage: ?*Image,
-    editorAlpha: f32,
-    suppressInSubview: bool,
-    portalSky: bool,
-    refCount: c_int,
+    base: decl.Decl = .{},
+    desc: idlib.idStr = .{},
+    renderBump: idlib.idStr = .{},
+    lightFalloffImage: ?*Image = null,
+    fastPathBumpImage: ?*Image = null,
+    fastPathDiffuseImage: ?*Image = null,
+    fastPathSpecularImage: ?*Image = null,
+    entityGui: c_int = 0,
+    gui: ?*UserInterface = null,
+    noFog: bool = false,
+    spectrum: c_int = 0,
+    polygonOffset: f32 = 0,
+    contentFlags: ContentFlags = .{ .solid = true },
+    surfaceFlags: c_int = 0,
+    materialFlags: c_int = 0,
+    decalInfo: DecalInfo = .{
+        .stayTime = 10000,
+        .fadeTime = 4000,
+        .start = .{ 1, 1, 1, 1 },
+        .end = .{ 0, 0, 0, 0 },
+    },
+    sort: f32 = @floatFromInt(@intFromEnum(MaterialSort.bad)),
+    stereoEye: f32 = 0,
+    deform: Deform = .none,
+    deformRegisters: [4]c_int = [_]c_int{0} ** 4,
+    deformDecl: ?*const decl.Decl = null,
+    texGenRegisters: [MAX_TEXGEN_REGISTERS]c_int = [_]c_int{0} ** MAX_TEXGEN_REGISTERS,
+    coverage: MaterialCoverage = .bad,
+    cullType: CullType = .front_sided,
+    subViewType: SubViewType = .none,
+    shouldCreateBackSides: bool = false,
+    fogLight: bool = false,
+    blendLight: bool = false,
+    ambientLight: bool = false,
+    unsmoothedTangents: bool = false,
+    mikktspace: bool = false,
+    hasSubview: bool = false,
+    allowOverlays: bool = true,
+    numOps: u32 = 0,
+    ops: ?[*]ExpOp = null,
+    numRegisters: u32 = 0,
+    expressionRegisters: ?[*]f32 = null,
+    constantRegisters: ?[*]f32 = null,
+    numStages: u32 = 0,
+    numAmbientStages: u32 = 0,
+    stages: ?[*]ShaderStage = null,
+    pd: ?*MtrParsingData = null,
+    surfaceArea: f32 = 0,
+    editorImageName: idlib.idStr = .{},
+    editorImage: ?*Image = null,
+    editorAlpha: f32 = 1,
+    suppressInSubview: bool = false,
+    portalSky: bool = false,
+    refCount: u32 = 0,
 
     extern fn c_material_isDrawn(*const Material) bool;
     extern fn c_material_testMaterialFlag(*const Material, c_int) bool;
@@ -332,6 +372,13 @@ pub const Material = extern struct {
         f32,
         ?*anyopaque,
     ) void;
+
+    pub fn init(self: *Material) void {
+        self.* = .{};
+        self.desc.initEmptyBuffer();
+        self.renderBump.initEmptyBuffer();
+        self.editorImageName.initEmptyBuffer();
+    }
 
     pub fn parse(
         material: *Material,
@@ -354,10 +401,47 @@ pub const Material = extern struct {
     }
 
     pub fn freeData(material: *Material, allocator: std.mem.Allocator) void {
-        _ = material;
-        _ = allocator;
+        if (material.stages) |stages| {
+            const slice = stages[0..material.numStages];
+            for (slice) |*stage| {
+                if (stage.texture.cinematic) |cinematic| {
+                    // TODO: cinematic.deinit(allocator);
+                    allocator.destroy(cinematic);
+                    stage.texture.cinematic = null;
+                }
 
-        @panic("Material.freeData is not implemented");
+                if (stage.newStage) |new_stage| {
+                    allocator.destroy(new_stage);
+                    stage.newStage = null;
+                }
+
+                if (stage.stencilStage) |stencil_stage| {
+                    allocator.destroy(stencil_stage);
+                    stage.stencilStage = null;
+                }
+            }
+
+            allocator.free(slice);
+            material.stages = null;
+        }
+
+        if (material.expressionRegisters) |expression_registers| {
+            const slice = expression_registers[0..material.numRegisters];
+            allocator.free(slice);
+            material.expressionRegisters = null;
+        }
+
+        if (material.constantRegisters) |constant_registers| {
+            const slice = constant_registers[0..material.numRegisters];
+            allocator.free(slice);
+            material.constantRegisters = null;
+        }
+
+        if (material.ops) |ops| {
+            const slice = ops[0..material.numOps];
+            allocator.free(slice);
+            material.ops = null;
+        }
     }
 
     pub fn getDecalInfo(material: *const Material) DecalInfo {
@@ -445,7 +529,7 @@ pub const Material = extern struct {
         return material.fogLight;
     }
 
-    pub fn testMaterialFlag(material: *const Material, flag: c_int) bool {
-        return c_material_testMaterialFlag(material, flag);
+    pub fn testMaterialFlag(material: *const Material, flag: Flags) bool {
+        return c_material_testMaterialFlag(material, @intCast(@as(u32, @bitCast(flag))));
     }
 };

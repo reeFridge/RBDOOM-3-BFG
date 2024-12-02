@@ -125,14 +125,18 @@ pub const DeclSkin = extern struct {
         \\}
     ;
 
-    base: Decl,
-    mappings: idlib.idList(SkinMapping),
-    associatedModels: idlib.idStrList,
+    base: Decl = .{},
+    mappings: idlib.idList(SkinMapping) = .{},
+    associatedModels: idlib.idStrList = .{},
 
     extern fn c_declSkin_remapShaderBySkin(
         *const DeclSkin,
         ?*const Material,
     ) ?*const Material;
+
+    pub fn init(self: *DeclSkin) void {
+        self.* = .{};
+    }
 
     pub fn parse(
         skin: *DeclSkin,

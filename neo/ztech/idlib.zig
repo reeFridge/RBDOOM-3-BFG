@@ -667,8 +667,8 @@ pub const idDict = extern struct {
         value: *const anyopaque,
     };
 
-    args: idList(KeyValue),
-    argsHash: idHashIndex,
+    args: idList(KeyValue) = .{},
+    argsHash: idHashIndex = .{},
 };
 
 pub const idZipCacheEntry = extern struct {

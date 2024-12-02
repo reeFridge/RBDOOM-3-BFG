@@ -1,9 +1,11 @@
+const std = @import("std");
 const Decl = @import("decl_manager.zig").Decl;
 const idlib = @import("../idlib.zig");
 const CVec2 = @import("../math/vector.zig").CVec2;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const CAngles = @import("../math/angles.zig").CAngles;
 const CMat3 = @import("../math/matrix.zig").CMat3;
+const ContentFlags = @import("../renderer/material.zig").ContentFlags;
 
 const AFVector = extern struct {
     pub const Type = enum(c_int) {
@@ -88,25 +90,31 @@ const Constraint = extern struct {
 };
 
 pub const DeclAF = extern struct {
-    base: Decl,
-    modified: bool,
-    model: idlib.idStr,
-    skin: idlib.idStr,
-    defaultLinearFriction: f32,
-    defaultAngularFriction: f32,
-    defaultContactFriction: f32,
-    defaultConstraintFriction: f32,
-    totalMass: f32,
-    suspendVelocity: CVec2,
-    suspendAcceleration: CVec2,
-    noMoveTime: f32,
-    noMoveTranslation: f32,
-    noMoveRotation: f32,
-    minMoveTime: f32,
-    maxMoveTime: f32,
-    contents: c_int,
-    clipMask: c_int,
-    selfCollision: bool,
-    bodies: idlib.idList(*Body),
-    constraints: idlib.idList(*Constraint),
+    base: Decl = .{},
+    modified: bool = false,
+    model: idlib.idStr = .{},
+    skin: idlib.idStr = .{},
+    defaultLinearFriction: f32 = 0.01,
+    defaultAngularFriction: f32 = 0.01,
+    defaultContactFriction: f32 = 0.8,
+    defaultConstraintFriction: f32 = 0.5,
+    totalMass: f32 = -1,
+    suspendVelocity: CVec2 = .{ .x = 20, .y = 30 },
+    suspendAcceleration: CVec2 = .{ .x = 40, .y = 60 },
+    noMoveTime: f32 = 1,
+    noMoveTranslation: f32 = 10,
+    noMoveRotation: f32 = 10,
+    minMoveTime: f32 = -1,
+    maxMoveTime: f32 = -1,
+    contents: ContentFlags = .{ .corpse = true },
+    clipMask: ContentFlags = .{ .solid = true },
+    selfCollision: bool = true,
+    bodies: idlib.idList(*Body) = .{},
+    constraints: idlib.idList(*Constraint) = .{},
+
+    pub fn init(self: *DeclAF) void {
+        self.* = .{};
+        self.model.initEmptyBuffer();
+        self.skin.initEmptyBuffer();
+    }
 };

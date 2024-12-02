@@ -453,19 +453,24 @@ pub const RuntimeDeclType = extern struct {
 };
 
 pub const DeclTable = extern struct {
-    base: Decl,
-    clamp: bool,
-    snap: bool,
-    values: idlib.idList(f32),
+    base: Decl = .{},
+    clamp: bool = false,
+    snap: bool = false,
+    values: idlib.idList(f32) = .{},
+
+    pub fn init(self: *DeclTable) void {
+        self.* = .{};
+    }
 };
 
 fn DeclAllocator(DeclType_: type) type {
     return struct {
         pub fn alloc() callconv(.C) *Decl {
             const allocator = global.gpa.allocator();
-            const decl_ = allocator.create(DeclType_) catch @panic("decl alloc");
+            const decl_typed = allocator.create(DeclType_) catch @panic("decl alloc");
+            decl_typed.init();
 
-            return @ptrCast(decl_);
+            return @ptrCast(decl_typed);
         }
     };
 }
