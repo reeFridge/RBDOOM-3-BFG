@@ -36,17 +36,17 @@ pub const Common = opaque {
         // TODO try common.initSIMD(); // wait for SIMD support
         try fs.instance.init();
         try localization.setDefaultLang();
-        try decl_manager.instance.init();
+        try decl_manager.instance.init(allocator);
         try event_loop.instance.init();
         try parallel_job_manager.instance.init();
-        cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec default.cfg\n");
-        cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec autoexec.cfg\n");
-        cmd.instance.executeCommandBuffer();
+        try cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec default.cfg\n");
+        try cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec autoexec.cfg\n");
+        try cmd.instance.executeCommandBuffer();
         cvar.instance.modifiedFlags &= ~cvar.CVarFlags.CVAR_ARCHIVE;
         try render_system.instance.initBackend(allocator);
         try sound_system.instance.init();
         try render_system.instance.init(allocator);
-        // TODO decl_manager.instance.init2();
+        try decl_manager.instance.postInit(allocator);
         // TODO common.initLanguageDict();
         // TODO gameThread.startWorkerThread("Game/Draw");
         // TODO usercmd_gen.instance.init();

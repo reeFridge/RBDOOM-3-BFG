@@ -302,6 +302,36 @@ pub const Image = extern struct {
         image.defaulted = true;
     }
 
+    pub fn generateShadowArray(
+        image: *Image,
+        width: u32,
+        height: u32,
+        filter: material.TextureFilter,
+        repeat: material.TextureRepeat,
+        usage: TextureUsage,
+        _: *nvrhi.ICommandList,
+    ) error{}!void {
+        image.purgeImage();
+
+        image.filter = filter;
+        image.repeat = repeat;
+        image.usage = usage;
+        image.cubeFiles = .CF_2D_ARRAY;
+
+        image.opts.textureType = .TT_2D_ARRAY;
+        image.opts.width = width;
+        image.opts.height = height;
+        image.opts.numLevels = 0;
+        image.opts.isRenderTarget = true;
+
+        image.deriveOpts();
+
+        // The image will be uploaded to the gpu on a deferred state.
+        image.createTexture();
+
+        image.isLoaded = true;
+    }
+
     pub fn generateImage(
         image: *Image,
         pic: ?[*]const u8,

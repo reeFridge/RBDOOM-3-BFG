@@ -14,7 +14,7 @@ const global = @import("../global.zig");
 const Capture = @import("../entity.zig").Capture;
 const EntityHandle = global.Entities.EntityHandle;
 const JointModTransform = Animator.JointMod.JointModTransform;
-const DeclManager = @import("../framework/decl_manager.zig");
+const decl_manager = @import("../framework/decl_manager.zig");
 const DeclEntityDef = @import("../game.zig").DeclEntityDef;
 const CopySpawnArgs = @import("../lib.zig").CopySpawnArgs;
 const Game = @import("../game.zig");
@@ -118,8 +118,12 @@ pub fn spawn(
         &opt_last_index,
     )) |entry| {
         const def_name = entry.value_ptr.*;
-        const decl = DeclManager.instance.findType(.DECL_ENTITYDEF, def_name, false) orelse continue;
-        const decl_entity: *DeclEntityDef = @ptrCast(@alignCast(decl));
+        const decl_entity = try decl_manager.instance.findType(
+            DeclEntityDef,
+            .ENTITYDEF,
+            def_name,
+            allocator,
+        ) orelse continue;
         var attach_spawn_args = SpawnArgs.init(allocator);
         defer attach_spawn_args.deinit();
         CopySpawnArgs.init(&decl_entity.dict, &attach_spawn_args);

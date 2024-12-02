@@ -234,8 +234,8 @@ pub const FileSystem = extern struct {
         return error.FileNotFound;
     }
 
-    const OpenOSFileError = std.fs.File.OpenError || std.fs.File.SeekError;
-    fn openOSFile(filename: []const u8, mode: FsMode) OpenOSFileError!std.fs.File {
+    pub const OpenOSFileError = std.fs.File.OpenError || std.fs.File.SeekError;
+    pub fn openOSFile(filename: []const u8, mode: FsMode) OpenOSFileError!std.fs.File {
         return switch (mode) {
             .FS_READ => try std.fs.openFileAbsolute(filename, .{ .mode = .read_only }),
             .FS_WRITE => try std.fs.openFileAbsolute(filename, .{ .mode = .write_only }),
@@ -430,15 +430,117 @@ pub const FileSystem = extern struct {
         fs: *const FileSystem,
         allocator: std.mem.Allocator,
         folder: []const u8,
-        extension: []const u8,
-    ) error{OutOfMemory}![][]const u8 {
-        _ = fs;
-        _ = allocator;
-        _ = extension;
-        _ = folder;
+        extensions: []const []const u8,
+    ) ListOSFilesError![][]u8 {
+        if (extensions.len == 0) return &.{};
+        if (folder.len == 0) return &.{};
 
-        // TODO: implement
-        unreachable;
+        var list = std.ArrayListUnmanaged([]u8){};
+        errdefer {
+            for (list.items) |item| allocator.free(item);
+            list.deinit(allocator);
+        }
+
+        var hash_index = idlib.idHashIndex{};
+        defer hash_index.free();
+
+        // TODO: using_zip_files
+
+        // TODO: using_resource_files
+        var paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
+        while (paths_iterator.next()) |search_path| {
+            var res_files_iterator = std.mem.reverseIterator(search_path.resourceFiles.constSlice());
+            while (res_files_iterator.next()) |res_container| {
+                for (res_container.cache_table.constSlice()) |entry| {
+                    const ext = std.fs.path.extension(entry.filename.constSlice());
+
+                    for (extensions) |extension| {
+                        if (std.ascii.eqlIgnoreCase(extension, ext)) {}
+                    }
+                }
+            }
+        }
+
+        paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
+        while (paths_iterator.next()) |search_path| {
+            const full_path = buildOSPath(
+                search_path.path.constSlice(),
+                search_path.gamedir.constSlice(),
+                folder,
+            ) catch return error.OutOfMemory;
+
+            for (extensions) |extension| {
+                const filenames = try listOSFiles(allocator, full_path, extension);
+                defer {
+                    for (filenames) |filename| allocator.free(filename);
+                    allocator.free(filenames);
+                }
+
+                for (filenames) |filename| {
+                    _ = try listAppendUnique(
+                        allocator,
+                        filename,
+                        &list,
+                        &hash_index,
+                    );
+                }
+            }
+        }
+
+        return list.toOwnedSlice(allocator);
+    }
+
+    pub const ListOSFilesError = std.mem.Allocator.Error || std.fs.Dir.OpenError;
+    fn listOSFiles(
+        allocator: std.mem.Allocator,
+        directory: []const u8,
+        extension: []const u8,
+    ) ListOSFilesError![][]u8 {
+        var dir = try std.fs.cwd().openDir(
+            directory,
+            .{ .iterate = true },
+        );
+        defer dir.close();
+
+        var dir_iterator = dir.iterate();
+
+        var array = std.ArrayListUnmanaged([]u8){};
+
+        while (try dir_iterator.next()) |entry| {
+            if (entry.kind == .directory) continue;
+
+            const ext = std.fs.path.extension(entry.name);
+
+            if (!std.ascii.eqlIgnoreCase(ext, extension)) continue;
+
+            const copy = try allocator.dupe(u8, entry.name);
+            try array.append(allocator, copy);
+        }
+
+        return array.toOwnedSlice(allocator);
+    }
+
+    fn listAppendUnique(
+        allocator: std.mem.Allocator,
+        item: []const u8,
+        list: *std.ArrayListUnmanaged([]u8),
+        hash_index: *idlib.idHashIndex,
+    ) error{OutOfMemory}!usize {
+        const hash_key = hash_index.generateKey(item, false);
+        var i = hash_index.first(hash_key);
+        while (i >= 0) : (i = hash_index.next(@intCast(i))) {
+            const index: u32 = @intCast(i);
+            if (std.ascii.eqlIgnoreCase(list.items[index], item)) {
+                return index;
+            }
+        }
+
+        const index = list.items.len;
+        const copy = try allocator.dupe(u8, item);
+        try list.append(allocator, copy);
+        try hash_index.add(hash_key, @intCast(index));
+
+        return index;
     }
 
     pub fn readFile(

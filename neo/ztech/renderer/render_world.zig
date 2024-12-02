@@ -28,8 +28,9 @@ const Image = @import("image.zig").Image;
 const RenderModelManager = @import("render_model_manager.zig");
 const GuiModel = @import("gui_model.zig").GuiModel;
 const math = @import("../math/math.zig");
-const Framebuffer = @import("framebuffer.zig");
+const framebuffer = @import("framebuffer.zig");
 const VertexCache = @import("vertex_cache.zig");
+const Material = @import("material.zig").Material;
 
 pub const RenderView = extern struct {
     viewID: c_int,
@@ -196,7 +197,7 @@ interaction_table_height: usize = 0,
 generate_all_interactions_called: bool = false,
 
 const global = @import("../global.zig");
-const DeclManager = @import("../framework/decl_manager.zig");
+const decl_manager = @import("../framework/decl_manager.zig");
 const RenderEntity = @import("render_entity.zig").RenderEntity;
 const RenderLight = @import("render_light.zig").RenderLight;
 const RenderEnvironmentProbe = @import("render_envprobe.zig").RenderEnvironmentProbe;
@@ -884,7 +885,7 @@ fn addSingleLight(
         if (light_casts_shadows) {
             view_light.shadowLOD = -1;
 
-            const num_lods: usize = Framebuffer.GlobalFramebuffers.MAX_SHADOWMAP_RESOLUTIONS;
+            const num_lods: usize = framebuffer.MAX_SHADOWMAP_RESOLUTIONS;
             // compute projected bounding sphere
             // and use that as a criteria for selecting LOD
 
@@ -2830,11 +2831,14 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
 
     // 6. Else parse .proc file and generate binary .bproc from it
     if (!loaded) {
-        var lexer = lexer_.Lexer.init(
+        var lexer = lexer_.Lexer{};
+
+        try lexer.initFromFile(
             proc_filename,
-            lexer_.Flags.LEXFL_NOSTRINGCONCAT | lexer_.Flags.LEXFL_NODOLLARPRECOMPILE,
+            .{ .no_string_concat = true, .no_dollar_precompile = true },
+            render_world.allocator,
         );
-        defer lexer.deinit();
+        defer lexer.deinit(render_world.allocator);
 
         if (!lexer.isLoaded()) {
             try render_world.clearWorld();
@@ -2847,18 +2851,19 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
 
         render_world.map_time_stamp = current_time_stamp;
 
-        var token = Token.init();
+        var token = Token{};
+        token.initEmpty();
         defer token.deinit();
 
-        if (!lexer.readToken(token) or !std.mem.eql(u8, token.slice(), PROC_FILE_ID)) {
+        if (!lexer.readTokenOk(&token) or !std.mem.eql(u8, token.slice(), PROC_FILE_ID)) {
             std.debug.print("Bad id {s} instead of {s}\n", .{ token.slice(), PROC_FILE_ID });
             return error.BadProcFileId;
         }
 
         var numEntries: usize = 0;
-        while (lexer.readToken(token)) {
+        while (lexer.readTokenOk(&token)) {
             if (std.mem.eql(u8, token.slice(), "model")) {
-                const render_model = try render_world.parseModel(lexer);
+                const render_model = try render_world.parseModel(&lexer);
                 // add it to the model manager list
                 RenderModelManager.instance.addModel(render_model);
 
@@ -2869,7 +2874,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             }
 
             if (std.mem.eql(u8, token.slice(), "shadowModel")) {
-                _ = try render_world.parseShadowModel(lexer);
+                _ = try render_world.parseShadowModel(&lexer);
                 //const last_model = render_world.parseShadowModel(lexer);
                 // add it to the model manager list
                 //global.renderModelManager.addModel(last_model);
@@ -2881,13 +2886,13 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             }
 
             if (std.mem.eql(u8, token.slice(), "interAreaPortals")) {
-                try render_world.parseInterAreaPortals(lexer);
+                try render_world.parseInterAreaPortals(&lexer);
                 numEntries += 1;
                 continue;
             }
 
             if (std.mem.eql(u8, token.slice(), "nodes")) {
-                try render_world.parseNodes(lexer);
+                try render_world.parseNodes(&lexer);
                 numEntries += 1;
                 continue;
             }
@@ -3166,11 +3171,12 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
     try lexer.expectTokenString("{");
 
     // reusable token
-    var token = Token.init();
+    var token = Token{};
+    token.initEmpty();
     defer token.deinit();
 
     // model name
-    try lexer.expectAnyToken(token);
+    try lexer.expectAnyToken(&token);
 
     var render_model = try model.RenderModel.initEmpty(token.slice());
     errdefer render_model.deinit(render_world);
@@ -3181,7 +3187,7 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
         // surface parsing start
         try lexer.expectTokenString("{");
 
-        try lexer.expectAnyToken(token);
+        try lexer.expectAnyToken(&token);
 
         const num_vertices = try lexer.parseSize();
         const num_indices = try lexer.parseSize();
@@ -3332,11 +3338,12 @@ fn parseShadowModel(_: *RenderWorld, lexer: *Lexer) !?*model.RenderModel {
     try lexer.expectTokenString("{");
 
     // reusable token
-    var token = Token.init();
+    var token = Token{};
+    token.initEmpty();
     defer token.deinit();
 
     // model name
-    try lexer.expectAnyToken(token);
+    try lexer.expectAnyToken(&token);
     const num_verts = try lexer.parseSize(); // numVerts
     _ = try lexer.parseSize();
     _ = try lexer.parseSize();
@@ -3427,7 +3434,12 @@ inline fn createModelSurface(
     surface_triangles.numVerts = @intCast(num_vertices);
     surface_triangles.numIndexes = @intCast(indices.len);
 
-    const opt_material_ptr = DeclManager.instance.findMaterial(meterial_name);
+    const opt_material_ptr = try decl_manager.instance.findType(
+        Material,
+        .MATERIAL,
+        meterial_name,
+        render_world.allocator,
+    );
     if (opt_material_ptr) |material_ptr| material_ptr.addReference();
 
     const surface: model.ModelSurface = .{

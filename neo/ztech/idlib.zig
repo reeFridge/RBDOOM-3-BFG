@@ -14,7 +14,7 @@ pub const idStr = extern struct {
         flag: bool = false,
     };
 
-    len: c_int = 0,
+    len: u32 = 0,
     data: ?[*]u8 = null,
     allocedAndFlag: AllocedAndFlag = .{},
     baseBuffer: [STR_ALLOC_BASE]u8 = std.mem.zeroes([STR_ALLOC_BASE]u8),
@@ -130,7 +130,7 @@ pub const idStr = extern struct {
         }
     }
 
-    fn ensureAlloced(self: *idStr, amount: usize, keep_old: bool) error{OutOfMemory}!void {
+    pub fn ensureAlloced(self: *idStr, amount: usize, keep_old: bool) error{OutOfMemory}!void {
         if (self.isStatic()) return;
 
         if (amount > self.alloced()) {
@@ -190,15 +190,15 @@ pub const idStr = extern struct {
         return self.allocedAndFlag.flag;
     }
 
-    pub fn fileNameHash(str: []const u8) c_int {
-        var result: c_int = 0;
+    pub fn fileNameHash(str: []const u8) u32 {
+        var result: u32 = 0;
         for (str, 0..) |char, i| {
             var letter = std.ascii.toLower(char);
             if (letter == '.') break;
             if (letter == '\\') {
                 letter = '/';
             }
-            result += @as(c_int, @intCast(letter * (i + 119)));
+            result += letter * @as(u32, @intCast(i + 119));
         }
 
         result &= FILE_HASH_SIZE - 1;
@@ -206,19 +206,19 @@ pub const idStr = extern struct {
         return result;
     }
 
-    pub fn hash(str: []const u8) c_int {
-        var result: c_int = 0;
+    pub fn hash(str: []const u8) u32 {
+        var result: u32 = 0;
         for (str, 0..) |char, i| {
-            result += @as(c_int, @intCast(char * (i + 119)));
+            result += char * @as(u32, @intCast(i + 119));
         }
 
         return result;
     }
 
-    pub fn caseInsensetiveHash(str: []const u8) c_int {
-        var result: c_int = 0;
+    pub fn caseInsensetiveHash(str: []const u8) u32 {
+        var result: u32 = 0;
         for (str, 0..) |char, i| {
-            result += @as(c_int, @intCast(std.ascii.toLower(char) * (i + 119)));
+            result += std.ascii.toLower(char) * @as(u32, @intCast(i + 119));
         }
 
         return result;
@@ -254,9 +254,9 @@ pub fn idList(T: type) type {
         const Self = @This();
         const DEFAULT_GRANULARITY = 16;
 
-        num: c_int = 0,
-        size: c_int = 0,
-        granularity: c_int = DEFAULT_GRANULARITY,
+        num: u32 = 0,
+        size: u32 = 0,
+        granularity: u32 = DEFAULT_GRANULARITY,
         list: ?[*]T = null,
         memTag: u8 = 0,
 
@@ -531,42 +531,42 @@ pub const idSysMutex = extern struct {
 };
 
 pub const idHashIndex = extern struct {
-    const NULL_INDEX: c_int = -1;
-    var INVALID_INDEX: [1]c_int = .{-1};
+    const NULL_INDEX: i32 = -1;
+    var INVALID_INDEX: [1]i32 = .{-1};
     const DEFAULT_HASH_GRANULARITY = 1024;
     const DEFAULT_HASH_SIZE = 1024;
 
-    hashSize: c_int = DEFAULT_HASH_SIZE,
-    hash: [*]c_int = &INVALID_INDEX,
-    indexSize: c_int = DEFAULT_HASH_SIZE,
-    indexChain: [*]c_int = &INVALID_INDEX,
-    granularity: c_int = DEFAULT_HASH_GRANULARITY,
-    hashMask: c_int = DEFAULT_HASH_SIZE - 1,
-    lookupMask: c_int = 0,
+    hash_size: u32 = DEFAULT_HASH_SIZE,
+    hash: [*]i32 = &INVALID_INDEX,
+    index_size: u32 = DEFAULT_HASH_SIZE,
+    index_chain: [*]i32 = &INVALID_INDEX,
+    granularity: u32 = DEFAULT_HASH_GRANULARITY,
+    hash_mask: i32 = DEFAULT_HASH_SIZE - 1,
+    lookup_mask: i32 = 0,
 
-    pub fn add(hash_index: *idHashIndex, key: c_int, index: c_int) error{OutOfMemory}!void {
+    pub fn add(hash_index: *idHashIndex, key: u32, index: u32) error{OutOfMemory}!void {
         std.debug.assert(index >= 0);
 
         if (hash_index.hash == &INVALID_INDEX) {
             try hash_index.allocate(
-                @intCast(hash_index.hashSize),
-                if (index >= hash_index.indexSize)
-                    @intCast(index + 1)
+                hash_index.hash_size,
+                if (index >= hash_index.index_size)
+                    index + 1
                 else
-                    @intCast(hash_index.indexSize),
+                    hash_index.index_size,
             );
-        } else if (index >= hash_index.indexSize) {
-            try hash_index.resizeIndex(@intCast(index + 1));
+        } else if (index >= hash_index.index_size) {
+            try hash_index.resizeIndex(index + 1);
         }
 
-        const h = key & hash_index.hashMask;
-        hash_index.indexChain[@intCast(index)] = hash_index.hash[@intCast(h)];
-        hash_index.hash[@intCast(h)] = index;
+        const h: usize = @intCast(@as(i32, @intCast(key)) & hash_index.hash_mask);
+        hash_index.index_chain[index] = hash_index.hash[h];
+        hash_index.hash[h] = @intCast(index);
     }
 
     pub fn clear(hash_index: *idHashIndex) void {
         if (hash_index.hash != &INVALID_INDEX) {
-            @memset(hash_index.hash[0..@intCast(hash_index.hashSize)], NULL_INDEX);
+            @memset(hash_index.hash[0..hash_index.hash_size], NULL_INDEX);
         }
     }
 
@@ -583,30 +583,30 @@ pub const idHashIndex = extern struct {
         @memset(index_chain, NULL_INDEX);
 
         hash_index.hash = hash.ptr;
-        hash_index.hashSize = @intCast(hash.len);
-        hash_index.indexChain = index_chain.ptr;
-        hash_index.indexSize = @intCast(index_chain.len);
-        hash_index.hashMask = @intCast(hash_size - 1);
-        hash_index.lookupMask = -1;
+        hash_index.hash_size = @intCast(hash.len);
+        hash_index.index_chain = index_chain.ptr;
+        hash_index.index_size = @intCast(index_chain.len);
+        hash_index.hash_mask = @intCast(hash_size - 1);
+        hash_index.lookup_mask = -1;
     }
 
     pub fn free(hash_index: *idHashIndex) void {
         var allocator = global.gpa.allocator();
         if (hash_index.hash != &INVALID_INDEX) {
-            allocator.free(hash_index.hash[0..@intCast(hash_index.hashSize)]);
+            allocator.free(hash_index.hash[0..hash_index.hash_size]);
             hash_index.hash = &INVALID_INDEX;
         }
 
-        if (hash_index.indexChain != &INVALID_INDEX) {
-            allocator.free(hash_index.indexChain[0..@intCast(hash_index.indexSize)]);
-            hash_index.indexChain = &INVALID_INDEX;
+        if (hash_index.index_chain != &INVALID_INDEX) {
+            allocator.free(hash_index.index_chain[0..hash_index.index_size]);
+            hash_index.index_chain = &INVALID_INDEX;
         }
 
-        hash_index.lookupMask = 0;
+        hash_index.lookup_mask = 0;
     }
 
     pub fn resizeIndex(hash_index: *idHashIndex, index_size: usize) error{OutOfMemory}!void {
-        if (index_size <= hash_index.indexSize) return;
+        if (index_size <= hash_index.index_size) return;
 
         const granularity = @as(usize, @intCast(hash_index.granularity));
         const mod: usize = index_size % granularity;
@@ -616,45 +616,46 @@ pub const idHashIndex = extern struct {
         else
             index_size + granularity - mod;
 
-        if (hash_index.indexChain == &INVALID_INDEX) {
-            hash_index.indexSize = @intCast(new_size);
+        if (hash_index.index_chain == &INVALID_INDEX) {
+            hash_index.index_size = @intCast(new_size);
             return;
         }
 
         var allocator = global.gpa.allocator();
-        const old_index_size: usize = @intCast(hash_index.indexSize);
-        const old_index_chain = hash_index.indexChain[0..old_index_size];
+        const old_index_size: usize = @intCast(hash_index.index_size);
+        const old_index_chain = hash_index.index_chain[0..old_index_size];
         const index_chain = try allocator.alloc(c_int, new_size);
         @memcpy(index_chain[0..old_index_size], old_index_chain);
         @memset(index_chain[old_index_size..new_size], NULL_INDEX);
 
         allocator.free(old_index_chain);
-        hash_index.indexChain = index_chain.ptr;
-        hash_index.indexSize = @intCast(new_size);
+        hash_index.index_chain = index_chain.ptr;
+        hash_index.index_size = @intCast(new_size);
     }
 
-    pub fn generateKey(hash_index: *const idHashIndex, str: []const u8, case_sensetive: bool) c_int {
+    pub fn generateKey(hash_index: *const idHashIndex, str: []const u8, case_sensetive: bool) u32 {
         const hash = if (case_sensetive)
             idStr.hash(str)
         else
             idStr.caseInsensetiveHash(str);
 
-        return hash & hash_index.hashMask;
+        return @intCast(@as(i32, @intCast(hash)) & hash_index.hash_mask);
     }
 
-    pub fn first(hash_index: *const idHashIndex, key: c_int) c_int {
+    pub fn first(hash_index: *const idHashIndex, key: u32) c_int {
         const index: usize = @intCast(
-            key & hash_index.hashMask & hash_index.lookupMask,
+            @as(i32, @intCast(key)) & hash_index.hash_mask & hash_index.lookup_mask,
         );
 
         return hash_index.hash[index];
     }
 
-    pub fn next(hash_index: *const idHashIndex, index: c_int) c_int {
+    pub fn next(hash_index: *const idHashIndex, index: u32) c_int {
         const next_index: usize = @intCast(
-            index & hash_index.lookupMask,
+            @as(i32, @intCast(index)) & hash_index.lookup_mask,
         );
-        return hash_index.indexChain[next_index];
+
+        return hash_index.index_chain[next_index];
     }
 };
 

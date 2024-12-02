@@ -58,38 +58,44 @@ pub const CmdArgs = extern struct {
         }
     }
 
-    pub fn tokenizeString(args: *CmdArgs, text: []const u8) void {
+    pub fn tokenizeString(args: *CmdArgs, text: []const u8) error{OutOfMemory}!void {
         if (text.len == 0) return;
 
         const allocator = global.gpa.allocator();
         const text_sentinel = allocator.dupeZ(u8, text) catch unreachable;
         defer allocator.free(text_sentinel);
 
-        const lexer = Lexer.initEmpty();
-        defer lexer.deinit();
+        var lexer = Lexer{
+            .flags = .{
+                .no_errors = true,
+                .no_warnings = true,
+                .no_string_concat = true,
+                .allow_path_names = true,
+                .no_string_escape_chars = true,
+                .allow_ip_addresses = true,
+            },
+        };
+        lexer.initEmpty();
+        defer lexer.deinit(allocator);
 
-        if (!lexer.loadMemory(text_sentinel, "CmdArgs.fromText", 0)) return;
+        lexer.loadMemory(text_sentinel, "CmdArgs.fromText", 0, allocator) catch return;
 
-        lexer.flags = LexerFlags.LEXFL_NOERRORS |
-            LexerFlags.LEXFL_NOWARNINGS |
-            LexerFlags.LEXFL_NOSTRINGCONCAT |
-            LexerFlags.LEXFL_ALLOWPATHNAMES |
-            LexerFlags.LEXFL_NOSTRINGESCAPECHARS |
-            LexerFlags.LEXFL_ALLOWIPADDRESSES;
-
-        const token = Token.init();
+        var token = Token{};
+        token.initEmpty();
         defer token.deinit();
-        const number_token = Token.init();
+
+        var number_token = Token{};
+        number_token.initEmpty();
         defer number_token.deinit();
 
         var total_len: usize = 0;
 
         while (true) {
             if (args.argc == CmdArgs.MAX_COMMAND_ARGS) break;
-            if (!lexer.readToken(token)) break;
+            lexer.readToken(&token) catch break;
 
             if (std.mem.eql(u8, token.slice(), "-")) {
-                if (lexer.checkTokenType(TokenType.TT_NUMBER, 0, number_token)) {
+                if (try lexer.checkTokenType(.number, .{}, &number_token)) {
                     var m = idlib.idStr{};
                     m.initEmptyBuffer();
                     m.assignSlice("-") catch unreachable;
@@ -102,7 +108,7 @@ pub const CmdArgs = extern struct {
             }
 
             if (std.mem.eql(u8, token.slice(), "$")) {
-                if (!lexer.readToken(token)) break;
+                lexer.readToken(&token) catch break;
                 //const cvar = cvar_system.instance.getCVarString(token.slice());
                 //token.base.assignStr(cvar);
                 token.base.assignSlice("<unknown>") catch unreachable;
@@ -319,22 +325,22 @@ pub const CmdSystem = extern struct {
         );
     }
 
-    pub fn bufferCommandText(cmd_system: *CmdSystem, exec: CmdExecution, text: []const u8) void {
+    pub fn bufferCommandText(cmd_system: *CmdSystem, exec: CmdExecution, text: []const u8) error{OutOfMemory}!void {
         switch (exec) {
-            .CMD_EXEC_NOW => cmd_system.executeCommandText(text),
+            .CMD_EXEC_NOW => try cmd_system.executeCommandText(text),
             .CMD_EXEC_INSERT => cmd_system.insertCommandText(text),
             .CMD_EXEC_APPEND => cmd_system.appendCommandText(text),
         }
     }
 
-    pub fn executeCommandText(cmd_system: *CmdSystem, text: []const u8) void {
+    pub fn executeCommandText(cmd_system: *CmdSystem, text: []const u8) error{OutOfMemory}!void {
         var args: CmdArgs = .{};
-        args.tokenizeString(text);
+        try args.tokenizeString(text);
 
         cmd_system.executeTokenizedString(&args);
     }
 
-    pub fn executeCommandBuffer(cmd_system: *CmdSystem) void {
+    pub fn executeCommandBuffer(cmd_system: *CmdSystem) error{OutOfMemory}!void {
         while (cmd_system.textLength != 0) {
             if (cmd_system.wait != 0) {
                 cmd_system.wait -= 1;
@@ -357,7 +363,7 @@ pub const CmdSystem = extern struct {
                 args.copy(&(cmd_system.tokenizedCmds.constSlice()[0]));
                 cmd_system.tokenizedCmds.removeIndex(0);
             } else {
-                args.tokenizeString(line);
+                try args.tokenizeString(line);
             }
 
             // delete the text from the command buffer and move remaining commands down
@@ -462,5 +468,5 @@ pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
 
     std.debug.print("[CMD] Execing file: {s}\n", .{filename});
 
-    instance.bufferCommandText(.CMD_EXEC_INSERT, buffer);
+    instance.bufferCommandText(.CMD_EXEC_INSERT, buffer) catch unreachable;
 }

@@ -29,6 +29,7 @@ const globalPlaneToLocal = @import("interaction.zig").globalPlaneToLocal;
 const RenderSystem = @import("render_system.zig");
 const RenderWorld = @import("render_world.zig");
 const Decl = @import("../framework/decl_manager.zig").Decl;
+const DeclType = @import("../framework/decl_manager.zig").DeclType;
 
 pub const VertexLayoutType = enum(c_int) {
     UNKNOWN = 0, // RB: TODO -1
@@ -118,6 +119,12 @@ const SkinMapping = extern struct {
 };
 
 pub const DeclSkin = extern struct {
+    pub const default_definition =
+        \\{
+        \\  "*" "_default"
+        \\}
+    ;
+
     base: Decl,
     mappings: idlib.idList(SkinMapping),
     associatedModels: idlib.idStrList,
@@ -126,6 +133,33 @@ pub const DeclSkin = extern struct {
         *const DeclSkin,
         ?*const Material,
     ) ?*const Material;
+
+    pub fn parse(
+        skin: *DeclSkin,
+        definition_text: []const u8,
+        allow_binary_version: bool,
+        allocator: std.mem.Allocator,
+    ) error{}!void {
+        _ = skin;
+        _ = allocator;
+        _ = definition_text;
+        _ = allow_binary_version;
+
+        @panic("DeclSkin.parse is not implemented");
+    }
+
+    pub fn setDefaultText(skin: *DeclSkin) error{}!bool {
+        _ = skin;
+
+        @panic("DeclSkin.setDefaultText is not implemented");
+    }
+
+    pub fn freeData(skin: *DeclSkin, allocator: std.mem.Allocator) void {
+        _ = skin;
+        _ = allocator;
+
+        @panic("DeclSkin.freeData is not implemented");
+    }
 
     pub fn remapShaderBySkin(skin: *const DeclSkin, shader: ?*const Material) ?*const Material {
         return c_declSkin_remapShaderBySkin(skin, shader);

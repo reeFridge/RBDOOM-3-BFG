@@ -460,25 +460,27 @@ pub const RenderBackend = extern struct {
         }
 
         backend.glStartFrame();
+        const global_images = image_manager.instance;
 
-        const texture_id = image_manager.instance.hierarchicalZbufferImage.?.getTextureID();
+        const texture_id = global_images.hierarchicalZBufferImage.?.getTextureID();
 
         // RB: we need to load all images left before rendering
         // this can be expensive here because of the runtime image compression
         // image_manager.instance.loadDeferredImages(backend.commandList.ptr_);
         const device_manager_instance = device_manager.instance();
+        const device = device_manager_instance.getDevice();
 
         if (backend.ssaoPass == null) {
             backend.ssaoPass = Pass.SsaoPass.create(
-                device_manager_instance.getDevice(),
+                device,
                 &backend.commonPasses,
-                image_manager.instance.currentDepthImage.?.getTexturePtr(),
-                image_manager.instance.gbufferNormalsRoughnessImage.?.getTexturePtr(),
-                image_manager.instance.ambientOcclusionImage[0].?.getTexturePtr(),
+                global_images.currentDepthImage.?.getTexturePtr(),
+                global_images.gbufferNormalsRoughnessImage.?.getTexturePtr(),
+                global_images.ambientOcclusionImage[0].?.getTexturePtr(),
             );
         }
 
-        if (texture_id != image_manager.instance.hierarchicalZbufferImage.?.getTextureID() or
+        if (texture_id != global_images.hierarchicalZBufferImage.?.getTextureID() or
             backend.hiZGenPass == null)
         {
             if (backend.hiZGenPass) |pass| {
@@ -486,8 +488,8 @@ pub const RenderBackend = extern struct {
             }
 
             backend.hiZGenPass = Pass.MipMapGenPass.create(
-                device_manager_instance.getDevice(),
-                image_manager.instance.hierarchicalZbufferImage.?.getTexturePtr(),
+                device,
+                global_images.hierarchicalZBufferImage.?.getTexturePtr(),
                 .MODE_MAX,
             );
         }
@@ -495,7 +497,7 @@ pub const RenderBackend = extern struct {
         if (backend.toneMapPass == null) {
             const pass = Pass.TonemapPass.create();
             pass.init(
-                device_manager_instance.getDevice(),
+                device,
                 &backend.commonPasses,
                 .{},
                 global_framebuffers.ldrFBO.getApiObject(),
@@ -506,16 +508,16 @@ pub const RenderBackend = extern struct {
         if (backend.taaPass == null) {
             const pass = Pass.TemporalAntiAliasingPass.create();
             pass.init(
-                device_manager_instance.getDevice(),
+                device,
                 &backend.commonPasses,
                 null,
                 .{
-                    .sourceDepth = image_manager.instance.currentDepthImage.?.getTexturePtr(),
-                    .motionVectors = image_manager.instance.taaMotionVectorsImage.?.getTexturePtr(),
-                    .unresolvedColor = image_manager.instance.currentRenderHDRImage.?.getTexturePtr(),
-                    .resolvedColor = image_manager.instance.taaResolvedImage.?.getTexturePtr(),
-                    .feedback1 = image_manager.instance.taaFeedback1Image.?.getTexturePtr(),
-                    .feedback2 = image_manager.instance.taaFeedback2Image.?.getTexturePtr(),
+                    .sourceDepth = global_images.currentDepthImage.?.getTexturePtr(),
+                    .motionVectors = global_images.taaMotionVectorsImage.?.getTexturePtr(),
+                    .unresolvedColor = global_images.currentRenderHDRImage.?.getTexturePtr(),
+                    .resolvedColor = global_images.taaResolvedImage.?.getTexturePtr(),
+                    .feedback1 = global_images.taaFeedback1Image.?.getTexturePtr(),
+                    .feedback2 = global_images.taaFeedback2Image.?.getTexturePtr(),
                     .motionVectorStencilMask = 0, //0x01,
                     .useCatmullRomFilter = true,
                 },

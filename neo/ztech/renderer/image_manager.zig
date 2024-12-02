@@ -6,6 +6,7 @@ const idlib = @import("../idlib.zig");
 const image_ = @import("image.zig");
 const Image = image_.Image;
 const RenderSystem = @import("render_system.zig");
+const framebuffer = @import("framebuffer.zig");
 
 pub const ImageManager = extern struct {
     const MAX_IMAGE_NAME = 256;
@@ -50,7 +51,7 @@ pub const ImageManager = extern struct {
     smaaBlendImage: ?*Image,
     gbufferNormalsRoughnessImage: ?*Image, // cheap G-Buffer replacement, holds normals and surface roughness
     ambientOcclusionImage: [2]?*Image, // contain AO and bilateral filtering keys
-    hierarchicalZbufferImage: ?*Image, // zbuffer with mip maps to accelerate screen space ray tracing
+    hierarchicalZBufferImage: ?*Image, // zbuffer with mip maps to accelerate screen space ray tracing
     imguiFontImage: ?*Image,
 
     chromeSpecImage: ?*Image, // only for the PBR color checker chart
@@ -148,84 +149,140 @@ pub const ImageManager = extern struct {
 
         image_manager.ambientOcclusionImage[0] = try image_manager.imageFromFunction(
             "_ao0",
-            image_gen.AmbientOcclusionImage_ResNative,
+            image_gen.ambientOcclusionImageResNative,
         );
 
         image_manager.ambientOcclusionImage[1] = try image_manager.imageFromFunction(
             "_ao1",
-            image_gen.AmbientOcclusionImage_ResNative,
+            image_gen.ambientOcclusionImageResNative,
         );
 
-        image_manager.hierarchicalZbufferImage = try image_manager.imageFromFunction(
+        image_manager.hierarchicalZBufferImage = try image_manager.imageFromFunction(
             "_cszBuffer",
-            image_gen.HierarchicalZBufferImage_ResNative,
+            image_gen.hierarchicalZBufferImageResNative,
         );
 
         image_manager.gbufferNormalsRoughnessImage = try image_manager.imageFromFunction(
             "_currentNormals",
-            image_gen.GeometryBufferImage_ResNative,
+            image_gen.geometryBufferImageResNative,
         );
 
         image_manager.taaMotionVectorsImage = try image_manager.imageFromFunction(
             "_taaMotionVectors",
-            image_gen.HDR_RG16FImage_ResNative,
+            image_gen.hdrRG16FImageResNative,
         );
 
         image_manager.taaResolvedImage = try image_manager.imageFromFunction(
             "_taaResolved",
-            image_gen.HDR_RGBA16FImage_ResNative_UAV,
+            image_gen.hdrRGBA16FImageResNativeUav,
         );
 
         image_manager.taaFeedback1Image = try image_manager.imageFromFunction(
             "_taaFeedback1",
-            image_gen.HDR_RGBA16SImage_ResNative_UAV,
+            image_gen.hdrRGBA16SImageResNativeUav,
         );
 
         image_manager.taaFeedback2Image = try image_manager.imageFromFunction(
             "_taaFeedback2",
-            image_gen.HDR_RGBA16SImage_ResNative_UAV,
+            image_gen.hdrRGBA16SImageResNativeUav,
+        );
+
+        image_manager.envprobeHDRImage = try image_manager.imageFromFunction(
+            "_envprobeHDR",
+            image_gen.envprobeImageHdr,
+        );
+
+        image_manager.envprobeDepthImage = try image_manager.imageFromFunction(
+            "_envprobeDepth",
+            image_gen.envprobeImageDepth,
         );
 
         image_manager.smaaEdgesImage = try image_manager.imageFromFunction(
             "_smaaEdges",
-            image_gen.SMAAImage_ResNative,
+            image_gen.smaaImageResNative,
         );
 
         image_manager.smaaBlendImage = try image_manager.imageFromFunction(
             "_smaaBlend",
-            image_gen.SMAAImage_ResNative,
+            image_gen.smaaImageResNative,
         );
 
         image_manager.shadowAtlasImage = try image_manager.imageFromFunction(
             "_shadowMapAtlas",
-            image_gen.CreateShadowMapImage_Atlas,
+            image_gen.createShadowMapImageAtlas,
         );
 
         image_manager.bloomRenderImage[0] = try image_manager.imageFromFunction(
             "_bloomRender0",
-            image_gen.HDR_RGBA16FImage_ResQuarter_Linear,
+            image_gen.hdrRGBA16FImageResQuarterLinear,
         );
 
         image_manager.bloomRenderImage[1] = try image_manager.imageFromFunction(
             "_bloomRender1",
-            image_gen.HDR_RGBA16FImage_ResQuarter_Linear,
+            image_gen.hdrRGBA16FImageResQuarterLinear,
         );
 
         image_manager.guiEdit = try image_manager.imageFromFunction(
             "_guiEdit",
-            image_gen.GuiEditFunction,
+            image_gen.guiEditFunction,
+        );
+
+        image_manager.guiEditDepthStencilImage = try image_manager.imageFromFunction(
+            "_guiEditDepthStencil",
+            image_gen.guiEditDepthStencilFunction,
         );
 
         image_manager.accumImage = try image_manager.imageFromFunction(
             "_accum",
-            image_gen.RGBA8Image_RT,
+            image_gen.RGBA8ImageRT,
         );
 
-        //image_manager.shadowImage[0] = try image_manager.imageFromFunction( va( "_shadowMapArray0_%i", shadowMapResolutions[0] ), image_gen.createShadowMapImageRes0 );
-        //image_manager.shadowImage[1] = try image_manager.imageFromFunction( va( "_shadowMapArray1_%i", shadowMapResolutions[1] ), image_gen.createShadowMapImageRes1 );
-        //image_manager.shadowImage[2] = try image_manager.imageFromFunction( va( "_shadowMapArray2_%i", shadowMapResolutions[2] ), image_gen.createShadowMapImageRes2 );
-        //image_manager.shadowImage[3] = try image_manager.imageFromFunction( va( "_shadowMapArray3_%i", shadowMapResolutions[3] ), image_gen.createShadowMapImageRes3 );
-        //image_manager.shadowImage[4] = try image_manager.imageFromFunction( va( "_shadowMapArray4_%i", shadowMapResolutions[4] ), image_gen.createShadowMapImageRes4 );
+        var string_buffer: [256]u8 = undefined;
+
+        image_manager.shadowImage[0] = try image_manager.imageFromFunction(
+            std.fmt.bufPrint(
+                &string_buffer,
+                "_shadowMapArray0_{}",
+                .{framebuffer.shadow_map_resolutions[0]},
+            ) catch unreachable,
+            image_gen.createShadowMapImageRes0,
+        );
+
+        image_manager.shadowImage[1] = try image_manager.imageFromFunction(
+            std.fmt.bufPrint(
+                &string_buffer,
+                "_shadowMapArray1_{}",
+                .{framebuffer.shadow_map_resolutions[1]},
+            ) catch unreachable,
+            image_gen.createShadowMapImageRes1,
+        );
+
+        image_manager.shadowImage[2] = try image_manager.imageFromFunction(
+            std.fmt.bufPrint(
+                &string_buffer,
+                "_shadowMapArray2_{}",
+                .{framebuffer.shadow_map_resolutions[2]},
+            ) catch unreachable,
+            image_gen.createShadowMapImageRes2,
+        );
+
+        image_manager.shadowImage[3] = try image_manager.imageFromFunction(
+            std.fmt.bufPrint(
+                &string_buffer,
+                "_shadowMapArray3_{}",
+                .{framebuffer.shadow_map_resolutions[3]},
+            ) catch unreachable,
+            image_gen.createShadowMapImageRes3,
+        );
+
+        image_manager.shadowImage[4] = try image_manager.imageFromFunction(
+            std.fmt.bufPrint(
+                &string_buffer,
+                "_shadowMapArray4_{}",
+                .{framebuffer.shadow_map_resolutions[4]},
+            ) catch unreachable,
+            image_gen.createShadowMapImageRes4,
+        );
     }
 
     fn imageFromFunction(
@@ -243,7 +300,7 @@ pub const ImageManager = extern struct {
 
         var i = image_manager.imageHash.first(hash);
         const images = image_manager.images.constSlice();
-        while (i != -1) : (i = image_manager.imageHash.next(i)) {
+        while (i != -1) : (i = image_manager.imageHash.next(@intCast(i))) {
             const index: usize = @intCast(i);
             const image = images[index];
             if (std.mem.eql(u8, adjusted_name, image.imgName.constSlice())) {
@@ -286,6 +343,54 @@ pub const instance = @extern(*ImageManager, .{ .name = "imageManager" });
 const image_gen = struct {
     fn defaultImage(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
         image.makeDefault(command_list) catch |err| genFatal(image, err);
+    }
+
+    fn envprobeImageHdr(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            framebuffer.ENVPROBE_CAPTURE_SIZE,
+            framebuffer.ENVPROBE_CAPTURE_SIZE,
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_RGBA16F,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn guiEditDepthStencilFunction(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.SCREEN_WIDTH,
+            RenderSystem.SCREEN_HEIGHT,
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_DEPTH_STENCIL,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn envprobeImageDepth(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            framebuffer.ENVPROBE_CAPTURE_SIZE,
+            framebuffer.ENVPROBE_CAPTURE_SIZE,
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_DEPTH_STENCIL,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
     }
 
     fn ldrNativeImage(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
@@ -353,6 +458,247 @@ const image_gen = struct {
             .CF_2D,
         ) catch |err| genFatal(image, err);
     }
+
+    fn ambientOcclusionImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_LINEAR,
+            .TR_CLAMP,
+            .TD_R8F,
+            null,
+            true,
+            true,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hierarchicalZBufferImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST_MIPMAP,
+            .TR_CLAMP,
+            .TD_R32F,
+            null,
+            true,
+            true,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn geometryBufferImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        const sample_count = 1;
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_LINEAR,
+            .TR_CLAMP,
+            .TD_RGBA16F,
+            null,
+            true,
+            false,
+            sample_count,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hdrRGBA16FImageResNativeUav(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_RGBA16F,
+            null,
+            true,
+            true,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hdrRGBA16SImageResNativeUav(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_RGBA16S,
+            null,
+            true,
+            true,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hdrRGBA16FImageResQuarterLinear(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth() / 4,
+            RenderSystem.instance.getHeight() / 4,
+            .TF_LINEAR,
+            .TR_CLAMP,
+            .TD_LOOKUP_TABLE_RGBA,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn hdrRG16FImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_RG16F,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn smaaImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.instance.getWidth(),
+            RenderSystem.instance.getHeight(),
+            .TF_LINEAR,
+            .TR_CLAMP,
+            .TD_LOOKUP_TABLE_RGBA,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn RGBA8ImageRT(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            512,
+            512,
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_LOOKUP_TABLE_RGBA,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn guiEditFunction(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            RenderSystem.SCREEN_WIDTH,
+            RenderSystem.SCREEN_HEIGHT,
+            .TF_NEAREST,
+            .TR_CLAMP,
+            .TD_LOOKUP_TABLE_RGBA,
+            null,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn createShadowMapImageAtlas(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        image.generateImage(
+            null,
+            @intCast(RenderSystem.r_shadow_map_atlas_size.integerValue),
+            @intCast(RenderSystem.r_shadow_map_atlas_size.integerValue),
+            .TF_LINEAR,
+            .TR_CLAMP_TO_ZERO_ALPHA,
+            .TD_DEPTH,
+            command_list,
+            true,
+            false,
+            1,
+            .CF_2D,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn createShadowMapImageRes0(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        const size = framebuffer.shadow_map_resolutions[0];
+        image.generateShadowArray(
+            size,
+            size,
+            .TF_LINEAR,
+            .TR_CLAMP_TO_ZERO_ALPHA,
+            .TD_SHADOW_ARRAY,
+            command_list,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn createShadowMapImageRes1(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        const size = framebuffer.shadow_map_resolutions[1];
+        image.generateShadowArray(
+            size,
+            size,
+            .TF_LINEAR,
+            .TR_CLAMP_TO_ZERO_ALPHA,
+            .TD_SHADOW_ARRAY,
+            command_list,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn createShadowMapImageRes2(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        const size = framebuffer.shadow_map_resolutions[2];
+        image.generateShadowArray(
+            size,
+            size,
+            .TF_LINEAR,
+            .TR_CLAMP_TO_ZERO_ALPHA,
+            .TD_SHADOW_ARRAY,
+            command_list,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn createShadowMapImageRes3(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        const size = framebuffer.shadow_map_resolutions[3];
+        image.generateShadowArray(
+            size,
+            size,
+            .TF_LINEAR,
+            .TR_CLAMP_TO_ZERO_ALPHA,
+            .TD_SHADOW_ARRAY,
+            command_list,
+        ) catch |err| genFatal(image, err);
+    }
+
+    fn createShadowMapImageRes4(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+        const size = framebuffer.shadow_map_resolutions[4];
+        image.generateShadowArray(
+            size,
+            size,
+            .TF_LINEAR,
+            .TR_CLAMP_TO_ZERO_ALPHA,
+            .TD_SHADOW_ARRAY,
+            command_list,
+        ) catch |err| genFatal(image, err);
+    }
+
+    //fn (image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+    //    image.generateImage() catch |err| genFatal(image, err);
+    //}
 
     inline fn genFatal(image: *const Image, err: anytype) noreturn {
         std.debug.print("[IMAGE][ERR:{s}] While image gen {s}\n", .{ @errorName(err), image.imgName.constSlice() });

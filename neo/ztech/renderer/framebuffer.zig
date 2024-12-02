@@ -8,6 +8,10 @@ const image_manager = @import("image_manager.zig");
 
 var framebuffers: idlib.idList(*Framebuffer) = .{};
 
+pub const MAX_SHADOWMAP_RESOLUTIONS = 5;
+pub const ENVPROBE_CAPTURE_SIZE = 256;
+pub const shadow_map_resolutions: [MAX_SHADOWMAP_RESOLUTIONS]u32 = .{ 1024, 512, 256, 256, 128 };
+
 pub const Framebuffer = extern struct {
     vptr: *anyopaque = undefined,
     fboName: idlib.idStr = .{},
@@ -65,7 +69,6 @@ pub const Framebuffer = extern struct {
 };
 
 pub const GlobalFramebuffers = extern struct {
-    pub const MAX_SHADOWMAP_RESOLUTIONS = 5;
     const MAX_BLOOM_BUFFERS = 2;
     const MAX_GLOW_BUFFERS = 2;
     const MAX_SSAO_BUFFERS = 2;
@@ -126,11 +129,13 @@ pub fn resizeFramebuffers(
     const Attachments = nvrhi.FramebufferDesc.ColorAttachments;
     const global_images = image_manager.instance;
 
+    var string_buffer: [256]u8 = undefined;
+
     for (global_framebuffers.swapFramebuffers.slice(), 0..) |*fb, index| {
         fb.* = try Framebuffer.create(
             allocator,
             device,
-            "_swapChain%d",
+            std.fmt.bufPrint(&string_buffer, "_swapChain_{}", .{index}) catch unreachable,
             &.{
                 .colorAttachments = Attachments.fromSlice(&.{
                     .{ .texture = device_manager.getBackBuffer(index) },
@@ -140,12 +145,12 @@ pub fn resizeFramebuffers(
     }
 
     for (0..6) |arr| {
-        for (0..GlobalFramebuffers.MAX_SHADOWMAP_RESOLUTIONS) |mip| {
+        for (0..MAX_SHADOWMAP_RESOLUTIONS) |mip| {
             const texture = global_images.shadowImage[mip].?.texture.ptr_;
             global_framebuffers.shadowFBO[mip][arr] = try Framebuffer.create(
                 allocator,
                 device,
-                "_shadowMap%i_%i",
+                std.fmt.bufPrint(&string_buffer, "_shadowMap_{}_{}", .{ mip, arr }) catch unreachable,
                 &.{
                     .depthAttachment = .{
                         .texture = texture,
@@ -232,16 +237,22 @@ pub fn resizeFramebuffers(
         device,
         "_envprobeRender",
         &.{
-            .colorAttachments = Attachments.fromSlice(&.{.{ .texture = global_images.envprobeHDRImage.?.texture.ptr_ }}),
+            .colorAttachments = Attachments.fromSlice(&.{
+                .{ .texture = global_images.envprobeHDRImage.?.texture.ptr_ },
+            }),
             .depthAttachment = .{ .texture = global_images.envprobeDepthImage.?.texture.ptr_ },
         },
     );
 
-    for (&global_framebuffers.ambientOcclusionFBO, &global_images.ambientOcclusionImage) |*fb, image_ptr| {
+    for (
+        &global_framebuffers.ambientOcclusionFBO,
+        &global_images.ambientOcclusionImage,
+        0..,
+    ) |*fb, image_ptr, index| {
         fb.* = try Framebuffer.create(
             allocator,
             device,
-            "_aoRender%i",
+            std.fmt.bufPrint(&string_buffer, "_aoRender_{}", .{index}) catch unreachable,
             &.{
                 .colorAttachments = Attachments.fromSlice(&.{
                     .{ .texture = image_ptr.?.texture.ptr_ },
@@ -254,11 +265,11 @@ pub fn resizeFramebuffers(
         fb.* = try Framebuffer.create(
             allocator,
             device,
-            "_csz%d",
+            std.fmt.bufPrint(&string_buffer, "_csz_{}", .{i}) catch unreachable,
             &.{
                 .colorAttachments = Attachments.fromSlice(&.{
                     .{
-                        .texture = global_images.hierarchicalZbufferImage.?.texture.ptr_,
+                        .texture = global_images.hierarchicalZBufferImage.?.texture.ptr_,
                         .subresources = .{
                             .baseMipLevel = @intCast(i),
                             .numMipLevels = 1,
@@ -303,11 +314,15 @@ pub fn resizeFramebuffers(
         },
     );
 
-    for (&global_framebuffers.bloomRenderFBO, &global_images.bloomRenderImage) |*fb, image_ptr| {
+    for (
+        &global_framebuffers.bloomRenderFBO,
+        &global_images.bloomRenderImage,
+        0..,
+    ) |*fb, image_ptr, i| {
         fb.* = try Framebuffer.create(
             allocator,
             device,
-            "_bloomRender%i",
+            std.fmt.bufPrint(&string_buffer, "_bloomRender_{}", .{i}) catch unreachable,
             &.{
                 .colorAttachments = Attachments.fromSlice(&.{
                     .{ .texture = image_ptr.?.texture.ptr_ },
@@ -364,10 +379,12 @@ fn reloadImages(device: *nvrhi.IDevice, command_list: *nvrhi.ICommandList) error
         try image_ptr.?.reload(false, command_list);
     }
 
-    try global_images.hierarchicalZbufferImage.?.reload(false, command_list);
+    try global_images.hierarchicalZBufferImage.?.reload(false, command_list);
     try global_images.gbufferNormalsRoughnessImage.?.reload(false, command_list);
     try global_images.taaMotionVectorsImage.?.reload(false, command_list);
     try global_images.taaResolvedImage.?.reload(false, command_list);
+    try global_images.envprobeHDRImage.?.reload(false, command_list);
+    try global_images.envprobeDepthImage.?.reload(false, command_list);
     try global_images.taaFeedback1Image.?.reload(false, command_list);
     try global_images.taaFeedback2Image.?.reload(false, command_list);
     try global_images.smaaEdgesImage.?.reload(false, command_list);
@@ -383,6 +400,7 @@ fn reloadImages(device: *nvrhi.IDevice, command_list: *nvrhi.ICommandList) error
     }
 
     try global_images.guiEdit.?.reload(false, command_list);
+    try global_images.guiEditDepthStencilImage.?.reload(false, command_list);
     try global_images.accumImage.?.reload(false, command_list);
 
     command_list.close();

@@ -1,3 +1,4 @@
+const std = @import("std");
 const idlib = @import("../idlib.zig");
 const decl = @import("../framework/decl_manager.zig");
 const DeclSkin = @import("common.zig").DeclSkin;
@@ -256,6 +257,15 @@ pub const MAX_SHADER_STAGES: usize = 256;
 pub const MAX_TEXGEN_REGISTERS: usize = 4;
 
 pub const Material = extern struct {
+    pub const default_definition =
+        \\{
+        \\  {
+        \\      blend blend
+        \\      map _default
+        \\  }
+        \\}
+    ;
+
     base: decl.Decl,
     desc: idlib.idStr,
     renderBump: idlib.idStr,
@@ -322,6 +332,33 @@ pub const Material = extern struct {
         f32,
         ?*anyopaque,
     ) void;
+
+    pub fn parse(
+        material: *Material,
+        definition_text: []const u8,
+        allow_binary_version: bool,
+        allocator: std.mem.Allocator,
+    ) error{}!void {
+        _ = material;
+        _ = allocator;
+        _ = definition_text;
+        _ = allow_binary_version;
+
+        @panic("Material.parse is not implemented");
+    }
+
+    pub fn setDefaultText(material: *Material) error{}!bool {
+        _ = material;
+
+        @panic("Material.setDefaultText is not implemented");
+    }
+
+    pub fn freeData(material: *Material, allocator: std.mem.Allocator) void {
+        _ = material;
+        _ = allocator;
+
+        @panic("Material.freeData is not implemented");
+    }
 
     pub fn getDecalInfo(material: *const Material) DecalInfo {
         return material.decalInfo;

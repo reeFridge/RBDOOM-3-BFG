@@ -1,4 +1,5 @@
 const std = @import("std");
+const idlib = @import("../idlib.zig");
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
@@ -7,8 +8,9 @@ const Quat = @import("../math/quat.zig").Quat;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const idList = @import("../idlib.zig").idList;
 const RenderModel = @import("../renderer/model.zig").RenderModel;
-const DeclManager = @import("../framework/decl_manager.zig");
+const decl_manager = @import("../framework/decl_manager.zig");
 const Transform = @import("../physics/physics.zig").Transform;
+const DeclSkin = @import("../renderer/common.zig").DeclSkin;
 
 const num_anim_channels: usize = 5;
 const max_anims_per_channel: usize = 3;
@@ -399,7 +401,20 @@ const JointInfo = extern struct {
     channel: c_int,
 };
 
-const DeclModelDef = opaque {
+const Anim = opaque {};
+
+const DeclModelDef = extern struct {
+    base: decl_manager.Decl,
+    offset: CVec3,
+    joints: idlib.idList(JointInfo),
+    joint_parents: idlib.idList(c_int),
+    channel_joints: [num_anim_channels]idlib.idList(c_int),
+    model_handle: ?*RenderModel,
+    anims: idlib.idList(*Anim),
+    skin: ?*const DeclSkin,
+
+    pub const default_definition = "{ }";
+
     extern fn c_declModelDef_getDefaultPose(*const DeclModelDef, *usize) ?[*]const JointQuat;
     extern fn c_declModelDef_getJointsList(*const DeclModelDef) *idList(JointInfo);
     extern fn c_declModelDef_getVisualOffset(*const DeclModelDef) CVec3;
@@ -408,6 +423,33 @@ const DeclModelDef = opaque {
     extern fn c_declModelDef_touch(*const DeclModelDef) void;
     extern fn c_declModelDef_hasAnim(*const DeclModelDef, c_int) bool;
     extern fn c_declModelDef_getAnim(*const DeclModelDef, [*]const u8) c_int;
+
+    pub fn freeData(decl: *DeclModelDef, allocator: std.mem.Allocator) void {
+        _ = decl;
+        _ = allocator;
+
+        @panic("DeclModelDef.freeData is not implemented");
+    }
+
+    pub fn parse(
+        decl: *DeclModelDef,
+        definition_text: []const u8,
+        allow_binary_version: bool,
+        allocator: std.mem.Allocator,
+    ) error{}!void {
+        _ = decl;
+        _ = allocator;
+        _ = definition_text;
+        _ = allow_binary_version;
+
+        @panic("DeclModelDef.parse is not implemented");
+    }
+
+    pub fn setDefaultText(decl: *DeclModelDef) error{}!bool {
+        _ = decl;
+
+        @panic("DeclModelDef.setDefaultText is not implemented");
+    }
 
     pub fn getAnim(def: *const DeclModelDef, name: []const u8) usize {
         return @intCast(c_declModelDef_getAnim(def, name.ptr));
@@ -418,7 +460,7 @@ const DeclModelDef = opaque {
     }
 
     pub fn modelHandle(def: *const DeclModelDef) ?*RenderModel {
-        return c_declModelDef_modelHandle(def);
+        return def.model_handle;
     }
 
     pub fn touch(def: *const DeclModelDef) void {
@@ -509,15 +551,16 @@ fn freeData(animator: *Animator) void {
     animator.model_def = null;
 }
 
-pub fn setModel(animator: *Animator, model_name: []const u8) error{OutOfMemory}!?*RenderModel {
+pub const SetModelError = error{OutOfMemory} || decl_manager.DeclManager.FindDeclError;
+pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*RenderModel {
     animator.freeData();
 
-    const decl = DeclManager.instance.findType(
-        .DECL_MODELDEF,
+    const model_decl = try decl_manager.instance.findType(
+        DeclModelDef,
+        .MODELDEF,
         model_name,
-        false,
+        animator.allocator,
     ) orelse return null;
-    const model_decl: *DeclModelDef = @ptrCast(decl);
     const render_model: *RenderModel = model_decl.modelHandle() orelse return null;
 
     animator.model_def = model_decl;
@@ -540,7 +583,7 @@ inline fn setupJoints(
     animator: *Animator,
     model_def: *const DeclModelDef,
 ) error{OutOfMemory}!void {
-    const num_joints: usize = @intCast(model_def.joints().num);
+    const num_joints: usize = @intCast(model_def.joints.num);
     if (num_joints == 0) @panic("model has no joints!");
 
     const pose = model_def.getDefaultPose() orelse @panic("no default pose");
@@ -725,7 +768,7 @@ pub fn setJointPos(
     pos: Vec3(f32),
 ) error{OutOfMemory}!void {
     const model_def = animator.model_def orelse return;
-    if (joint_handle >= model_def.joints().num) {
+    if (joint_handle >= model_def.joints.num) {
         return;
     }
 
@@ -766,7 +809,7 @@ pub fn setJointAxis(
     axis: Mat3(f32),
 ) error{OutOfMemory}!void {
     const model_def = animator.model_def orelse return;
-    if (joint_handle >= model_def.joints().num) {
+    if (joint_handle >= model_def.joints.num) {
         return;
     }
 
@@ -805,7 +848,7 @@ pub fn getJointLocalTransform(
     joint_handle: JointHandle,
 ) ?Transform {
     const model_def = animator.model_def orelse return null;
-    if (joint_handle >= model_def.joints().num) {
+    if (joint_handle >= model_def.joints.num) {
         return null;
     }
 
@@ -822,7 +865,7 @@ pub fn getJointLocalTransform(
     }
 
     var m = joints[@intCast(joint_handle)];
-    const model_joints = model_def.joints().slice();
+    const model_joints = model_def.joints.constSlice();
     const parent_handle = model_joints[@intCast(joint_handle)].parentNum;
     m.divideJoint(joints[@intCast(parent_handle)]);
     transform.origin = m.toVec3().toVec3f();
@@ -837,7 +880,7 @@ pub fn getJointTransform(
     joint_handle: JointHandle,
 ) ?Transform {
     const model_def = animator.model_def orelse return null;
-    if (joint_handle >= model_def.joints().num) {
+    if (joint_handle >= model_def.joints.num) {
         return null;
     }
 
@@ -869,7 +912,7 @@ pub fn createFrame(
 
     const default_pose = opt_default_pose orelse return false;
 
-    const num_joints: usize = @intCast(model_def.joints().num);
+    const num_joints: usize = @intCast(model_def.joints.num);
     const joint_frame = try animator.allocator.alloc(JointQuat, num_joints);
     defer animator.allocator.free(joint_frame);
     @memcpy(joint_frame, default_pose);

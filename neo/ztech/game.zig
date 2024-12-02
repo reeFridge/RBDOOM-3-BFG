@@ -6,6 +6,7 @@ const global = @import("global.zig");
 const Player = @import("entity_types/player.zig");
 const idlib = @import("idlib.zig");
 const Decl = @import("framework/decl_manager.zig").Decl;
+const DeclType = @import("framework/decl_manager.zig").DeclType;
 
 const cmd = @import("framework/cmd_system.zig");
 const CmdDecl = cmd.CmdDecl;
@@ -33,8 +34,41 @@ pub const print_current_frame = CmdDecl{
 };
 
 pub const DeclEntityDef = extern struct {
+    pub const default_definition =
+        \\{
+        \\  "DEFAULTED" "1"
+        \\}
+    ;
+
     base: Decl,
     dict: idlib.idDict,
+
+    pub fn freeData(decl: *DeclEntityDef, allocator: std.mem.Allocator) void {
+        _ = decl;
+        _ = allocator;
+
+        @panic("DeclEntityDef.freeData is not implemented");
+    }
+
+    pub fn parse(
+        decl: *DeclEntityDef,
+        definition_text: []const u8,
+        allow_binary_version: bool,
+        allocator: std.mem.Allocator,
+    ) error{}!void {
+        _ = decl;
+        _ = allocator;
+        _ = definition_text;
+        _ = allow_binary_version;
+
+        @panic("DeclEntityDef.parse is not implemented");
+    }
+
+    pub fn setDefaultText(decl: *DeclEntityDef) error{}!bool {
+        _ = decl;
+
+        @panic("DeclEntityDef.setDefaultText is not implemented");
+    }
 
     pub fn name(self: DeclEntityDef) []const u8 {
         const c_str = c_declGetName(&self);

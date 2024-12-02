@@ -528,7 +528,13 @@ pub fn destroyRenderWorld(
     allocator.destroy(world);
 }
 
-pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{OutOfMemory}!void {
+pub const InitError =
+    std.mem.Allocator.Error ||
+    decl_manager.DeclManager.FindDeclError;
+pub fn init(
+    render_system: *RenderSystem,
+    allocator: std.mem.Allocator,
+) InitError!void {
     render_system.view_count = 1;
     render_system.worlds = std.ArrayList(*RenderWorld).init(allocator);
     render_system.fonts = std.ArrayList(*Font).init(allocator);
@@ -556,13 +562,47 @@ pub fn init(render_system: *RenderSystem, allocator: std.mem.Allocator) error{Ou
     );
 
     // init materials
-    render_system.default_material = decl_manager.instance.findMaterial("_default") orelse
-        @panic("Default Material not found!");
-    render_system.default_point_light = decl_manager.instance.findMaterialDefault("lights/defaultPointLight");
-    render_system.default_projected_light = decl_manager.instance.findMaterialDefault("lights/defaultProjectedLight");
-    render_system.white_material = decl_manager.instance.findMaterial("_white");
-    render_system.char_set_material = decl_manager.instance.findMaterial("textures/bigchars");
-    render_system.imgui_material = decl_manager.instance.findMaterialDefault("_imguiFont");
+    render_system.default_material = try decl_manager.instance.findType(
+        Material,
+        .MATERIAL,
+        "_default",
+        allocator,
+    ) orelse @panic("default material not found");
+
+    render_system.default_point_light = try decl_manager.instance.findTypeOrDefault(
+        Material,
+        .MATERIAL,
+        "lights/defaultPointLight",
+        allocator,
+    );
+
+    render_system.default_projected_light = try decl_manager.instance.findTypeOrDefault(
+        Material,
+        .MATERIAL,
+        "lights/defaultProjectedLight",
+        allocator,
+    );
+
+    render_system.white_material = try decl_manager.instance.findType(
+        Material,
+        .MATERIAL,
+        "_white",
+        allocator,
+    ) orelse @panic("white material not found");
+
+    render_system.char_set_material = try decl_manager.instance.findType(
+        Material,
+        .MATERIAL,
+        "textures/bigchars",
+        allocator,
+    ) orelse @panic("char_set material not found");
+
+    render_system.imgui_material = try decl_manager.instance.findTypeOrDefault(
+        Material,
+        .MATERIAL,
+        "_imguiFont",
+        allocator,
+    );
 
     c_renderSystem_initImgui(render_system.imgui_material);
 
@@ -960,12 +1000,14 @@ pub var stereo_render_enable = CVar.init(
     CFlags.CVAR_INTEGER | CFlags.CVAR_ARCHIVE,
     "1 = side-by-side compressed, 2 = top and bottom compressed, 3 = side-by-side, 4 = 720 frame packed, 5 = interlaced, 6 = OpenGL quad buffer",
 );
+
 pub var r_fullscreen = CVar.init(
     "r_fullscreen",
     "0",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "-2 = borderless fullscreen, -1 = borderless window, 0 = windowed, 1 = full screen on monitor 1, 2 = full screen on monitor 2, etc",
 );
+
 pub var r_anti_aliasing = CVar.initMinMax(
     "r_antiAliasing",
     "1",
@@ -974,12 +1016,14 @@ pub var r_anti_aliasing = CVar.initMinMax(
     0,
     @intFromEnum(AntiAliasingMode.TAA),
 );
+
 pub var r_video_mode = CVar.init(
     "r_vidMode",
     "0",
     CFlags.CVAR_ARCHIVE | CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER,
     "fullscreen video mode number",
 );
+
 pub var r_display_refresh = CVar.initMinMax(
     "r_displayRefresh",
     "0",
@@ -988,41 +1032,54 @@ pub var r_display_refresh = CVar.initMinMax(
     0,
     240,
 );
+
 pub var r_custom_width = CVar.init(
     "r_customWidth",
     "1280",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "custom screen width. set r_vidMode to -1 to activate",
 );
+
 pub var r_custom_height = CVar.init(
     "r_customHeight",
     "720",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "custom screen height. set r_vidMode to -1 to activate",
 );
+
 pub var r_window_x = CVar.init(
     "r_windowX",
     "0",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "Non-fullscreen parameter",
 );
+
 pub var r_window_y = CVar.init(
     "r_windowY",
     "0",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "Non-fullscreen parameter",
 );
+
 pub var r_window_width = CVar.init(
     "r_windowWidth",
     "1280",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "Non-fullscreen parameter",
 );
+
 pub var r_window_height = CVar.init(
     "r_windowHeight",
     "720",
     CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
     "Non-fullscreen parameter",
+);
+
+pub var r_shadow_map_atlas_size = CVar.init(
+    "r_shadowMapAtlasSize",
+    "8192",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER | CFlags.CVAR_ROM | CFlags.CVAR_NEW,
+    "size of the shadowmap atlas",
 );
 
 pub const GLImplParams = extern struct {

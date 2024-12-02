@@ -385,7 +385,7 @@ pub const CVarSystem = extern struct {
     fn findByName(cvar_system: *CVarSystem, name: [:0]const u8) ?*CVar {
         const hash = cvar_system.cvarHash.generateKey(name, false);
         var i = cvar_system.cvarHash.first(hash);
-        while (i != -1) : (i = cvar_system.cvarHash.next(i)) {
+        while (i != -1) : (i = cvar_system.cvarHash.next(@intCast(i))) {
             const cvars = cvar_system.cvars.slice();
             const cvar_ptr = if (i < cvars.len) cvars[@intCast(i)] else continue;
             if (std.mem.eql(u8, name, cvar_ptr.nameString.constSlice())) {
