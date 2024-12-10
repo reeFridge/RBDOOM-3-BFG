@@ -43,7 +43,7 @@ pub const RenderView = extern struct {
     flipProjection: bool,
     forceUpdate: bool,
     time: [2]c_int,
-    shaderParms: [material.MAX_GLOBAL_SHADER_PARMS]f32,
+    shaderParms: [material.max_global_shader_parms]f32,
     globalMaterial: ?*const material.Material,
     viewEyeBuffer: c_int,
     stereoScreenSeparation: f32,
@@ -706,7 +706,7 @@ fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
 
     for (draw_surfs) |surf_ptr| {
         const surf_material = surf_ptr.material orelse continue;
-        if (!surf_material.hasSubview) continue;
+        if (!surf_material.has_subview) continue;
 
         // TODO: generate subview surface
     }
@@ -755,7 +755,7 @@ fn addSingleLight(
             const light_stage = light_shader.getStage(stage_num) orelse continue;
 
             // ignore stages that fail the condition
-            if (light_regs[@intCast(light_stage.conditionRegister)] == 0)
+            if (light_regs[@intCast(light_stage.condition_register)] == 0)
                 continue;
 
             const registers = light_stage.color.registers;

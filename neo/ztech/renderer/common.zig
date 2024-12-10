@@ -94,7 +94,7 @@ pub const BindingLayoutType = enum(c_int) {
 };
 
 const MAX_ENTITY_SHADER_PARAMS = @import("render_entity.zig").MAX_ENTITY_SHADER_PARAMS;
-const MAX_EXPRESSION_REGISTERS = @import("material.zig").MAX_EXPRESSION_REGISTERS;
+const max_expression_registers = @import("material.zig").max_expression_registers;
 
 // areas have references to hold all the lights and entities in them
 pub const AreaReference = extern struct {
@@ -138,12 +138,13 @@ pub const DeclSkin = extern struct {
         self.* = .{};
     }
 
+    pub const ParseError = error{};
     pub fn parse(
         skin: *DeclSkin,
         definition_text: []const u8,
         allow_binary_version: bool,
         allocator: std.mem.Allocator,
-    ) error{}!void {
+    ) ParseError!void {
         _ = skin;
         _ = allocator;
         _ = definition_text;
@@ -204,7 +205,7 @@ pub const DrawSurface = extern struct {
         )) * 0.001;
 
         // process the shader expressions for conditionals / color / texcoords
-        if (shader.constantRegisters) |constant_registers| {
+        if (shader.constant_registers) |constant_registers| {
             // shader only uses constant values
             draw_surf.shaderRegisters = constant_registers;
         } else {
@@ -212,7 +213,7 @@ pub const DrawSurface = extern struct {
             // by default evaluate with the entityDef's shader parms
             const shader_params = if (render_entity.referenceShader) |ref_shader| shader_params: {
                 // evaluate the reference shader to find our shader parms
-                var ref_regs = std.mem.zeroes([MAX_EXPRESSION_REGISTERS]f32);
+                var ref_regs = std.mem.zeroes([max_expression_registers]f32);
                 ref_shader.evaluateRegisters(
                     &ref_regs,
                     &render_entity.shaderParms,

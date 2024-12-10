@@ -58,6 +58,14 @@ pub const Token = extern struct {
         return token.base.constSlice();
     }
 
+    pub inline fn ieql(token: *const Token, s: []const u8) bool {
+        return std.ascii.eqlIgnoreCase(token.base.constSlice(), s);
+    }
+
+    pub inline fn eql(token: *const Token, s: []const u8) bool {
+        return std.mem.eql(u8, token.base.constSlice(), s);
+    }
+
     pub fn appendDirty(token: *Token, char: u8) error{OutOfMemory}!void {
         try token.base.ensureAlloced(token.base.len + 2, true);
         token.base.data.?[token.base.len] = char;

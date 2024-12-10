@@ -54,12 +54,13 @@ pub const DeclEntityDef = extern struct {
         @panic("DeclEntityDef.freeData is not implemented");
     }
 
+    pub const ParseError = error{};
     pub fn parse(
         decl: *DeclEntityDef,
         definition_text: []const u8,
         allow_binary_version: bool,
         allocator: std.mem.Allocator,
-    ) error{}!void {
+    ) ParseError!void {
         _ = decl;
         _ = allocator;
         _ = definition_text;

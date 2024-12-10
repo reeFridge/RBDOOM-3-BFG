@@ -11,7 +11,9 @@ const BinaryImage = @import("binary_image.zig").BinaryImage;
 
 pub const ImageGeneratorFunction = fn (*Image, *nvrhi.ICommandList) callconv(.C) void;
 
-const TextureUsage = enum(c_int) {
+pub const max_image_name = 256;
+
+pub const TextureUsage = enum(c_int) {
     specular, // may be compressed, and always zeros the alpha channel
     diffuse, // may be compressed
     default, // generic RGBA texture (particles, etc...)
@@ -40,7 +42,7 @@ const TextureUsage = enum(c_int) {
     depth_stencil, // depth buffer and stencil buffer
 };
 
-const CubeFiles = enum(c_int) {
+pub const CubeFiles = enum(c_int) {
     @"2d", // not a cube map
     native, // _px, _nx, _py, etc, directly sent to GL
     camera, // _forward, _back, etc, rotated and flipped as needed before sending to GL
@@ -51,7 +53,7 @@ const CubeFiles = enum(c_int) {
     single, // SP: A single texture cubemap. All six sides in one image.
 };
 
-const TextureType = enum(c_int) {
+pub const TextureType = enum(c_int) {
     disabled,
     @"2d",
     cubic,
@@ -130,7 +132,7 @@ pub const Image = extern struct {
     defaulted: bool = false,
     sourceFileTime: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
     binaryFileTime: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
-    refCount: u32 = 0,
+    ref_count: u32 = 0,
     texture: nvrhi.TextureHandle = .{},
     sampler: nvrhi.SamplerHandle = .{},
     samplerDesc: nvrhi.SamplerDesc = .{},

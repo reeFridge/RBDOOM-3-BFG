@@ -233,19 +233,19 @@ const RenderParam = enum(c_int) {
 };
 
 const RenderProg = extern struct {
-    name: idlib.idStr,
-    vertexShaderIndex: c_int,
-    fragmentShaderIndex: c_int,
-    computeShaderIndex: c_int,
-    builtin: bool,
-    usesJoints: bool,
-    vertexLayout: common.VertexLayoutType,
-    bindingLayoutType: common.BindingLayoutType,
-    inputLayout: nvrhi.InputLayoutHandle,
+    name: idlib.idStr = .{},
+    vertexShaderIndex: c_int = -1,
+    fragmentShaderIndex: c_int = -1,
+    computeShaderIndex: c_int = -1,
+    builtin: bool = true,
+    usesJoints: bool = false,
+    vertexLayout: common.VertexLayoutType = .UNKNOWN,
+    bindingLayoutType: common.BindingLayoutType = .DEFAULT,
+    inputLayout: nvrhi.InputLayoutHandle = .{},
     bindingLayouts: idlib.idStaticList(
         nvrhi.BindingLayoutHandle,
         nvrhi.c_MaxBindingLayouts,
-    ),
+    ) = .{},
 
     pub fn move(src: *RenderProg, dst: *RenderProg) void {
         dst.* = src.*;
@@ -274,9 +274,9 @@ const ShaderMacro = extern struct {
     }
 };
 
-const Shader = extern struct {
+pub const Shader = extern struct {
     const StageType = c_int;
-    const Stage = struct {
+    pub const Stage = struct {
         pub const vertex: StageType = bit(0);
         pub const fragment: StageType = bit(1);
         pub const compute: StageType = bit(2);
@@ -924,6 +924,7 @@ pub const RenderProgManager = extern struct {
 
         for (prog_manager.renderProgs.slice(), &builtins, 0..) |*prog, *builtin, i| {
             const builtin_shader, const name, const suffix, const macros, const gpu_skinning, const stage, const vertex_layout, const binding_layout = builtin.*;
+
             prog.name = idlib.idStr{};
             prog.name.initEmptyBuffer();
             try prog.name.assignSlice(name);
@@ -940,7 +941,6 @@ pub const RenderProgManager = extern struct {
                     suffix,
                     macros,
                     true,
-                    vertex_layout,
                 ) catch null
             else
                 null;
@@ -952,7 +952,6 @@ pub const RenderProgManager = extern struct {
                     suffix,
                     macros,
                     true,
-                    vertex_layout,
                 ) catch null
             else
                 null;
@@ -964,7 +963,6 @@ pub const RenderProgManager = extern struct {
                     suffix,
                     macros,
                     true,
-                    vertex_layout,
                 ) catch null
             else
                 null;
@@ -990,7 +988,41 @@ pub const RenderProgManager = extern struct {
         c_renderProgManager_shutdown(prog_manager);
     }
 
-    fn loadProgram(prog_manager: *RenderProgManager, prog: *RenderProg, vertex_index: usize, fragment_index: usize) void {
+    pub fn findProgramOrCreate(
+        prog_manager: *RenderProgManager,
+        name: []const u8,
+        vertex_index: usize,
+        fragment_index: usize,
+        binding_type: common.BindingLayoutType,
+    ) error{OutOfMemory}!usize {
+        for (prog_manager.renderProgs.constSlice(), 0..) |prog, i| {
+            if (prog.vertexShaderIndex == vertex_index and
+                prog.fragmentShaderIndex == fragment_index)
+            {
+                return i;
+            }
+        }
+
+        const index = try prog_manager.renderProgs.append(.{
+            .vertexLayout = .DRAW_VERT,
+            .bindingLayoutType = binding_type,
+        });
+
+        const program = &prog_manager.renderProgs.slice()[index];
+        program.name.initEmptyBuffer();
+        try program.name.assignSlice(name);
+
+        prog_manager.loadProgram(program, vertex_index, fragment_index);
+
+        return index;
+    }
+
+    fn loadProgram(
+        prog_manager: *RenderProgManager,
+        prog: *RenderProg,
+        vertex_index: usize,
+        fragment_index: usize,
+    ) void {
         prog.vertexShaderIndex = @intCast(vertex_index);
         prog.fragmentShaderIndex = @intCast(fragment_index);
         if (prog.vertexLayout != .UNKNOWN) {
@@ -1005,7 +1037,11 @@ pub const RenderProgManager = extern struct {
         prog.bindingLayouts = binding_layouts[prog.bindingLayoutType.toIndex()];
     }
 
-    fn loadComputeProgram(prog_manager: *RenderProgManager, prog: *RenderProg, compute_index: usize) void {
+    fn loadComputeProgram(
+        prog_manager: *RenderProgManager,
+        prog: *RenderProg,
+        compute_index: usize,
+    ) void {
         prog.computeShaderIndex = @intCast(compute_index);
         if (prog.vertexLayout != .UNKNOWN) {
             const descs = prog_manager.vertexLayoutDescs.constSlice();
@@ -1019,14 +1055,13 @@ pub const RenderProgManager = extern struct {
         prog.bindingLayouts = binding_layouts[prog.bindingLayoutType.toIndex()];
     }
 
-    fn findShader(
+    pub fn findShader(
         prog_manager: *RenderProgManager,
         path: []const u8,
         stage: Shader.StageType,
         suffix: []const u8,
         macros: []const []const []const u8,
         builtin: bool,
-        _: common.VertexLayoutType,
     ) LoadShaderError!usize {
         const shader_name = fs.stripExtension(path);
 

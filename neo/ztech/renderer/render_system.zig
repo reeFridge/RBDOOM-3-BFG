@@ -530,7 +530,7 @@ pub fn destroyRenderWorld(
 
 pub const InitError =
     std.mem.Allocator.Error ||
-    decl_manager.DeclManager.FindDeclError;
+    decl_manager.DeclManager.FindDeclError(Material);
 pub fn init(
     render_system: *RenderSystem,
     allocator: std.mem.Allocator,

@@ -431,12 +431,13 @@ const DeclModelDef = extern struct {
         @panic("DeclModelDef.freeData is not implemented");
     }
 
+    pub const ParseError = error{};
     pub fn parse(
         decl: *DeclModelDef,
         definition_text: []const u8,
         allow_binary_version: bool,
         allocator: std.mem.Allocator,
-    ) error{}!void {
+    ) ParseError!void {
         _ = decl;
         _ = allocator;
         _ = definition_text;
@@ -551,7 +552,9 @@ fn freeData(animator: *Animator) void {
     animator.model_def = null;
 }
 
-pub const SetModelError = error{OutOfMemory} || decl_manager.DeclManager.FindDeclError;
+pub const SetModelError =
+    error{OutOfMemory} ||
+    decl_manager.DeclManager.FindDeclError(DeclModelDef);
 pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*RenderModel {
     animator.freeData();
 

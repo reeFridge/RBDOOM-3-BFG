@@ -9,8 +9,6 @@ const RenderSystem = @import("render_system.zig");
 const framebuffer = @import("framebuffer.zig");
 
 pub const ImageManager = extern struct {
-    const MAX_IMAGE_NAME = 256;
-
     defaultImage: ?*Image,
     flatNormalMap: ?*Image, // 128 128 255 in all pixels
     alphaNotchImage: ?*Image, // 2x1 texture with just 1110 and 1111 with point sampling
@@ -319,7 +317,7 @@ pub const ImageManager = extern struct {
     }
 
     fn allocImage(image_manager: *ImageManager, name: []const u8) error{OutOfMemory}!*Image {
-        if (name.len >= MAX_IMAGE_NAME) {
+        if (name.len >= image_.max_image_name) {
             std.debug.print("[IMAGE][ERR] '{s}' is too long", .{name});
             @panic("too long image name");
         }
@@ -695,10 +693,6 @@ const image_gen = struct {
             command_list,
         ) catch |err| genFatal(image, err);
     }
-
-    //fn (image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-    //    image.generateImage() catch |err| genFatal(image, err);
-    //}
 
     inline fn genFatal(image: *const Image, err: anytype) noreturn {
         std.debug.print("[IMAGE][ERR:{s}] While image gen {s}\n", .{ @errorName(err), image.imgName.constSlice() });

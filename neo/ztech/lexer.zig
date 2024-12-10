@@ -254,7 +254,7 @@ pub const Lexer = extern struct {
     pub fn loadMemory(
         lexer: *Lexer,
         text: []const u8,
-        name: [:0]const u8,
+        name: []const u8,
         start_line: u32,
         allocator: std.mem.Allocator,
     ) LoadMemoryError!void {
@@ -1093,12 +1093,12 @@ pub const Lexer = extern struct {
         try lexer.expectTokenString(")");
     }
 
-    const ParseIntError = error{
+    pub const ParseIntError = error{
         TokenIsNotANumber,
         TokenIsNotAnInteger,
     } || ReadTokenError || ExpectTokenTypeError;
 
-    pub fn parseInt(lexer: *Lexer) ParseIntError!c_int {
+    pub fn parseInt(lexer: *Lexer) ParseIntError!i32 {
         var token = Token{};
         token.initEmpty();
         defer token.deinit();
@@ -1122,9 +1122,10 @@ pub const Lexer = extern struct {
         return token.getIntValue();
     }
 
-    const ParseFloatError = error{
+    pub const ParseFloatError = error{
         TokenIsNotANumber,
     } || ReadTokenError || ExpectTokenTypeError;
+
     pub fn parseFloat(lexer: *Lexer) ParseFloatError!f32 {
         var token = Token{};
         token.initEmpty();
@@ -1168,5 +1169,78 @@ pub const Lexer = extern struct {
         lexer.script_p = lexer.last_script_p;
         lexer.line = lexer.last_line;
         return false;
+    }
+
+    pub fn skipUntilString(lexer: *Lexer, str: []const u8) void {
+        var token = Token{};
+        token.initEmpty();
+        defer token.deinit();
+
+        while (true) {
+            lexer.readToken(&token) catch break;
+            if (std.mem.eql(u8, token.slice(), str)) break;
+        }
+    }
+
+    pub const ReadOnLineError = error{NoTokenOnLine} || std.mem.Allocator.Error;
+    pub fn readTokenOnLine(lexer: *Lexer, token: *Token) ReadOnLineError!void {
+        var tok = Token{};
+        tok.initEmpty();
+        defer tok.deinit();
+
+        lexer.readToken(&tok) catch {
+            lexer.script_p = lexer.last_script_p;
+            lexer.line = lexer.last_line;
+
+            return error.NoTokenOnLine;
+        };
+
+        if (tok.lines_crossed != 0) {
+            lexer.script_p = lexer.last_script_p;
+            lexer.line = lexer.last_line;
+            try token.base.empty();
+
+            return error.NoTokenOnLine;
+        }
+
+        try token.assignToken(&tok);
+    }
+
+    pub fn parseRestOfLine(lexer: *Lexer, out: *idlib.idStr) error{OutOfMemory}!void {
+        var tok = Token{};
+        tok.initEmpty();
+        defer tok.deinit();
+
+        try out.empty();
+        while (true) {
+            lexer.readToken(&tok) catch break;
+
+            if (tok.lines_crossed != 0) {
+                lexer.script_p = lexer.last_script_p;
+                lexer.line = lexer.last_line;
+                break;
+            }
+
+            if (out.len != 0) {
+                try out.appendSlice(" ");
+            }
+            try out.appendSlice(tok.slice());
+        }
+    }
+
+    pub fn skipRestOfLine(lexer: *Lexer) ReadTokenError!void {
+        var tok = Token{};
+        tok.initEmpty();
+        defer tok.deinit();
+
+        while (true) {
+            try lexer.readToken(&tok);
+
+            if (tok.lines_crossed != 0) {
+                lexer.script_p = lexer.last_script_p;
+                lexer.line = lexer.last_line;
+                return;
+            }
+        }
     }
 };

@@ -109,10 +109,6 @@ void c_material_evaluateRegisters(
 	material->EvaluateRegisters(registers, localShaderParms, globalShaderParms, floatTime, soundEmitter);
 }
 
-void c_material_addReference(idMaterial* material) {
-	material->AddReference();
-}
-
 bool c_material_receivesLighting(const idMaterial* material) {
 	return material->ReceivesLighting();
 }

@@ -28,7 +28,7 @@ pub const RenderLight = extern struct {
     end: CVec3 = .{},
     lightId: c_int = 0,
     shader: ?*Material = null,
-    shaderParms: [material.MAX_GLOBAL_SHADER_PARMS]f32 = std.mem.zeroes([material.MAX_GLOBAL_SHADER_PARMS]f32),
+    shaderParms: [material.max_global_shader_parms]f32 = std.mem.zeroes([material.max_global_shader_parms]f32),
     referenceSound: ?*anyopaque = null,
 
     extern fn c_parseSpawnArgsToRenderLight(*anyopaque, *RenderLight) callconv(.C) void;

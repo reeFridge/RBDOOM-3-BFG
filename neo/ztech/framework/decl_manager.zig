@@ -19,7 +19,7 @@ const Token = token_.Token;
 
 pub const instance = @extern(*DeclManager, .{ .name = "declManagerLocal" });
 
-const decl_lexer_flags = lexer_.Flags{
+pub const decl_lexer_flags = lexer_.Flags{
     .no_string_concat = true,
     .no_string_escape_chars = true,
     .allow_path_names = true,
@@ -82,6 +82,10 @@ pub const DeclLocal = extern struct {
     redefined_in_reload: bool = false,
     next_in_file: ?*DeclLocal = null,
 
+    pub fn filename(decl: *const DeclLocal) ?[]const u8 {
+        return if (decl.source_file) |sf| sf.filename.constSlice() else null;
+    }
+
     fn freeText(decl: *DeclLocal, allocator: std.mem.Allocator) void {
         if (decl.text_source) |text_source_ptr| {
             allocator.free(text_source_ptr[0..decl.text_length :0]);
@@ -108,7 +112,7 @@ pub const DeclLocal = extern struct {
         Type: type,
         rt_decl_type: *const RuntimeDeclType,
         allocator: std.mem.Allocator,
-    ) error{OutOfMemory}!void {
+    ) (error{OutOfMemory} || Type.ParseError)!void {
         var default_text_generated = false;
 
         const abstract_decl = decl.allocateSelf(rt_decl_type);
@@ -142,7 +146,7 @@ pub const DeclLocal = extern struct {
         Type: type,
         rt_decl_type: *const RuntimeDeclType,
         allocator: std.mem.Allocator,
-    ) error{OutOfMemory}!void {
+    ) (error{OutOfMemory} || Type.ParseError)!void {
         decl.decl_state = .DEFAULTED;
         const abstract_decl = decl.allocateSelf(rt_decl_type);
         const decl_typed: *Type = @ptrCast(abstract_decl);
@@ -215,17 +219,19 @@ pub const DeclFile = extern struct {
         decl_file.filename.deinit();
     }
 
-    pub const LoadAndParseError =
-        std.mem.Allocator.Error ||
-        fs.FileSystem.ReadFileAnyAllocError ||
-        Lexer.LoadMemoryError ||
-        DeclManager.FindTypeError;
+    pub fn LoadAndParseError(Type: type) type {
+        return Type.ParseError ||
+            std.mem.Allocator.Error ||
+            fs.FileSystem.ReadFileAnyAllocError ||
+            Lexer.LoadMemoryError ||
+            DeclManager.FindTypeError;
+    }
     fn loadAndParse(
         decl_file: *DeclFile,
         decl_manager: *DeclManager,
         allocator: std.mem.Allocator,
         Type: type,
-    ) LoadAndParseError!void {
+    ) LoadAndParseError(Type)!void {
         const buffer = try fs.instance.readFileAnyAlloc(decl_file.filename.constSlice());
         defer fs.instance.freeFileBuffer(buffer);
 
@@ -488,7 +494,7 @@ pub const DeclManager = extern struct {
     indent: u32 = 0,
     inside_level_load: bool = false,
 
-    pub const InitError = error{OutOfMemory} || RegisterDeclFolderError;
+    pub const InitError = error{OutOfMemory} || RegisterDeclFolderError(Material);
     pub fn init(manager: *DeclManager, allocator: std.mem.Allocator) InitError!void {
         manager.* = .{};
 
@@ -570,7 +576,7 @@ pub const DeclManager = extern struct {
     pub fn postInit(
         manager: *DeclManager,
         allocator: std.mem.Allocator,
-    ) RegisterDeclFolderError!void {
+    ) (RegisterDeclFolderError(DeclSkin) || RegisterDeclFolderError(SoundShader))!void {
         try manager.registerDeclFolder(
             "skins",
             ".skin",
@@ -588,7 +594,9 @@ pub const DeclManager = extern struct {
         );
     }
 
-    const RegisterDeclFolderError = error{OutOfMemory} || DeclFile.LoadAndParseError;
+    pub fn RegisterDeclFolderError(Type: type) type {
+        return std.mem.Allocator.Error || DeclFile.LoadAndParseError(Type);
+    }
     fn registerDeclFolder(
         manager: *DeclManager,
         folder: []const u8,
@@ -596,7 +604,7 @@ pub const DeclManager = extern struct {
         default_type: DeclType,
         allocator: std.mem.Allocator,
         Type: type,
-    ) RegisterDeclFolderError!void {
+    ) RegisterDeclFolderError(Type)!void {
         const df = for (manager.decl_folders.slice()) |decl_folder| {
             const already_exists =
                 std.ascii.eqlIgnoreCase(folder, decl_folder.folder.constSlice()) and
@@ -782,14 +790,17 @@ pub const DeclManager = extern struct {
         return decl;
     }
 
-    pub const FindDeclError = FindTypeError || std.mem.Allocator.Error;
+    pub fn FindDeclError(Type: type) type {
+        return std.mem.Allocator.Error || Type.ParseError || FindTypeError;
+    }
+
     pub fn findType(
         manager: *DeclManager,
         Type: type,
         decl_type: DeclType,
         name: []const u8,
         allocator: std.mem.Allocator,
-    ) FindDeclError!?*Type {
+    ) FindDeclError(Type)!?*Type {
         // TODO: critical section
         const decl =
             try manager.findTypeWithoutParsing(decl_type, name) orelse return null;
@@ -803,7 +814,7 @@ pub const DeclManager = extern struct {
         decl_type: DeclType,
         name: []const u8,
         allocator: std.mem.Allocator,
-    ) FindDeclError!*Type {
+    ) FindDeclError(Type)!*Type {
         // TODO: critical section
         const decl =
             try manager.findTypeWithoutParsing(decl_type, name) orelse
@@ -817,7 +828,7 @@ pub const DeclManager = extern struct {
         Type: type,
         decl: *DeclLocal,
         allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!*Type {
+    ) (std.mem.Allocator.Error || Type.ParseError)!*Type {
         const decl_index: u32 = @intCast(@intFromEnum(decl.decl_type));
         const rt_decl_type = manager.decl_types.constSlice()[decl_index] orelse
             @panic("decl_type is not registered");
