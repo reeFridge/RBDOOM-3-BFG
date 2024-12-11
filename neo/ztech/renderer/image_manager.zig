@@ -7,34 +7,35 @@ const image_ = @import("image.zig");
 const Image = image_.Image;
 const RenderSystem = @import("render_system.zig");
 const framebuffer = @import("framebuffer.zig");
+const material = @import("material.zig");
 
 pub const ImageManager = extern struct {
     defaultImage: ?*Image,
-    flatNormalMap: ?*Image, // 128 128 255 in all pixels
-    alphaNotchImage: ?*Image, // 2x1 texture with just 1110 and 1111 with point sampling
-    whiteImage: ?*Image, // full of 0xff
-    blackImage: ?*Image, // full of 0x00
-    blackDiffuseImage: ?*Image, // full of 0x00
-    cyanImage: ?*Image, // cyan
-    noFalloffImage: ?*Image, // all 255, but zero clamped
-    fogImage: ?*Image, // increasing alpha is denser fog
-    fogEnterImage: ?*Image, // adjust fogImage alpha based on terminator plane
-    shadowAtlasImage: ?*Image, // 8192 * 8192 for clustered forward shading
+    flatNormalMap: ?*Image,
+    alphaNotchImage: ?*Image,
+    whiteImage: ?*Image,
+    blackImage: ?*Image,
+    blackDiffuseImage: ?*Image,
+    cyanImage: ?*Image,
+    noFalloffImage: ?*Image,
+    fogImage: ?*Image,
+    fogEnterImage: ?*Image,
+    shadowAtlasImage: ?*Image,
     shadowImage: [5]?*Image,
-    jitterImage1: ?*Image, // shadow jitter
+    jitterImage1: ?*Image,
     jitterImage4: ?*Image,
     jitterImage16: ?*Image,
     grainImage1: ?*Image,
     randomImage256: ?*Image,
     blueNoiseImage256: ?*Image,
     currentRenderHDRImage: ?*Image,
-    ldrImage: ?*Image, // tonemapped result which can be used for further post processing
-    taaMotionVectorsImage: ?*Image, // motion vectors for TAA projection
+    ldrImage: ?*Image,
+    taaMotionVectorsImage: ?*Image,
     taaResolvedImage: ?*Image,
     taaFeedback1Image: ?*Image,
     taaFeedback2Image: ?*Image,
     bloomRenderImage: [2]?*Image,
-    glowImage: [2]?*Image, // contains any glowable surface information.
+    glowImage: [2]?*Image,
     glowDepthImage: [2]?*Image,
     accumTransparencyImage: ?*Image,
     revealTransparencyImage: ?*Image,
@@ -47,37 +48,126 @@ pub const ImageManager = extern struct {
     smaaSearchImage: ?*Image,
     smaaEdgesImage: ?*Image,
     smaaBlendImage: ?*Image,
-    gbufferNormalsRoughnessImage: ?*Image, // cheap G-Buffer replacement, holds normals and surface roughness
-    ambientOcclusionImage: [2]?*Image, // contain AO and bilateral filtering keys
-    hierarchicalZBufferImage: ?*Image, // zbuffer with mip maps to accelerate screen space ray tracing
+    gbufferNormalsRoughnessImage: ?*Image,
+    ambientOcclusionImage: [2]?*Image,
+    hierarchicalZBufferImage: ?*Image,
     imguiFontImage: ?*Image,
-
-    chromeSpecImage: ?*Image, // only for the PBR color checker chart
-    plasticSpecImage: ?*Image, // only for the PBR color checker chart
+    chromeSpecImage: ?*Image,
+    plasticSpecImage: ?*Image,
     brdfLutImage: ?*Image,
     defaultUACIrradianceCube: ?*Image,
     defaultUACRadianceCube: ?*Image,
     scratchImage: ?*Image,
     scratchImage2: ?*Image,
     accumImage: ?*Image,
-    currentRenderImage: ?*Image, // for 3D scene SS_POST_PROCESS shaders for effects like heatHaze, in HDR now
-    currentDepthImage: ?*Image, // for motion blur, SSAO and everything that requires depth to world pos reconstruction
-    originalCurrentRenderImage: ?*Image, // currentRenderImage before any changes for stereo rendering
-    loadingIconImage: ?*Image, // loading icon must exist always
-    hellLoadingIconImage: ?*Image, // loading icon must exist always
-    guiEdit: ?*Image, // SP: GUI editor image
-    guiEditDepthStencilImage: ?*Image, // SP: Gui-editor image depth-stencil
-    images: idlib.idList(*Image),
-    imageHash: idlib.idHashIndex,
-    imagesToLoad: idlib.idList(*Image),
-    insideLevelLoad: bool = false,
-    preloadingMapImages: bool = false,
-    commandList: nvrhi.CommandListHandle = .{},
+    currentRenderImage: ?*Image,
+    currentDepthImage: ?*Image,
+    originalCurrentRenderImage: ?*Image,
+    loadingIconImage: ?*Image,
+    hellLoadingIconImage: ?*Image,
+    guiEdit: ?*Image,
+    guiEditDepthStencilImage: ?*Image,
 
-    extern fn c_imageManager_reloadImages(*ImageManager, bool, *nvrhi.ICommandList) void;
-    extern fn c_imageManager_init(*ImageManager) void;
+    images: idlib.idList(*Image),
+    image_hash: idlib.idHashIndex,
+    images_to_load: idlib.idList(*Image),
+    inside_level_load: bool = false,
+    preloading_map_images: bool = false,
+    command_list: nvrhi.CommandListHandle = .{},
+
     extern fn c_imageManager_shutdown(*ImageManager) void;
     extern fn c_imageManager_purgeAllImages(*ImageManager) void;
+
+    pub fn imageFromFile(
+        image_manager: *ImageManager,
+        arg_name: []const u8,
+        filter: material.TextureFilter,
+        repeat: material.TextureRepeat,
+        arg_usage: image_.TextureUsage,
+        cube_map: image_.CubeFiles,
+        cube_map_size: u32,
+    ) error{OutOfMemory}!*Image {
+        if (std.ascii.eqlIgnoreCase(arg_name, "default") or
+            std.ascii.eqlIgnoreCase(arg_name, "_default"))
+        {
+            return image_manager.defaultImage.?;
+        }
+
+        const usage = if (std.ascii.eqlIgnoreCase(arg_name[0..@min(5, arg_name.len)], "fonts") or
+            std.ascii.eqlIgnoreCase(arg_name[0..@min(8, arg_name.len)], "newfonts"))
+            image_.TextureUsage.font
+        else if (std.ascii.eqlIgnoreCase(arg_name[0..@min(6, arg_name.len)], "lights"))
+            image_.TextureUsage.light
+        else
+            arg_usage;
+
+        const ext = std.fs.path.extension(arg_name);
+        const name = if (std.mem.eql(u8, ".tga", ext))
+            arg_name[0 .. arg_name.len - ext.len]
+        else
+            arg_name[0..];
+
+        const hash = idlib.idStr.fileNameHash(name);
+        var i = image_manager.image_hash.first(hash);
+        const images = image_manager.images.constSlice();
+        while (i != -1) : (i = image_manager.image_hash.next(@intCast(i))) {
+            const index: usize = @intCast(i);
+            const image = images[index];
+
+            if (std.ascii.eqlIgnoreCase(name, image.name.constSlice())) {
+                // builtin - no need to check other options
+                if (name[0] == '_') return image;
+
+                if (image.cube_files != cube_map) {
+                    std.debug.print(
+                        "Image {s} has been referenced with conflicting cube_map states\n",
+                        .{arg_name},
+                    );
+                    @panic("conflicting cube_map states");
+                }
+
+                if (image.filter != filter or
+                    image.repeat != repeat or
+                    image.usage != usage)
+                {
+                    continue;
+                }
+
+                image.usage = usage;
+                image.level_load_referenced = true;
+
+                if ((!image_manager.inside_level_load or image_manager.preloading_map_images) and
+                    !image.is_loaded)
+                {
+                    image.referenced_outside_level_load =
+                        !image_manager.inside_level_load and
+                        !image_manager.preloading_map_images;
+
+                    try image.actuallyLoadImage(false, null);
+                }
+
+                return image;
+            }
+        }
+
+        const image = try image_manager.allocImage(name);
+        image.cube_files = cube_map;
+        image.cube_map_size = cube_map_size;
+        image.usage = usage;
+        image.filter = filter;
+        image.repeat = repeat;
+        image.level_load_referenced = true;
+
+        if (!image_manager.inside_level_load or image_manager.preloading_map_images) {
+            image.referenced_outside_level_load =
+                !image_manager.inside_level_load and
+                !image_manager.preloading_map_images;
+
+            try image.actuallyLoadImage(false, null);
+        }
+
+        return image;
+    }
 
     pub fn reloadImages(
         image_manager: *ImageManager,
@@ -88,21 +178,26 @@ pub const ImageManager = extern struct {
             try image.reload(all, command_list);
         }
 
-        image_manager.loadDeferredImages(command_list);
+        try image_manager.loadDeferredImages(command_list);
     }
 
     fn loadDeferredImages(
         image_manager: *ImageManager,
         command_list: *nvrhi.ICommandList,
-    ) void {
-        _ = image_manager;
-        _ = command_list;
+    ) error{OutOfMemory}!void {
+        if (image_manager.inside_level_load) return;
+
+        for (image_manager.images_to_load.slice()) |image| {
+            try image.actuallyLoadImage(false, command_list);
+        }
+
+        image_manager.images_to_load.clear();
     }
 
     pub fn init(image_manager: *ImageManager) error{OutOfMemory}!void {
         try image_manager.images.resizeWithGranularity(1024, 1024);
-        image_manager.imageHash = .{};
-        try image_manager.imageHash.resizeIndex(1024);
+        image_manager.image_hash = .{};
+        try image_manager.image_hash.resizeIndex(1024);
 
         try image_manager.createIntrinsicImages();
         // TODO: addCommand reloadImages
@@ -296,13 +391,13 @@ pub const ImageManager = extern struct {
 
         const hash = idlib.idStr.fileNameHash(adjusted_name);
 
-        var i = image_manager.imageHash.first(hash);
+        var i = image_manager.image_hash.first(hash);
         const images = image_manager.images.constSlice();
-        while (i != -1) : (i = image_manager.imageHash.next(@intCast(i))) {
+        while (i != -1) : (i = image_manager.image_hash.next(@intCast(i))) {
             const index: usize = @intCast(i);
             const image = images[index];
-            if (std.mem.eql(u8, adjusted_name, image.imgName.constSlice())) {
-                if (image.generatorFunction != image_gen_fn) {
+            if (std.mem.eql(u8, adjusted_name, image.name.constSlice())) {
+                if (image.generator_function != image_gen_fn) {
                     std.debug.print("[IMAGE][WARN] reused image {s} with mixed generators\n", .{adjusted_name});
                 }
 
@@ -311,8 +406,8 @@ pub const ImageManager = extern struct {
         }
 
         const image = try image_manager.allocImage(adjusted_name);
-        image.generatorFunction = image_gen_fn;
-        image.referencedOutsideLevelLoad = true;
+        image.generator_function = image_gen_fn;
+        image.referenced_outside_level_load = true;
         return image;
     }
 
@@ -331,7 +426,7 @@ pub const ImageManager = extern struct {
         try image.init(name);
 
         const image_index = try image_manager.images.append(image);
-        try image_manager.imageHash.add(hash, @intCast(image_index));
+        try image_manager.image_hash.add(hash, @intCast(image_index));
         return image;
     }
 };
@@ -621,8 +716,8 @@ const image_gen = struct {
     fn createShadowMapImageAtlas(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
         image.generateImage(
             null,
-            @intCast(RenderSystem.r_shadow_map_atlas_size.integerValue),
-            @intCast(RenderSystem.r_shadow_map_atlas_size.integerValue),
+            @intCast(RenderSystem.r_shadow_map_atlas_size.integer_value),
+            @intCast(RenderSystem.r_shadow_map_atlas_size.integer_value),
             .linear,
             .clamp_to_zero_alpha,
             .depth,
@@ -695,7 +790,10 @@ const image_gen = struct {
     }
 
     inline fn genFatal(image: *const Image, err: anytype) noreturn {
-        std.debug.print("[IMAGE][ERR:{s}] While image gen {s}\n", .{ @errorName(err), image.imgName.constSlice() });
+        std.debug.print(
+            "[IMAGE][ERR:{s}] While image gen {s}\n",
+            .{ @errorName(err), image.name.constSlice() },
+        );
         @panic("fatal");
     }
 };

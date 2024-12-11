@@ -20,8 +20,8 @@ pub const View = struct {
 
     pub fn calculateRenderView(self: *View) void {
         c_calculateRenderView(&self.render_view, self.fov);
-        self.render_view.vieworg = CVec3.fromVec3f(self.origin);
-        self.render_view.viewaxis = CMat3.fromMat3f(self.axis);
+        self.render_view.view_origin = CVec3.fromVec3f(self.origin);
+        self.render_view.view_axis = CMat3.fromMat3f(self.axis);
         self.render_view.time[0] = @intCast(Game.instance.time);
         self.render_view.time[1] = @intCast(Game.instance.time);
     }

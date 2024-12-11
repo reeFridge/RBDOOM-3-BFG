@@ -564,42 +564,42 @@ pub fn init(
     // init materials
     render_system.default_material = try decl_manager.instance.findType(
         Material,
-        .MATERIAL,
+        .material,
         "_default",
         allocator,
     ) orelse @panic("default material not found");
 
     render_system.default_point_light = try decl_manager.instance.findTypeOrDefault(
         Material,
-        .MATERIAL,
+        .material,
         "lights/defaultPointLight",
         allocator,
     );
 
     render_system.default_projected_light = try decl_manager.instance.findTypeOrDefault(
         Material,
-        .MATERIAL,
+        .material,
         "lights/defaultProjectedLight",
         allocator,
     );
 
     render_system.white_material = try decl_manager.instance.findType(
         Material,
-        .MATERIAL,
+        .material,
         "_white",
         allocator,
     ) orelse @panic("white material not found");
 
     render_system.char_set_material = try decl_manager.instance.findType(
         Material,
-        .MATERIAL,
+        .material,
         "textures/bigchars",
         allocator,
     ) orelse @panic("char_set material not found");
 
     render_system.imgui_material = try decl_manager.instance.findTypeOrDefault(
         Material,
-        .MATERIAL,
+        .material,
         "_imguiFont",
         allocator,
     );
@@ -1115,19 +1115,19 @@ pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
     const stereo = 0;
     const no_stereo = 1;
     for ([_]usize{ stereo, no_stereo }) |try_type| {
-        const stereo_mode: Stereo3DMode = @enumFromInt(stereo_render_enable.integerValue);
+        const stereo_mode: Stereo3DMode = @enumFromInt(stereo_render_enable.integer_value);
         if (try_type == stereo and stereo_mode != .QUAD_BUFFER) continue;
 
         var params = GLImplParams{};
 
-        if (r_fullscreen.integerValue <= 0) { // windowed
-            params.x = @intCast(r_window_x.integerValue);
-            params.y = @intCast(r_window_y.integerValue);
-            params.width = @intCast(r_window_width.integerValue);
-            params.height = @intCast(r_window_height.integerValue);
-            params.fullscreen_mode = r_fullscreen.integerValue;
+        if (r_fullscreen.integer_value <= 0) { // windowed
+            params.x = @intCast(r_window_x.integer_value);
+            params.y = @intCast(r_window_y.integer_value);
+            params.width = @intCast(r_window_width.integer_value);
+            params.height = @intCast(r_window_height.integer_value);
+            params.fullscreen_mode = r_fullscreen.integer_value;
         } else { // fullscreen
-            var current_display: u32 = @intCast(r_fullscreen.integerValue);
+            var current_display: u32 = @intCast(r_fullscreen.integer_value);
             const modes = getModesForDisplay(allocator, current_display - 1) catch modes: {
                 current_display = 1;
                 try r_fullscreen.setInteger(@intCast(current_display));
@@ -1143,18 +1143,18 @@ pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
                 continue;
             }
 
-            params.fullscreen_mode = r_fullscreen.integerValue;
+            params.fullscreen_mode = r_fullscreen.integer_value;
 
-            if (r_video_mode.integerValue < 0) {
-                params.width = @intCast(r_custom_width.integerValue);
-                params.height = @intCast(r_custom_height.integerValue);
-                params.display_hz = @intCast(r_display_refresh.integerValue);
+            if (r_video_mode.integer_value < 0) {
+                params.width = @intCast(r_custom_width.integer_value);
+                params.height = @intCast(r_custom_height.integer_value);
+                params.display_hz = @intCast(r_display_refresh.integer_value);
             } else {
-                if (r_video_mode.integerValue >= modes.len) {
+                if (r_video_mode.integer_value >= modes.len) {
                     try r_video_mode.setInteger(0);
                 }
 
-                const video_mode: u32 = @intCast(r_video_mode.integerValue);
+                const video_mode: u32 = @intCast(r_video_mode.integer_value);
                 params.width = modes[video_mode].width;
                 params.height = modes[video_mode].height;
                 params.display_hz = modes[video_mode].display_hz;

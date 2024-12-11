@@ -78,7 +78,7 @@ export fn ztech_renderWorld_renderScene(
     view: *const RenderView,
 ) callconv(.C) void {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
-    render_world.renderScene(view.*);
+    render_world.renderScene(view.*) catch {};
 }
 
 export fn ztech_renderWorld_generateAllInteractions(

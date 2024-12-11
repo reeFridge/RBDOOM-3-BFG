@@ -120,7 +120,7 @@ pub fn spawn(
         const def_name = entry.value_ptr.*;
         const decl_entity = try decl_manager.instance.findType(
             DeclEntityDef,
-            .ENTITYDEF,
+            .entitydef,
             def_name,
             allocator,
         ) orelse continue;

@@ -1,3 +1,4 @@
+//! @exportCVars
 const std = @import("std");
 const Vec2 = @import("../math/vector.zig").Vec2;
 const Image = @import("image.zig");
@@ -13,6 +14,17 @@ const Common = @import("../framework/common.zig");
 const image_manager = @import("image_manager.zig");
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 const vulkan = @import("vulkan");
+
+const cvar = @import("../framework/cvar_system.zig");
+const CVar = cvar.CVar;
+const CFlags = cvar.CVarFlags;
+
+pub var r_vk_upload_buffer_size_mb = CVar.init(
+    "r_vkUploadBufferSizeMB",
+    "64",
+    CFlags.CVAR_INTEGER | CFlags.CVAR_INIT | CFlags.CVAR_NEW,
+    "Size of gpu upload buffer (Vulkan only)",
+);
 
 pub const BackendCounters = extern struct {
     c_surfaces: c_int,
@@ -386,10 +398,10 @@ pub const RenderBackend = extern struct {
         const command_list_ptr = if (backend.commandList.ptr_) |ptr|
             ptr
         else command_list: {
-            const r_vkUploadBufferSizeMB = 64;
+            const mb: u32 = @intCast(r_vk_upload_buffer_size_mb.integer_value);
             const handle = device.createCommandList(.{
                 // if api == VULKAN
-                .uploadChunkSize = r_vkUploadBufferSizeMB * 1024 * 1024,
+                .uploadChunkSize = mb * 1024 * 1024,
             });
             backend.commandList = handle;
 

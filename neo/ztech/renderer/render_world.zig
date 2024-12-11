@@ -33,20 +33,20 @@ const VertexCache = @import("vertex_cache.zig");
 const Material = @import("material.zig").Material;
 
 pub const RenderView = extern struct {
-    viewID: c_int,
+    view_id: c_int,
     fov_x: f32,
     fov_y: f32,
-    vieworg: CVec3,
-    vieworg_weapon: CVec3,
-    viewaxis: CMat3,
-    cramZNear: bool,
-    flipProjection: bool,
-    forceUpdate: bool,
+    view_origin: CVec3,
+    view_origin_weapon: CVec3,
+    view_axis: CMat3,
+    cram_z_near: bool,
+    flip_projection: bool,
+    force_update: bool,
     time: [2]c_int,
-    shaderParms: [material.max_global_shader_parms]f32,
-    globalMaterial: ?*const material.Material,
-    viewEyeBuffer: c_int,
-    stereoScreenSeparation: f32,
+    shader_params: [material.max_global_shader_parms]f32,
+    global_material: ?*const material.Material,
+    view_eye_buffer: c_int,
+    stereo_screen_separation: f32,
     rdflags: c_int,
 };
 
@@ -545,7 +545,8 @@ extern fn R_AddInGameGuis2([*]*DrawSurface, c_int, *ViewDef, *GuiModel) callconv
 extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
 extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
 
-pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
+pub const RenderSceneError = RenderViewError;
+pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) RenderSceneError!void {
     if (!RenderSystem.instance.initialized) return;
 
     // close any gui drawing
@@ -574,24 +575,25 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) void {
 
     view_def.isSubview = false;
     view_def.isObliqueProjection = false;
-    view_def.initialViewAreaOrigin = render_view.vieworg;
+    view_def.initialViewAreaOrigin = render_view.view_origin;
     view_def.renderWorld = @ptrCast(render_world);
 
     const cross = Vec3(f32).cross(
-        render_view.viewaxis.mat[1].toVec3f(),
-        render_view.viewaxis.mat[2].toVec3f(),
+        render_view.view_axis.mat[1].toVec3f(),
+        render_view.view_axis.mat[2].toVec3f(),
     );
 
-    view_def.isMirror = cross.dot(render_view.viewaxis.mat[0].toVec3f()) <= 0;
+    view_def.isMirror = cross.dot(render_view.view_axis.mat[0].toVec3f()) <= 0;
 
-    render_world.renderView(view_def);
+    try render_world.renderView(view_def);
     renderPostProcess(view_def);
 
     RenderSystem.instance.uncrop();
     RenderSystem.instance.gui_model.clear();
 }
 
-fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
+const RenderViewError = Material.EvaluateRegistersError;
+fn renderView(render_world: *RenderWorld, view_def: *ViewDef) RenderViewError!void {
     // save view in case we are a subview
     const old_view_def = RenderSystem.instance.getView();
     RenderSystem.instance.setView(view_def);
@@ -638,8 +640,8 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) void {
 
     RenderSystem.instance.front_end_job_list.wait();
 
-    render_world.addLights(view_def);
-    render_world.addModels(view_def);
+    try render_world.addLights(view_def);
+    try render_world.addModels(view_def);
 
     if (view_def.drawSurfs) |draw_surfs| {
         R_AddInGameGuis2(
@@ -722,7 +724,7 @@ fn addSingleLight(
     render_world: *RenderWorld,
     view_light: *ViewLight,
     view_def: *ViewDef,
-) void {
+) Material.EvaluateRegistersError!void {
     // until proven otherwise
     view_light.removeFromList = true;
     view_light.shadowOnlyViewEntities = null;
@@ -740,12 +742,13 @@ fn addSingleLight(
 
     // evaluate the light shader registers
     const light_regs = FrameData.frameAlloc(f32, light_shader.getNumRegisters());
-    light_shader.evaluateRegisters(
+    try light_shader.evaluateRegisters(
         light_regs,
-        &light.parms.shaderParms,
-        &view_def.renderView.shaderParms,
+        &light.parms.shader_params,
+        &view_def.renderView.shader_params,
         @as(f32, @floatFromInt(view_def.renderView.time[0])) * 0.001,
         light.parms.referenceSound,
+        render_world.allocator,
     );
 
     // if this is a purely additive light and no stage in the light shader evaluates
@@ -1117,10 +1120,10 @@ fn shadowBounds(
     return shadow_bounds;
 }
 
-fn addLights(render_world: *RenderWorld, view_def: *ViewDef) void {
+fn addLights(render_world: *RenderWorld, view_def: *ViewDef) Material.EvaluateRegistersError!void {
     var opt_view_light = view_def.viewLights;
     while (opt_view_light) |view_light| : (opt_view_light = view_light.next) {
-        render_world.addSingleLight(view_light, view_def);
+        try render_world.addSingleLight(view_light, view_def);
     }
 
     cullLightsMarkedAsRemoved(view_def);
@@ -1128,12 +1131,12 @@ fn addLights(render_world: *RenderWorld, view_def: *ViewDef) void {
 
 extern fn R_SortViewEntities(?*ViewEntity) callconv(.C) ?*ViewEntity;
 
-fn addModels(render_world: *RenderWorld, view_def: *ViewDef) void {
+fn addModels(render_world: *RenderWorld, view_def: *ViewDef) Material.EvaluateRegistersError!void {
     view_def.viewEntitys = R_SortViewEntities(view_def.viewEntitys);
 
     var opt_view_entity = view_def.viewEntitys;
     while (opt_view_entity) |view_entity| : (opt_view_entity = view_entity.next) {
-        render_world.addSingleModel(view_entity, view_def);
+        try render_world.addSingleModel(view_entity, view_def);
     }
 
     moveDrawSurfsToView(view_def);
@@ -1152,7 +1155,7 @@ fn addSingleModel(
     render_world: *RenderWorld,
     view_entity: *ViewEntity,
     view_def: *ViewDef,
-) void {
+) Material.EvaluateRegistersError!void {
     const interaction_table = render_world.interaction_table orelse @panic("interaction_table is undefined");
 
     // we will add all interaction surfs here, to be chained to the lights in later serial code
@@ -1288,7 +1291,12 @@ fn addSingleModel(
                 decals.createDeferredDecals(render_model, view_def);
                 const num_draw_surfs = decals.getNumDecalDrawSurfs();
                 for (0..num_draw_surfs) |i| {
-                    if (decals.createDecalDrawSurf(view_entity, i, view_def)) |decal_draw_surf| {
+                    if (try decals.createDecalDrawSurf(
+                        view_entity,
+                        i,
+                        view_def,
+                        render_world.allocator,
+                    )) |decal_draw_surf| {
                         decal_draw_surf.linkChain = null;
                         decal_draw_surf.nextOnLight = view_entity.drawSurfs;
                         view_entity.drawSurfs = decal_draw_surf;
@@ -1301,11 +1309,12 @@ fn addSingleModel(
                 overlays.createDeferredOverlays(render_model, view_def);
                 const num_draw_surfs = overlays.getNumOverlayDrawSurfs();
                 for (0..num_draw_surfs) |i| {
-                    if (overlays.createOverlayDrawSurf(
+                    if (try overlays.createOverlayDrawSurf(
                         view_entity,
                         render_model,
                         i,
                         view_def,
+                        render_world.allocator,
                     )) |overlay_draw_surf| {
                         overlay_draw_surf.linkChain = null;
                         overlay_draw_surf.nextOnLight = view_entity.drawSurfs;
@@ -1362,7 +1371,7 @@ fn addSingleModel(
     // an extruded shadow volume, which means we can skip drawing the end caps
     const local_view_origin = interaction.globalPointToLocal(
         &view_entity.modelMatrix,
-        view_def.renderView.vieworg.toVec3f(),
+        view_def.renderView.view_origin.toVec3f(),
     );
 
     const add_interactions = model_is_visible and
@@ -1414,7 +1423,7 @@ fn addSingleModel(
         }
 
         if (RenderSystem.instance.primary_render_view) |render_view| {
-            if (render_view.globalMaterial) |global_material| {
+            if (render_view.global_material) |global_material| {
                 shader = global_material;
             }
         }
@@ -1465,7 +1474,7 @@ fn addSingleModel(
             base_surf.space = view_entity;
             base_surf.scissorRect = view_entity.scissorRect;
             base_surf.extraGLState = 0;
-            base_surf.setupShader(shader, render_entity, view_def);
+            try base_surf.setupShader(shader, render_entity, view_def, render_world.allocator);
 
             opt_shader_regs = base_surf.shaderRegisters;
 
@@ -1566,7 +1575,7 @@ fn addSingleModel(
                     // make sure we have a valid shader register even if we didn't generate a drawn mesh above
                     if (opt_shader_regs == null) {
                         var scratch_surf = std.mem.zeroes(DrawSurface);
-                        scratch_surf.setupShader(shader, render_entity, view_def);
+                        try scratch_surf.setupShader(shader, render_entity, view_def, render_world.allocator);
                         opt_shader_regs = scratch_surf.shaderRegisters;
                     }
 
@@ -1682,7 +1691,7 @@ fn addSingleModel(
                 }
 
                 if (shader.coverage == .perforated) {
-                    shadow_draw_surf.setupShader(shader, render_entity, view_def);
+                    try shadow_draw_surf.setupShader(shader, render_entity, view_def, render_world.allocator);
                 }
 
                 shadow_draw_surf.setupJoints(tri, null);
@@ -1766,7 +1775,7 @@ pub fn findViewLightsAndEntities(render_world: *RenderWorld, frustum_planes: []P
         }
     } else {
         render_world.flowViewThroughPortals(
-            view_def.renderView.vieworg.toVec3f(),
+            view_def.renderView.view_origin.toVec3f(),
             frustum_planes[0..5],
         );
     }
@@ -2990,10 +2999,10 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         def.parms.axis.mat[1].y = 1.0;
         def.parms.axis.mat[2].z = 1.0;
 
-        def.parms.shaderParms[0] = 1.0;
-        def.parms.shaderParms[1] = 1.0;
-        def.parms.shaderParms[2] = 1.0;
-        def.parms.shaderParms[3] = 1.0;
+        def.parms.shader_params[0] = 1.0;
+        def.parms.shader_params[1] = 1.0;
+        def.parms.shader_params[2] = 1.0;
+        def.parms.shader_params[3] = 1.0;
 
         def.deriveEntityData();
         try render_world.addEntityRefToArea(def, area);
@@ -3436,7 +3445,7 @@ inline fn createModelSurface(
 
     const opt_material_ptr = try decl_manager.instance.findType(
         Material,
-        .MATERIAL,
+        .material,
         meterial_name,
         render_world.allocator,
     );

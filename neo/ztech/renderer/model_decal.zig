@@ -107,7 +107,8 @@ pub const ModelDecal = extern struct {
         space: *const ViewEntity,
         index: usize,
         view_def: *ViewDef,
-    ) ?*DrawSurface {
+        allocator: std.mem.Allocator,
+    ) Material.EvaluateRegistersError!?*DrawSurface {
         if (index >= model_decal.numDecalMaterials) return null;
 
         const material = model_decal.decalMaterials[index] orelse return null;
@@ -209,7 +210,12 @@ pub const ModelDecal = extern struct {
         draw_surf.scissorRect = space.scissorRect;
         draw_surf.extraGLState = 0;
 
-        draw_surf.setupShader(material, &space.entityDef.?.parms, view_def);
+        try draw_surf.setupShader(
+            material,
+            &space.entityDef.?.parms,
+            view_def,
+            allocator,
+        );
 
         return draw_surf;
     }

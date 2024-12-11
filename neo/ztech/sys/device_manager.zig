@@ -400,7 +400,7 @@ pub const DeviceManagerVulkan = struct {
 
         const present_mode: vulkan.PresentModeKHR = if (device_manager.device_params.vsync_enabled)
             if (device_manager.present_modes.fifo_relaxed) .fifo_relaxed_khr else .fifo_khr
-        else if (device_manager.present_modes.mailbox and r_vk_prefer_fast_sync.integerValue != 0)
+        else if (device_manager.present_modes.mailbox and r_vk_prefer_fast_sync.integer_value != 0)
             .immediate_khr
         else
             .fifo_khr;
@@ -883,7 +883,7 @@ pub const DeviceManagerVulkan = struct {
                 c.VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT
             else
                 0,
-            .preferredLargeHeapBlockSize = @as(u64, @intCast(r_vma_device_local_memory_mb.integerValue)) * 1024 * 1024,
+            .preferredLargeHeapBlockSize = @as(u64, @intCast(r_vma_device_local_memory_mb.integer_value)) * 1024 * 1024,
             .pVulkanFunctions = &vulkan_funcs,
         };
 

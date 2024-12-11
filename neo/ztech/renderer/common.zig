@@ -93,7 +93,7 @@ pub const BindingLayoutType = enum(c_int) {
     }
 };
 
-const MAX_ENTITY_SHADER_PARAMS = @import("render_entity.zig").MAX_ENTITY_SHADER_PARAMS;
+const max_entity_shader_params = @import("render_entity.zig").max_entity_shader_params;
 const max_expression_registers = @import("material.zig").max_expression_registers;
 
 // areas have references to hold all the lights and entities in them
@@ -197,7 +197,8 @@ pub const DrawSurface = extern struct {
         shader: *const Material,
         render_entity: *const RenderEntity,
         view_def: *ViewDef,
-    ) void {
+        allocator: std.mem.Allocator,
+    ) Material.EvaluateRegistersError!void {
         draw_surf.material = shader;
         draw_surf.sort = shader.sort;
         const time_sec: f32 = @as(f32, @floatFromInt(
@@ -209,39 +210,41 @@ pub const DrawSurface = extern struct {
             // shader only uses constant values
             draw_surf.shaderRegisters = constant_registers;
         } else {
-            var gen_shader_params = std.mem.zeroes([MAX_ENTITY_SHADER_PARAMS]f32);
+            var gen_shader_params = std.mem.zeroes([max_entity_shader_params]f32);
             // by default evaluate with the entityDef's shader parms
             const shader_params = if (render_entity.referenceShader) |ref_shader| shader_params: {
                 // evaluate the reference shader to find our shader parms
                 var ref_regs = std.mem.zeroes([max_expression_registers]f32);
-                ref_shader.evaluateRegisters(
+                try ref_shader.evaluateRegisters(
                     &ref_regs,
-                    &render_entity.shaderParms,
-                    &view_def.renderView.shaderParms,
+                    &render_entity.shader_params,
+                    &view_def.renderView.shader_params,
                     time_sec,
                     render_entity.referenceSound,
+                    allocator,
                 );
 
                 const p_stage = ref_shader.getStage(0) orelse @panic("No primary stage!");
-                gen_shader_params = render_entity.shaderParms;
+                gen_shader_params = render_entity.shader_params;
                 gen_shader_params[0] = ref_regs[@intCast(p_stage.color.registers[0])];
                 gen_shader_params[1] = ref_regs[@intCast(p_stage.color.registers[1])];
                 gen_shader_params[2] = ref_regs[@intCast(p_stage.color.registers[2])];
 
                 break :shader_params &gen_shader_params;
-            } else &render_entity.shaderParms;
+            } else &render_entity.shader_params;
 
             // allocate frame memory for the shader register values
             const regs = FrameData.frameAlloc(f32, @intCast(shader.getNumRegisters()));
             draw_surf.shaderRegisters = @ptrCast(regs);
 
             // process the shader expressions for conditionals / color / texcoords
-            shader.evaluateRegisters(
+            try shader.evaluateRegisters(
                 regs,
                 shader_params,
-                &view_def.renderView.shaderParms,
+                &view_def.renderView.shader_params,
                 time_sec,
                 render_entity.referenceSound,
+                allocator,
             );
         }
     }
@@ -458,8 +461,8 @@ pub const ViewDef = extern struct {
         world.modelMatrix[1 * 4 + 1] = 1.0;
         world.modelMatrix[2 * 4 + 2] = 1.0;
 
-        const origin = view_def.renderView.vieworg.constSlice();
-        const axis = view_def.renderView.viewaxis.constSlice();
+        const origin = view_def.renderView.view_origin.constSlice();
+        const axis = view_def.renderView.view_axis.constSlice();
         var viewer_matrix = std.mem.zeroes([16]f32);
 
         viewer_matrix[0 * 4 + 0] = axis[0 * 3 + 0];
@@ -517,7 +520,7 @@ pub const ViewDef = extern struct {
             jittery = pixel_offset.v[1];
         }
 
-        const z_near = if (view_def.renderView.cramZNear)
+        const z_near = if (view_def.renderView.cram_z_near)
             r_znear * 0.25
         else
             r_znear;
@@ -571,7 +574,7 @@ pub const ViewDef = extern struct {
         projection_matrix[2 * 4 + 3] = -1.0;
         projection_matrix[3 * 4 + 3] = 0.0;
 
-        if (view_def.renderView.flipProjection) {
+        if (view_def.renderView.flip_projection) {
             projection_matrix[1 * 4 + 1] = -projection_matrix[1 * 4 + 1];
             projection_matrix[1 * 4 + 3] = -projection_matrix[1 * 4 + 3];
         }
@@ -584,7 +587,7 @@ pub const ViewDef = extern struct {
     const r_shadow_map_splits = 3;
     const r_shadow_map_split_weight = 0.9;
     pub fn setupSplitFrustums(view_def: *ViewDef) void {
-        const z_near_start = if (view_def.renderView.cramZNear)
+        const z_near_start = if (view_def.renderView.cram_z_near)
             r_znear * 0.25
         else
             r_znear;
@@ -664,7 +667,7 @@ pub const ViewDef = extern struct {
         var jitterx: f32 = 0;
         jitterx = jitterx * width / @as(f32, @floatFromInt(view_width));
         jitterx += r_center_x;
-        jitterx += view_def.renderView.stereoScreenSeparation;
+        jitterx += view_def.renderView.stereo_screen_separation;
         xmin += jitterx * width;
         xmax += jitterx * width;
 
@@ -696,7 +699,7 @@ pub const ViewDef = extern struct {
         projection_matrix[2 * 4 + 3] = -1.0;
         projection_matrix[3 * 4 + 3] = 0.0;
 
-        if (view_def.renderView.flipProjection) {
+        if (view_def.renderView.flip_projection) {
             projection_matrix[1 * 4 + 1] = -view_def.projectionMatrix[1 * 4 + 1];
             projection_matrix[1 * 4 + 3] = -view_def.projectionMatrix[1 * 4 + 3];
         }

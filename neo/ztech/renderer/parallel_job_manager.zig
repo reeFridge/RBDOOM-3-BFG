@@ -61,7 +61,7 @@ pub const ParallelJobManager = extern struct {
             thread.start(core, i);
         }
 
-        job_manager.maxThreads = @intCast(jobs_num_threads.integerValue);
+        job_manager.maxThreads = @intCast(jobs_num_threads.integer_value);
 
         const cpu_info = try threading.getCpuInfo();
         job_manager.numPhysicalCpuCores = @intCast(cpu_info.physical_cores);

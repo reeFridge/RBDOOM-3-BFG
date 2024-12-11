@@ -560,7 +560,7 @@ pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*Ren
 
     const model_decl = try decl_manager.instance.findType(
         DeclModelDef,
-        .MODELDEF,
+        .modeldef,
         model_name,
         animator.allocator,
     ) orelse return null;

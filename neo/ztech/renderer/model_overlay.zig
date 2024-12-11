@@ -87,7 +87,8 @@ pub const ModelOverlay = extern struct {
         opt_base_model: ?*const RenderModel,
         index: usize,
         view_def: *ViewDef,
-    ) ?*DrawSurface {
+        allocator: std.mem.Allocator,
+    ) Material.EvaluateRegistersError!?*DrawSurface {
         if (index >= overlay.numOverlayMaterials) return null;
         const base_model = opt_base_model orelse return null;
         if (base_model.isDefaultModel() or base_model.numSurfaces() == 0) return null;
@@ -208,7 +209,7 @@ pub const ModelOverlay = extern struct {
         draw_surf.scissorRect = space.scissorRect;
         draw_surf.extraGLState = 0;
 
-        draw_surf.setupShader(material, &space.entityDef.?.parms, view_def);
+        try draw_surf.setupShader(material, &space.entityDef.?.parms, view_def, allocator);
         draw_surf.setupJoints(new_tri, null);
 
         return draw_surf;

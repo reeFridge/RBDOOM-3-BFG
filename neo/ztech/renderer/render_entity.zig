@@ -16,8 +16,8 @@ const RenderModelManager = @import("render_model_manager.zig");
 const RenderView = @import("render_world.zig").RenderView;
 const JointMat = @import("../anim/animator.zig").JointMat;
 
-pub const MAX_ENTITY_SHADER_PARAMS: usize = 12;
-pub const MAX_RENDERENTITY_GUI: usize = 3;
+pub const max_entity_shader_params: usize = 12;
+pub const max_renderentity_gui: usize = 3;
 
 const deferredEntityCallback_t = fn (?*RenderEntity, ?*RenderView) callconv(.C) bool;
 
@@ -79,9 +79,9 @@ pub const RenderEntity = extern struct {
     // for shader sound tables, allowing effects to vary with sounds
     referenceSound: ?*anyopaque = null,
     // can be used in any way by shader or model generation
-    shaderParms: [MAX_ENTITY_SHADER_PARAMS]f32 = std.mem.zeroes([MAX_ENTITY_SHADER_PARAMS]f32),
+    shader_params: [max_entity_shader_params]f32 = std.mem.zeroes([max_entity_shader_params]f32),
     // networking: see WriteGUIToSnapshot / ReadGUIFromSnapshot
-    gui: [MAX_RENDERENTITY_GUI]?*anyopaque = std.mem.zeroes([MAX_RENDERENTITY_GUI]?*anyopaque),
+    gui: [max_renderentity_gui]?*anyopaque = std.mem.zeroes([max_renderentity_gui]?*anyopaque),
     // any remote camera surfaces will use this
     remoteRenderView: ?*anyopaque = null,
 

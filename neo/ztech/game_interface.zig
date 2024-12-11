@@ -2,7 +2,9 @@ const Game = @import("game.zig");
 const RenderWorld = @import("renderer/render_world.zig");
 
 export fn ztech_game_draw(_: c_int) callconv(.C) bool {
-    return Game.instance.draw();
+    Game.instance.draw() catch return false;
+
+    return true;
 }
 
 export fn ztech_game_initFromMap(render_world: *RenderWorld) callconv(.C) void {

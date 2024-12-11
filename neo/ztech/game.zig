@@ -123,15 +123,14 @@ const Game = @This();
 
 pub var instance: Game = .{};
 
-pub fn draw(game: *Game) bool {
-    const render_world = game.render_world orelse return false;
+pub const DrawError = error{ NoPlayer, NoWorld } || RenderWorld.RenderSceneError;
+pub fn draw(game: *Game) DrawError!void {
+    const render_world = game.render_world orelse return error.NoWorld;
     const players = global.entities.getByType(Player).field_storage;
-    if (players.len == 0) return false;
+    if (players.len == 0) return error.NoPlayer;
 
     const player_view = &players.items(.view)[0];
-    render_world.renderScene(player_view.render_view);
-
-    return true;
+    try render_world.renderScene(player_view.render_view);
 }
 
 pub fn initFromMap(game: *Game, render_world: *RenderWorld) void {

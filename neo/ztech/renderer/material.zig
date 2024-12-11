@@ -1,7 +1,9 @@
 const std = @import("std");
 const idlib = @import("../idlib.zig");
 const decl = @import("../framework/decl_manager.zig");
+const DeclLocal = decl.DeclLocal;
 const DeclSkin = @import("common.zig").DeclSkin;
+const ViewDef = @import("common.zig").ViewDef;
 const Image = @import("image.zig").Image;
 const lexer_ = @import("../lexer.zig");
 const Lexer = lexer_.Lexer;
@@ -19,6 +21,18 @@ const Shader = render_prog_manager.Shader;
 const Cinematic = @import("cinematic.zig").Cinematic;
 const image_program = @import("image_program.zig");
 const image_manager = @import("image_manager.zig");
+const render_entity = @import("render_entity.zig");
+
+const cvar = @import("../framework/cvar_system.zig");
+const CVar = cvar.CVar;
+const CFlags = cvar.CVarFlags;
+
+pub var r_use_constant_materials = CVar.init(
+    "r_useConstantMaterials",
+    "1",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_BOOL,
+    "use pre-calculated material registers if possible",
+);
 
 pub const max_global_shader_parms: usize = 12;
 
@@ -324,12 +338,13 @@ pub const ExpOpType = enum(c_int) {
 
 pub const ExpOp = extern struct {
     op_type: ExpOpType,
-    a: c_int,
-    b: c_int,
-    c: c_int,
+    a: u32,
+    b: u32,
+    c: u32,
 };
 
 pub const ExpRegisters = enum {
+    time,
     parm0,
     parm1,
     parm2,
@@ -369,18 +384,18 @@ pub const max_shader_stages: usize = 256;
 pub const max_texgen_registers: usize = 4;
 
 pub const MaterialSort = enum(c_int) {
-    subview = -3,
-    gui = -2,
-    bad = -1,
-    @"opaque",
-    portal_sky,
-    decal,
-    far,
-    medium,
-    close,
-    almost_nearest,
-    nearest,
-    post_process = 100,
+    pub const subview: f32 = -3;
+    pub const gui: f32 = -2;
+    pub const bad: f32 = -1;
+    pub const @"opaque": f32 = 0;
+    pub const portal_sky: f32 = 1;
+    pub const decal: f32 = 2;
+    pub const far: f32 = 3;
+    pub const medium: f32 = 4;
+    pub const close: f32 = 5;
+    pub const almost_nearest: f32 = 6;
+    pub const nearest: f32 = 7;
+    pub const post_process: f32 = 100;
 };
 
 pub const Material = extern struct {
@@ -414,7 +429,7 @@ pub const Material = extern struct {
         .start = .{ 1, 1, 1, 1 },
         .end = .{ 0, 0, 0, 0 },
     },
-    sort: f32 = @floatFromInt(@intFromEnum(MaterialSort.bad)),
+    sort: f32 = MaterialSort.bad,
     stereo_eye: f32 = 0,
     deform: Deform = .none,
     deform_registers: [4]c_int = [_]c_int{0} ** 4,
@@ -466,9 +481,11 @@ pub const Material = extern struct {
     }
 
     pub const ParseError =
+        EvaluateRegistersError ||
         std.mem.Allocator.Error ||
         ParseMaterialError ||
         Lexer.LoadMemoryError;
+
     pub fn parse(
         material: *Material,
         definition_text: []const u8,
@@ -496,12 +513,244 @@ pub const Material = extern struct {
 
         try material.parseMaterial(&lexer, allocator);
 
-        // TODO
+        // count non-lit stages
+        {
+            material.num_ambient_stages = 0;
+            for (0..material.num_stages) |i| {
+                if (material.pd.?.parse_stages[i].lighting == .ambient) {
+                    material.num_ambient_stages += 1;
+                }
+            }
+        }
 
-        @panic("Material.parse is not implemented");
+        // check if there is a subview stage
+        if (material.sort == MaterialSort.subview) {
+            material.has_subview = true;
+        } else {
+            material.has_subview = false;
+            for (0..material.num_stages) |i| {
+                if (material.pd.?.parse_stages[i].texture.dynamic != .static) {
+                    material.has_subview = true;
+                    break;
+                }
+            }
+        }
+
+        // automatically determine coverage if not explicitly set
+        if (material.coverage == .bad) {
+            const bits = material.pd.?.parse_stages[0].draw_state_bits;
+
+            if (material.num_stages == 0) {
+                material.coverage = .translucent;
+            } else if (material.num_stages == material.num_ambient_stages) {
+                material.coverage = .@"opaque";
+            } else if ((bits & gl_state.GLS_DSTBLEND_BITS) != gl_state.GLS_DSTBLEND_ZERO or
+                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_DST_COLOR or
+                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_ONE_MINUS_DST_COLOR or
+                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_DST_ALPHA or
+                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_ONE_MINUS_DST_ALPHA)
+            {
+                material.coverage = .translucent;
+            } else {
+                material.coverage = .@"opaque";
+            }
+        }
+
+        if (material.coverage == .translucent) {
+            material.material_flags.noshadows = true;
+            material.editor_alpha = 0.5;
+        } else {
+            material.content_flags.@"opaque" = true;
+            material.editor_alpha = 1;
+        }
+
+        if (material.sort == MaterialSort.bad) {
+            if (material.material_flags.polygonoffset) {
+                material.sort = MaterialSort.decal;
+            } else if (material.coverage == .translucent) {
+                material.sort = MaterialSort.medium;
+            } else {
+                material.sort = MaterialSort.@"opaque";
+            }
+        }
+
+        for (0..material.num_stages) |i| stages: {
+            const ps = &material.pd.?.parse_stages[i];
+            if (ps.texture.image == image_manager.instance.originalCurrentRenderImage) {
+                if (material.sort != MaterialSort.portal_sky) {
+                    material.sort = MaterialSort.post_process;
+                    material.coverage = .translucent;
+                }
+                break :stages;
+            }
+
+            if (ps.new_stage) |new_stage| {
+                const images = new_stage.fragment_program_images[0..new_stage.num_fragment_program_images];
+                for (images) |image_| {
+                    if (image_ == image_manager.instance.originalCurrentRenderImage) {
+                        if (material.sort != MaterialSort.portal_sky) {
+                            material.sort = MaterialSort.post_process;
+                            material.coverage = .translucent;
+                        }
+
+                        break :stages;
+                    }
+                }
+            }
+        }
+
+        for (0..material.num_stages) |i| {
+            const ps = &material.pd.?.parse_stages[i];
+
+            if (material.sort == MaterialSort.post_process) {
+                ps.draw_state_bits |= gl_state.GLS_DEPTHFUNC_LESS;
+            } else if (material.coverage == .translucent or ps.ignore_alpha_test) {
+                ps.draw_state_bits |= gl_state.GLS_DEPTHFUNC_LESS | gl_state.GLS_DEPTHMASK;
+            } else {
+                ps.draw_state_bits |= gl_state.GLS_DEPTHFUNC_EQUAL | gl_state.GLS_DEPTHMASK;
+            }
+        }
+
+        if (material.pd.?.force_overlays) {
+            material.allow_overlays = true;
+        } else if (!material.isDrawn() or
+            material.coverage != .@"opaque" or
+            material.surface_flags.noimpact)
+        {
+            material.allow_overlays = false;
+        }
+
+        if (material.num_stages > 0) {
+            const stages = try allocator.alloc(ShaderStage, material.num_stages);
+            errdefer allocator.free(stages);
+            @memcpy(
+                stages,
+                material.pd.?.parse_stages[0..material.num_stages],
+            );
+
+            material.stages = stages.ptr;
+            material.num_stages = @intCast(stages.len);
+        }
+
+        if (material.num_ops > 0) {
+            const ops = try allocator.alloc(ExpOp, material.num_ops);
+            errdefer allocator.free(ops);
+            @memcpy(
+                ops,
+                material.pd.?.shader_ops[0..material.num_ops],
+            );
+            material.ops = ops.ptr;
+            material.num_ops = @intCast(ops.len);
+        }
+
+        if (material.num_registers > 0) {
+            const expression_regs = try allocator.alloc(f32, material.num_registers);
+            errdefer allocator.free(expression_regs);
+            @memcpy(
+                expression_regs,
+                material.pd.?.shader_registers[0..material.num_registers],
+            );
+            material.expression_registers = expression_regs.ptr;
+            material.num_registers = @intCast(expression_regs.len);
+        }
+
+        try material.checkForConstantRegisters(allocator);
+        material.setFastPathImages() catch {
+            material.fast_path_bump_image = null;
+            material.fast_path_diffuse_image = null;
+            material.fast_path_specular_image = null;
+        };
+
+        if (material.material_flags.defaulted) {
+            try material.makeDefault(allocator);
+            return;
+        }
+    }
+
+    fn setFastPathImages(material: *Material) error{NonTrivial}!void {
+        material.fast_path_bump_image = null;
+        material.fast_path_diffuse_image = null;
+        material.fast_path_specular_image = null;
+
+        const constant_regs = if (material.constant_registers) |regs_ptr|
+            regs_ptr[0..material.num_registers]
+        else
+            return;
+
+        const stages = if (material.stages) |stages_ptr|
+            stages_ptr[0..material.num_stages]
+        else
+            return;
+
+        for (stages) |*stage| {
+            if (stage.texture.has_matrix) return error.NonTrivial;
+            if (stage.vertex_color != .ignore) return error.NonTrivial;
+
+            for (&stage.color.registers) |reg_index| {
+                if (@abs(constant_regs[reg_index] - 1) > 0.1) return error.NonTrivial;
+            }
+
+            switch (stage.lighting) {
+                .coverage, .ambient => {},
+                .bump => {
+                    if (material.fast_path_bump_image != null) return error.NonTrivial;
+                    material.fast_path_bump_image = stage.texture.image;
+                },
+                .diffuse => {
+                    if (material.fast_path_diffuse_image != null) return error.NonTrivial;
+                    material.fast_path_diffuse_image = stage.texture.image;
+                },
+                .specular => {
+                    if (material.fast_path_specular_image != null) return error.NonTrivial;
+                    material.fast_path_specular_image = stage.texture.image;
+                },
+            }
+        }
+
+        if (material.fast_path_bump_image == null or material.fast_path_diffuse_image == null)
+            return error.NonTrivial;
+
+        if (material.fast_path_specular_image == null) {
+            material.fast_path_specular_image = image_manager.instance.blackImage;
+        }
+    }
+
+    fn makeDefault(
+        material: *Material,
+        allocator: std.mem.Allocator,
+    ) DeclLocal.MakeDefaultError(Material)!void {
+        const decl_local = material.base.base.?;
+        const decl_index: u32 = @intCast(@intFromEnum(decl_local.decl_type));
+        const rt_decl_type =
+            decl.instance.decl_types.constSlice()[decl_index] orelse
+            @panic("decl_type is not registered");
+        try decl_local.makeDefault(Material, rt_decl_type, allocator);
+    }
+
+    fn checkForConstantRegisters(material: *Material, allocator: std.mem.Allocator) EvaluateRegistersError!void {
+        std.debug.assert(material.constant_registers == null);
+
+        if (!material.pd.?.registers_are_constant) return;
+        if (r_use_constant_materials.integer_value == 0) return;
+
+        const constant_registers = try allocator.alloc(f32, material.num_registers);
+        for (constant_registers) |*reg| reg.* = 0;
+
+        var shader_params = std.mem.zeroes([render_entity.max_entity_shader_params]f32);
+        var view_def = std.mem.zeroes(ViewDef);
+
+        try material.evaluateRegisters(
+            constant_registers,
+            &shader_params,
+            &view_def.renderView.shader_params,
+            0,
+            null,
+            allocator,
+        );
     }
 
     const ParseMaterialError =
+        AddImplicitStagesError ||
         ParseStageError ||
         ui_manager.UserInterfaceManager.FindGuiOrLoadError ||
         Lexer.ReadTokenError ||
@@ -589,7 +838,7 @@ pub const Material = extern struct {
             } else if (token.ieql("ambientLight")) {
                 material.ambient_light = true;
             } else if (token.ieql("mirror")) {
-                material.sort = @floatFromInt(@intFromEnum(MaterialSort.subview));
+                material.sort = MaterialSort.subview;
                 material.coverage = .@"opaque";
                 material.subview_type = .direct_portal;
             } else if (token.ieql("noFog")) {
@@ -667,7 +916,7 @@ pub const Material = extern struct {
             }
         }
 
-        material.addImplicitStages(.repeat);
+        try material.addImplicitStages(.repeat, allocator);
         material.sortInteractionStages();
 
         if (material.cull_type == .two_sided) {
@@ -776,22 +1025,114 @@ pub const Material = extern struct {
             null;
     }
 
+    pub const EvaluateRegistersError = std.mem.Allocator.Error || decl.DeclTable.ParseError;
     pub fn evaluateRegisters(
         material: *const Material,
-        regs: []f32,
+        registers: []f32,
         local_params: []const f32,
         global_params: []const f32,
         time: f32,
         sound_emitter: ?*anyopaque,
-    ) void {
-        c_material_evaluateRegisters(
-            material,
-            regs.ptr,
-            local_params.ptr,
-            global_params.ptr,
-            time,
-            sound_emitter,
-        );
+        allocator: std.mem.Allocator,
+    ) EvaluateRegistersError!void {
+        for (ExpRegisters.num_predefined..material.num_registers) |i| {
+            registers[i] = material.expression_registers.?[i];
+        }
+
+        // copy the local and global parameters
+        registers[@intFromEnum(ExpRegisters.time)] = time;
+        registers[@intFromEnum(ExpRegisters.parm0)] = local_params[0];
+        registers[@intFromEnum(ExpRegisters.parm1)] = local_params[1];
+        registers[@intFromEnum(ExpRegisters.parm2)] = local_params[2];
+        registers[@intFromEnum(ExpRegisters.parm3)] = local_params[3];
+        registers[@intFromEnum(ExpRegisters.parm4)] = local_params[4];
+        registers[@intFromEnum(ExpRegisters.parm5)] = local_params[5];
+        registers[@intFromEnum(ExpRegisters.parm6)] = local_params[6];
+        registers[@intFromEnum(ExpRegisters.parm7)] = local_params[7];
+        registers[@intFromEnum(ExpRegisters.parm8)] = local_params[8];
+        registers[@intFromEnum(ExpRegisters.parm9)] = local_params[9];
+        registers[@intFromEnum(ExpRegisters.parm10)] = local_params[10];
+        registers[@intFromEnum(ExpRegisters.parm11)] = local_params[11];
+        registers[@intFromEnum(ExpRegisters.global0)] = global_params[0];
+        registers[@intFromEnum(ExpRegisters.global1)] = global_params[1];
+        registers[@intFromEnum(ExpRegisters.global2)] = global_params[2];
+        registers[@intFromEnum(ExpRegisters.global3)] = global_params[3];
+        registers[@intFromEnum(ExpRegisters.global4)] = global_params[4];
+        registers[@intFromEnum(ExpRegisters.global5)] = global_params[5];
+        registers[@intFromEnum(ExpRegisters.global6)] = global_params[6];
+        registers[@intFromEnum(ExpRegisters.global7)] = global_params[7];
+
+        for (material.ops.?[0..material.num_ops]) |op| {
+            switch (op.op_type) {
+                .add => {
+                    registers[op.c] = registers[op.a] + registers[op.b];
+                },
+                .subtract => {
+                    registers[op.c] = registers[op.a] - registers[op.b];
+                },
+                .multiply => {
+                    registers[op.c] = registers[op.a] * registers[op.b];
+                },
+                .divide => {
+                    registers[op.c] = registers[op.a] / registers[op.b];
+                },
+                .mod => {
+                    var b: i32 = @intFromFloat(registers[op.b]);
+                    b = if (b != 0) b else 1;
+                    registers[op.c] = @floatFromInt(@mod(@as(i32, @intFromFloat(registers[op.a])), b));
+                },
+                .table => {
+                    const table = try decl.instance.declByIndex(
+                        decl.DeclTable,
+                        .table,
+                        op.a,
+                        true,
+                        allocator,
+                    );
+                    registers[op.c] = table.tableLookup(registers[op.b]);
+                },
+                .sound => {
+                    _ = sound_emitter;
+                    @panic("not implemented");
+                    //if( r_forceSoundOpAmplitude.GetFloat() > 0 )
+                    //{
+                    //	registers[op->c] = r_forceSoundOpAmplitude.GetFloat();
+                    //}
+                    //else if( soundEmitter )
+                    //{
+                    //	registers[op->c] = soundEmitter->CurrentAmplitude();
+                    //}
+                    //else
+                    //{
+                    //	registers[op->c] = 0;
+                    //}
+                },
+                .gt => {
+                    registers[op.c] = if (registers[op.a] > registers[op.b]) 1 else 0;
+                },
+                .ge => {
+                    registers[op.c] = if (registers[op.a] >= registers[op.b]) 1 else 0;
+                },
+                .lt => {
+                    registers[op.c] = if (registers[op.a] < registers[op.b]) 1 else 0;
+                },
+                .le => {
+                    registers[op.c] = if (registers[op.a] <= registers[op.b]) 1 else 0;
+                },
+                .eq => {
+                    registers[op.c] = if (registers[op.a] == registers[op.b]) 1 else 0;
+                },
+                .ne => {
+                    registers[op.c] = if (registers[op.a] != registers[op.b]) 1 else 0;
+                },
+                .@"and" => {
+                    registers[op.c] = if (registers[op.a] != 0 and registers[op.b] != 0) 1 else 0;
+                },
+                .@"or" => {
+                    registers[op.c] = if (registers[op.a] != 0 or registers[op.b] != 0) 1 else 0;
+                },
+            }
+        }
     }
 
     const InfoParam = struct {
@@ -1382,11 +1723,52 @@ pub const Material = extern struct {
         material.num_stages += 1;
 
         if (texture_usage == .default) {
-            @panic("not implemented");
+            texture_usage = switch (ss.lighting) {
+                .bump => .bump,
+                .diffuse => .diffuse,
+                .specular => texture_usage: {
+                    const img = image_name.constSlice();
+                    break :texture_usage if (icontains(img, "_rmaod") != null)
+                        .specular_pbr_rmaod
+                    else if (icontains(img, "_rmao") != null)
+                        .specular_pbr_rmao
+                    else
+                        .specular;
+                },
+                else => texture_usage,
+            };
         }
 
         if (texture_usage == .diffuse and ss.has_alpha_test) {
-            @panic("not implemented");
+            const new_coverage_stage = &material.pd.?.parse_stages[material.num_stages];
+            material.num_stages += 1;
+
+            new_coverage_stage.* = ss.*;
+
+            ss.has_alpha_test = false;
+            new_coverage_stage.has_alpha_test = true;
+            new_coverage_stage.lighting = .coverage;
+            const coverage_ts = &new_coverage_stage.texture;
+
+            if (image_name.constSlice().len != 0) {
+                coverage_ts.image = image_manager.instance.imageFromFile(
+                    image_name.constSlice(),
+                    texture_filter,
+                    texture_repeat,
+                    .coverage,
+                    cube_map,
+                    cube_map_size,
+                ) catch image_manager.instance.defaultImage;
+            } else if (coverage_ts.cinematic == null and
+                coverage_ts.dynamic == .static and
+                ss.new_stage == null)
+            {
+                std.debug.print(
+                    "material {s} had stage with no image\n",
+                    .{material.base.base.?.name.constSlice()},
+                );
+                coverage_ts.image = image_manager.instance.defaultImage;
+            }
         }
 
         if (image_name.constSlice().len != 0) {
@@ -1439,10 +1821,113 @@ pub const Material = extern struct {
         return i;
     }
 
-    fn addImplicitStages(material: *Material, trp_default: TextureRepeat) void {
-        _ = material;
-        _ = trp_default;
-        @panic("not implemented");
+    const AddImplicitStagesError =
+        std.mem.Allocator.Error ||
+        ParseStageError ||
+        Lexer.LoadMemoryError;
+    fn addImplicitStages(
+        material: *Material,
+        trp_default: TextureRepeat,
+        allocator: std.mem.Allocator,
+    ) AddImplicitStagesError!void {
+        var has_bump = false;
+        var has_diffuse = false;
+        var has_reflection = false;
+        var has_specular = false;
+
+        for (0..material.num_stages) |i| {
+            const ps = &material.pd.?.parse_stages[i];
+            if (ps.lighting == .bump) {
+                has_bump = true;
+            }
+
+            if (ps.lighting == .diffuse) {
+                has_diffuse = true;
+            }
+
+            if (ps.lighting == .specular) {
+                has_specular = true;
+            }
+
+            if (ps.texture.texgen == .reflect_cube) {
+                has_reflection = true;
+            }
+        }
+
+        if (!has_bump and !has_diffuse and !has_specular) return;
+
+        if (material.num_stages == max_shader_stages) return;
+
+        const lexer_flags = lexer_.Flags{
+            .no_string_concat = true,
+            .no_string_escape_chars = true,
+            .allow_path_names = true,
+            .no_fatal_errors = true,
+        };
+
+        if (!has_bump) {
+            var lexer = Lexer{ .flags = lexer_flags };
+            lexer.initEmpty();
+            defer lexer.deinit(allocator);
+
+            const definition_text = "blend bumpmap\nmap _flat\n}\n";
+
+            try lexer.loadMemory(
+                definition_text,
+                "bumpmap",
+                0,
+                allocator,
+            );
+
+            try material.parseStage(&lexer, trp_default, allocator);
+        }
+
+        if (!has_diffuse and !has_specular and !has_reflection) {
+            var lexer = Lexer{ .flags = lexer_flags };
+            lexer.initEmpty();
+            defer lexer.deinit(allocator);
+
+            const definition_text = "blend diffusemap\nmap _white\n}\n";
+
+            try lexer.loadMemory(
+                definition_text,
+                "diffusemap",
+                0,
+                allocator,
+            );
+
+            try material.parseStage(&lexer, trp_default, allocator);
+        }
+    }
+
+    fn sortInteractionStages(material: *Material) void {
+        var i: u32 = 0;
+        var j: u32 = undefined;
+
+        while (i < material.num_stages) : (i = j) {
+            // find the next bump_map
+            j = i + 1;
+            while (j < material.num_stages) : (j += 1) {
+                const psi = &material.pd.?.parse_stages[i];
+                const psj = &material.pd.?.parse_stages[j];
+
+                if (psj.lighting == .bump and psi.lighting == .bump) break;
+            }
+
+            // bubble sort
+            for (1..(j - i)) |l| {
+                for (i..(j - l)) |k| {
+                    const current = &material.pd.?.parse_stages[k];
+                    const next = &material.pd.?.parse_stages[k + 1];
+
+                    if (@intFromEnum(current.lighting) > @intFromEnum(next.lighting)) {
+                        const temp = current.*;
+                        current.* = next.*;
+                        next.* = temp;
+                    }
+                }
+            }
+        }
     }
 
     const top_priority = 4;
@@ -1455,11 +1940,6 @@ pub const Material = extern struct {
         _ = lexer;
         _ = priority;
 
-        @panic("not implemented");
-    }
-
-    fn sortInteractionStages(material: *Material) void {
-        _ = material;
         @panic("not implemented");
     }
 
@@ -1654,3 +2134,13 @@ pub const Material = extern struct {
         return (material_flags_u32 & flags_u32) != 0;
     }
 };
+
+fn icontains(haystack: []const u8, needle: []const u8) ?usize {
+    if (needle.len > haystack.len) return null;
+    var i: usize = 0;
+    const end = haystack.len - needle.len;
+    while (i <= end) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(haystack[i..][0..needle.len], needle)) return i;
+    }
+    return null;
+}

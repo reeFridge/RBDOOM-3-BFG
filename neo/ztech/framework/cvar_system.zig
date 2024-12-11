@@ -55,8 +55,8 @@ pub const CVar = extern struct {
     valueMax: f32,
     valueStrings: ?[*]?[*:0]const u8,
     valueCompletion: ?*const cmd.ArgCompletionFn,
-    integerValue: i32,
-    floatValue: f32,
+    integer_value: i32,
+    float_value: f32,
     internalVar: ?*CVar,
     next: ?*CVar,
     nameString: idlib.idStr,
@@ -79,8 +79,8 @@ pub const CVar = extern struct {
             .valueMax = 0,
             .valueCompletion = null,
             .valueStrings = null,
-            .integerValue = 0,
-            .floatValue = 0,
+            .integer_value = 0,
+            .float_value = 0,
             .internalVar = null,
             .next = null,
             .nameString = idlib.idStr{},
@@ -166,8 +166,8 @@ pub const CVar = extern struct {
                 std.debug.print("[CVAR] Parse value error: {s}\n", .{@errorName(err)});
                 return;
             };
-            cvar.integerValue = if (int != 0) 1 else 0;
-            cvar.floatValue = @floatFromInt(cvar.integerValue);
+            cvar.integer_value = if (int != 0) 1 else 0;
+            cvar.float_value = @floatFromInt(cvar.integer_value);
 
             if (!std.mem.eql(u8, "0", value_str) and !std.mem.eql(u8, "1", value_str)) {
                 try cvar.valueString.assignSlice(if (int != 0) "1" else "0");
@@ -178,15 +178,15 @@ pub const CVar = extern struct {
                 std.debug.print("[CVAR] Parse value error: {s}\n", .{@errorName(err)});
                 return;
             };
-            cvar.integerValue = @intCast(int);
+            cvar.integer_value = @intCast(int);
             if (cvar.valueMin < cvar.valueMax) {
                 const min_int: c_int = @intFromFloat(cvar.valueMin);
                 const max_int: c_int = @intFromFloat(cvar.valueMax);
-                if (cvar.integerValue < min_int) {
-                    cvar.integerValue = min_int;
+                if (cvar.integer_value < min_int) {
+                    cvar.integer_value = min_int;
                     clamped = true;
-                } else if (cvar.integerValue > max_int) {
-                    cvar.integerValue = max_int;
+                } else if (cvar.integer_value > max_int) {
+                    cvar.integer_value = max_int;
                     clamped = true;
                 }
             }
@@ -198,20 +198,20 @@ pub const CVar = extern struct {
                 try cvar.valueString.assignSlice(value_str);
                 cvar.value = @ptrCast(cvar.valueString.constSlice());
             }
-            cvar.floatValue = @floatFromInt(int);
+            cvar.float_value = @floatFromInt(int);
         } else if ((cvar.flags & CVarFlags.CVAR_FLOAT) != 0) {
             const float = std.fmt.parseFloat(f32, value_str) catch |err| {
                 std.debug.print("[CVAR] Parse value error: {s}\n", .{@errorName(err)});
                 return;
             };
 
-            cvar.floatValue = float;
+            cvar.float_value = float;
             if (cvar.valueMin < cvar.valueMax) {
-                if (cvar.floatValue < cvar.valueMin) {
-                    cvar.floatValue = cvar.valueMin;
+                if (cvar.float_value < cvar.valueMin) {
+                    cvar.float_value = cvar.valueMin;
                     clamped = true;
-                } else if (cvar.floatValue > cvar.valueMax) {
-                    cvar.floatValue = cvar.valueMax;
+                } else if (cvar.float_value > cvar.valueMax) {
+                    cvar.float_value = cvar.valueMax;
                     clamped = true;
                 }
             }
@@ -220,7 +220,7 @@ pub const CVar = extern struct {
                 try cvar.valueString.assignSlice(value_str);
                 cvar.value = @ptrCast(cvar.valueString.constSlice());
             }
-            cvar.integerValue = @intFromFloat(float);
+            cvar.integer_value = @intFromFloat(float);
         } else {
             const has_value_strings = if (cvar.valueStrings) |value_strings|
                 value_strings[0] != null
@@ -229,7 +229,7 @@ pub const CVar = extern struct {
 
             if (has_value_strings) {
                 const value_strings = cvar.valueStrings orelse unreachable;
-                cvar.integerValue = 0;
+                cvar.integer_value = 0;
                 var i: usize = 0;
                 var opt_variant_ptr = value_strings[i];
                 while (opt_variant_ptr) |variant_ptr| : ({
@@ -241,23 +241,23 @@ pub const CVar = extern struct {
                         cvar.valueString.constSlice(),
                         std.mem.span(variant_ptr),
                     )) {
-                        cvar.integerValue = @intCast(i);
+                        cvar.integer_value = @intCast(i);
                         break;
                     }
                 }
 
-                const variant_ptr = value_strings[@intCast(cvar.integerValue)] orelse unreachable;
+                const variant_ptr = value_strings[@intCast(cvar.integer_value)] orelse unreachable;
                 try cvar.valueString.assignSlice(std.mem.span(variant_ptr));
                 cvar.value = cvar.valueString.constSlice();
-                cvar.floatValue = @floatFromInt(cvar.integerValue);
+                cvar.float_value = @floatFromInt(cvar.integer_value);
             } else if (cvar.valueString.len < 32) {
                 const float = std.fmt.parseFloat(f32, value_str) catch 0;
 
-                cvar.floatValue = float;
-                cvar.integerValue = @intFromFloat(float);
+                cvar.float_value = float;
+                cvar.integer_value = @intFromFloat(float);
             } else {
-                cvar.floatValue = 0;
-                cvar.integerValue = 0;
+                cvar.float_value = 0;
+                cvar.integer_value = 0;
             }
         }
     }

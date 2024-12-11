@@ -118,24 +118,24 @@ pub const Image = extern struct {
     var image_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(vulkan.Image) = undefined;
     var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(c.VmaAllocation) = undefined;
 
-    imgName: idlib.idStr = .{},
-    cubeFiles: CubeFiles = .@"2d",
-    cubeMapSize: u32 = 0,
-    generatorFunction: ?*const ImageGeneratorFunction = null,
+    name: idlib.idStr = .{},
+    cube_files: CubeFiles = .@"2d",
+    cube_map_size: u32 = 0,
+    generator_function: ?*const ImageGeneratorFunction = null,
     usage: TextureUsage = .default,
     opts: ImageOptions = .{},
     filter: material.TextureFilter = .default,
     repeat: material.TextureRepeat = .repeat,
-    isLoaded: bool = false,
-    referencedOutsideLevelLoad: bool = false,
-    levelLoadReferenced: bool = false,
+    is_loaded: bool = false,
+    referenced_outside_level_load: bool = false,
+    level_load_referenced: bool = false,
     defaulted: bool = false,
-    sourceFileTime: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
-    binaryFileTime: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
+    source_file_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
+    binary_file_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
     ref_count: u32 = 0,
     texture: nvrhi.TextureHandle = .{},
     sampler: nvrhi.SamplerHandle = .{},
-    samplerDesc: nvrhi.SamplerDesc = .{},
+    sampler_desc: nvrhi.SamplerDesc = .{},
     image: vulkan.Image = .null_handle,
     allocation: c.VmaAllocation = null,
 
@@ -144,24 +144,24 @@ pub const Image = extern struct {
         force: bool,
         command_list: *nvrhi.ICommandList,
     ) error{OutOfMemory}!void {
-        if (image.generatorFunction) |gen_fn| {
+        if (image.generator_function) |gen_fn| {
             gen_fn(image, command_list);
             return;
         }
 
         if (!force) {
             const current_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP;
-            if (image.cubeFiles == .native or
-                image.cubeFiles == .camera or
-                image.cubeFiles == .quake1 or
-                image.cubeFiles == .single)
+            if (image.cube_files == .native or
+                image.cube_files == .camera or
+                image.cube_files == .quake1 or
+                image.cube_files == .single)
             {
                 // TODO: loadCubeImages();
             } else {
                 // TODO: loadImageProgram();
             }
 
-            if (current_time <= image.sourceFileTime) return;
+            if (current_time <= image.source_file_time) return;
         }
 
         image.purgeImage();
@@ -169,8 +169,8 @@ pub const Image = extern struct {
     }
 
     pub fn init(image: *Image, name: []const u8) error{OutOfMemory}!void {
-        image.imgName.initEmptyBuffer();
-        try image.imgName.assignSlice(name);
+        image.name.initEmptyBuffer();
+        try image.name.assignSlice(name);
 
         _ = image.sampler.reset();
         _ = image.texture.reset();
@@ -192,7 +192,7 @@ pub const Image = extern struct {
         }
 
         _ = image.sampler.reset();
-        image.isLoaded = false;
+        image.is_loaded = false;
         image.defaulted = false;
     }
 
@@ -274,7 +274,7 @@ pub const Image = extern struct {
         image.filter = filter;
         image.repeat = repeat;
         image.usage = usage;
-        image.cubeFiles = .@"2d_array";
+        image.cube_files = .@"2d_array";
 
         image.opts.textureType = .@"2d_array";
         image.opts.width = width;
@@ -287,7 +287,7 @@ pub const Image = extern struct {
         // The image will be uploaded to the gpu on a deferred state.
         image.createTexture();
 
-        image.isLoaded = true;
+        image.is_loaded = true;
     }
 
     pub fn generateImage(
@@ -309,7 +309,7 @@ pub const Image = extern struct {
         image.filter = filter;
         image.repeat = repeat;
         image.usage = usage;
-        image.cubeFiles = cube_files;
+        image.cube_files = cube_files;
 
         image.opts.textureType = if (sample_count > 1) .@"2d_multisample" else .@"2d";
         image.opts.width = width;
@@ -319,7 +319,7 @@ pub const Image = extern struct {
         image.opts.isRenderTarget = is_render_target;
         image.opts.isUAV = is_uav;
 
-        if (image.cubeFiles == .@"2d_packed_mipchain") {
+        if (image.cube_files == .@"2d_packed_mipchain") {
             image.opts.width = @intFromFloat(@as(f32, @floatFromInt(width)) * (2.0 / 3.0));
         }
 
@@ -327,12 +327,12 @@ pub const Image = extern struct {
 
         if (pic == null or image.opts.textureType == .@"2d_multisample") {
             image.createTexture();
-            image.isLoaded = true;
+            image.is_loaded = true;
         } else {
             var im = BinaryImage{};
-            try im.init(image.imgName.constSlice());
+            try im.init(image.name.constSlice());
 
-            if (image.cubeFiles == .@"2d_packed_mipchain") {
+            if (image.cube_files == .@"2d_packed_mipchain") {
                 im.load2DAtlasMipchainFromMemory(
                     width,
                     image.opts.height,
@@ -386,7 +386,7 @@ pub const Image = extern struct {
                 command_list.commitBarriers();
             }
 
-            image.isLoaded = true;
+            image.is_loaded = true;
         }
     }
 
@@ -602,7 +602,7 @@ pub const Image = extern struct {
             else => {
                 std.debug.print(
                     "[IMAGE][ERR] Unhandled image format {} in {s}\n",
-                    .{ image.opts.format, image.imgName.constSlice() },
+                    .{ image.opts.format, image.name.constSlice() },
                 );
                 @panic("fatal");
             },
@@ -748,7 +748,7 @@ pub const Image = extern struct {
 
     fn createSamplerDesc(image: *Image) void {
         _ = image.sampler.reset();
-        image.samplerDesc = .{
+        image.sampler_desc = .{
             .minFilter = false,
             .magFilter = false,
             .mipFilter = false,
@@ -756,67 +756,67 @@ pub const Image = extern struct {
         };
 
         if (image.opts.format == .depth or image.opts.format == .depth_stencil) {
-            image.samplerDesc.reductionType = .Comparison;
+            image.sampler_desc.reductionType = .Comparison;
         }
 
         const r_maxAnisotropicFiltering = 8;
 
         switch (image.filter) {
             .default => {
-                image.samplerDesc.minFilter = true;
-                image.samplerDesc.magFilter = true;
-                image.samplerDesc.mipFilter = true;
-                image.samplerDesc.maxAnisotropy = r_maxAnisotropicFiltering;
+                image.sampler_desc.minFilter = true;
+                image.sampler_desc.magFilter = true;
+                image.sampler_desc.mipFilter = true;
+                image.sampler_desc.maxAnisotropy = r_maxAnisotropicFiltering;
             },
             .linear => {
-                image.samplerDesc.minFilter = true;
-                image.samplerDesc.magFilter = true;
-                image.samplerDesc.mipFilter = true;
+                image.sampler_desc.minFilter = true;
+                image.sampler_desc.magFilter = true;
+                image.sampler_desc.mipFilter = true;
             },
             .nearest => {
-                image.samplerDesc.minFilter = false;
-                image.samplerDesc.magFilter = false;
-                image.samplerDesc.mipFilter = false;
+                image.sampler_desc.minFilter = false;
+                image.sampler_desc.magFilter = false;
+                image.sampler_desc.mipFilter = false;
             },
             .nearest_mipmap => {
-                image.samplerDesc.minFilter = true;
-                image.samplerDesc.magFilter = true;
-                image.samplerDesc.mipFilter = true;
+                image.sampler_desc.minFilter = true;
+                image.sampler_desc.magFilter = true;
+                image.sampler_desc.mipFilter = true;
             },
         }
 
         switch (image.repeat) {
             .repeat => {
-                image.samplerDesc.addressU = .Repeat;
-                image.samplerDesc.addressV = .Repeat;
-                image.samplerDesc.addressW = .Repeat;
+                image.sampler_desc.addressU = .Repeat;
+                image.sampler_desc.addressV = .Repeat;
+                image.sampler_desc.addressW = .Repeat;
             },
             .clamp => {
-                image.samplerDesc.addressU = .ClampToEdge;
-                image.samplerDesc.addressV = .ClampToEdge;
-                image.samplerDesc.addressW = .ClampToEdge;
+                image.sampler_desc.addressU = .ClampToEdge;
+                image.sampler_desc.addressV = .ClampToEdge;
+                image.sampler_desc.addressW = .ClampToEdge;
             },
             .clamp_to_zero_alpha => {
-                image.samplerDesc.borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
-                image.samplerDesc.addressU = .ClampToBorder;
-                image.samplerDesc.addressV = .ClampToBorder;
-                image.samplerDesc.addressW = .ClampToBorder;
+                image.sampler_desc.borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
+                image.sampler_desc.addressU = .ClampToBorder;
+                image.sampler_desc.addressV = .ClampToBorder;
+                image.sampler_desc.addressW = .ClampToBorder;
             },
             .clamp_to_zero => {
-                image.samplerDesc.borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 };
-                image.samplerDesc.addressU = .ClampToBorder;
-                image.samplerDesc.addressV = .ClampToBorder;
-                image.samplerDesc.addressW = .ClampToBorder;
+                image.sampler_desc.borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 };
+                image.sampler_desc.addressU = .ClampToBorder;
+                image.sampler_desc.addressV = .ClampToBorder;
+                image.sampler_desc.addressW = .ClampToBorder;
             },
         }
     }
 
     fn addToDeferredLoad(image: *Image) error{OutOfMemory}!void {
-        _ = try image_manager.instance.imagesToLoad.addUnique(&image);
+        _ = try image_manager.instance.images_to_load.addUnique(&image);
     }
 
     fn removeFromDeferredLoad(image: *Image) void {
-        _ = image_manager.instance.imagesToLoad.remove(&image);
+        _ = image_manager.instance.images_to_load.remove(&image);
     }
 
     pub fn getTextureHandle(image: *Image) nvrhi.TextureHandle {
@@ -829,6 +829,10 @@ pub const Image = extern struct {
 
     pub fn getTextureID(image: *Image) ?*anyopaque {
         return @ptrCast(image.texture.ptr_);
+    }
+
+    pub fn actuallyLoadImage(_: *Image, _: bool, _: ?*nvrhi.ICommandList) error{}!void {
+        @panic("not implemented");
     }
 };
 

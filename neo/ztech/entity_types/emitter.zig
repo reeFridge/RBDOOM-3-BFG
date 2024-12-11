@@ -30,8 +30,8 @@ pub fn spawn(
         c_render_entity.initFromSpawnArgs(ptr);
     } else return error.CSpawnArgsIsUndefined;
 
-    c_render_entity.shaderParms[SHADERPARM_PARTICLE_STOPTIME] = 0;
-    c_render_entity.shaderParms[SHADERPARM_TIMEOFFSET] = -@as(f32, @floatFromInt(Game.instance.time)) * MS2SEC;
+    c_render_entity.shader_params[SHADERPARM_PARTICLE_STOPTIME] = 0;
+    c_render_entity.shader_params[SHADERPARM_TIMEOFFSET] = -@as(f32, @floatFromInt(Game.instance.time)) * MS2SEC;
 
     const transform = .{
         .origin = c_render_entity.origin.toVec3f(),
