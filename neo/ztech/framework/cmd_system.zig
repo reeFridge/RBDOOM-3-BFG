@@ -423,7 +423,7 @@ pub const CmdSystem = extern struct {
             return;
         }
 
-        @memcpy(cmd_system.textBuf[current_len .. current_len + len], text);
+        @memcpy(cmd_system.textBuf[current_len..][0..len], text);
 
         cmd_system.textLength += @intCast(len);
     }

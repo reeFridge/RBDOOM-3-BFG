@@ -97,7 +97,7 @@ pub const DeclLocal = extern struct {
         decl: *DeclLocal,
         text: []const u8,
         allocator: std.mem.Allocator,
-    ) error{OutOfMemory}!void {
+    ) std.mem.Allocator.Error!void {
         decl.freeText(allocator);
 
         decl.checksum = md5BlockChecksum(text);
@@ -109,23 +109,23 @@ pub const DeclLocal = extern struct {
 
     fn parse(
         decl: *DeclLocal,
-        Type: type,
         rt_decl_type: *const RuntimeDeclType,
         allocator: std.mem.Allocator,
-    ) (error{OutOfMemory} || Type.ParseError)!void {
+    ) (std.mem.Allocator.Error || DeclParseError)!void {
         var default_text_generated = false;
 
-        const abstract_decl = decl.allocateSelf(rt_decl_type);
-        const decl_typed: *Type = @ptrCast(abstract_decl);
-
-        decl_typed.freeData(allocator);
+        const abstract_decl = try decl.allocateSelf(rt_decl_type, allocator);
+        rt_decl_type.destroy(abstract_decl, allocator);
 
         if (decl.text_source == null) {
-            default_text_generated = try decl_typed.setDefaultText();
+            default_text_generated = if (rt_decl_type.setDefaultText(abstract_decl))
+                true
+            else |_|
+                false;
         }
 
         const text_source = decl.text_source orelse {
-            try decl.makeDefault(Type, rt_decl_type, allocator);
+            try decl.makeDefault(rt_decl_type, allocator);
             return;
         };
 
@@ -133,7 +133,7 @@ pub const DeclLocal = extern struct {
         const decl_text = try allocator.dupe(u8, text_source[0..decl.text_length]);
         defer allocator.free(decl_text);
 
-        try decl_typed.parse(decl_text, true, allocator);
+        try rt_decl_type.parse(abstract_decl, decl_text, true, allocator);
 
         if (default_text_generated) {
             decl.freeText(allocator);
@@ -141,40 +141,42 @@ pub const DeclLocal = extern struct {
     }
 
     var recursion_level: u32 = 0;
-    pub fn MakeDefaultError(Type: type) type {
-        return std.mem.Allocator.Error || Type.ParseError;
-    }
+    pub const MakeDefaultError =
+        std.mem.Allocator.Error ||
+        DeclParseError;
     pub fn makeDefault(
         decl: *DeclLocal,
-        Type: type,
         rt_decl_type: *const RuntimeDeclType,
         allocator: std.mem.Allocator,
-    ) MakeDefaultError(Type)!void {
+    ) MakeDefaultError!void {
         decl.decl_state = .defaulted;
-        const abstract_decl = decl.allocateSelf(rt_decl_type);
-        const decl_typed: *Type = @ptrCast(abstract_decl);
+        const abstract_decl = try decl.allocateSelf(rt_decl_type, allocator);
 
         recursion_level += 1;
         if (recursion_level > 100) {
             @panic("[DECL] bad default definition");
         }
 
-        decl_typed.freeData(allocator);
+        rt_decl_type.destroy(abstract_decl, allocator);
 
         const allow_binary_version = false;
-        try decl_typed.parse(
-            Type.default_definition,
+        try rt_decl_type.parse(
+            abstract_decl,
+            rt_decl_type.getDefaultDefinition(),
             allow_binary_version,
             allocator,
         );
         recursion_level -= 1;
     }
 
-    fn allocateSelf(decl: *DeclLocal, rt_decl_type: *const RuntimeDeclType) *Decl {
+    fn allocateSelf(
+        decl: *DeclLocal,
+        rt_decl_type: *const RuntimeDeclType,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!*Decl {
         return decl.self orelse self: {
-            const self = rt_decl_type.allocator();
+            const self = try rt_decl_type.create(allocator);
             self.base = decl;
-
             decl.self = self;
 
             break :self self;
@@ -222,19 +224,17 @@ pub const DeclFile = extern struct {
         decl_file.filename.deinit();
     }
 
-    pub fn LoadAndParseError(Type: type) type {
-        return Type.ParseError ||
-            std.mem.Allocator.Error ||
-            fs.FileSystem.ReadFileAnyAllocError ||
-            Lexer.LoadMemoryError ||
-            DeclManager.FindTypeError;
-    }
+    pub const LoadAndParseError =
+        DeclParseError ||
+        std.mem.Allocator.Error ||
+        fs.FileSystem.ReadFileAnyAllocError ||
+        Lexer.LoadMemoryError ||
+        DeclManager.FindTypeError;
     fn loadAndParse(
         decl_file: *DeclFile,
         decl_manager: *DeclManager,
         allocator: std.mem.Allocator,
-        Type: type,
-    ) LoadAndParseError(Type)!void {
+    ) LoadAndParseError!void {
         const buffer = try fs.instance.readFileAnyAlloc(decl_file.filename.constSlice());
         defer fs.instance.freeFileBuffer(buffer);
 
@@ -308,7 +308,7 @@ pub const DeclFile = extern struct {
 
             // decl name
             lexer.readToken(&token) catch {
-                std.debug.print("[WARN] Type without definition at end of file\n", .{});
+                std.debug.print("[WARN] Type without definition at the end of file\n", .{});
                 break;
             };
 
@@ -370,10 +370,10 @@ pub const DeclFile = extern struct {
             new_decl.decl_state = .unparsed;
 
             if (reparse) {
-                const decl_index: u32 = @intCast(@intFromEnum(new_decl.decl_type));
-                const rt_decl_type = decl_manager.decl_types.constSlice()[decl_index] orelse
-                    @panic("decl_type is not registered");
-                try new_decl.parse(Type, rt_decl_type, allocator);
+                try new_decl.parse(
+                    decl_manager.getRuntimeType(new_decl.decl_type),
+                    allocator,
+                );
             }
         }
 
@@ -383,10 +383,10 @@ pub const DeclFile = extern struct {
             var opt_decl: ?*DeclLocal = decl_file.decls;
             while (opt_decl) |decl| : (opt_decl = decl.next_in_file) {
                 if (decl.redefined_in_reload == false) {
-                    const decl_index: u32 = @intCast(@intFromEnum(decl.decl_type));
-                    const rt_decl_type = decl_manager.decl_types.constSlice()[decl_index] orelse
-                        @panic("decl_type is not registered");
-                    try decl.makeDefault(Type, rt_decl_type, allocator);
+                    try decl.makeDefault(
+                        decl_manager.getRuntimeType(decl.decl_type),
+                        allocator,
+                    );
                     decl.source_text_offset = decl.source_file.?.file_size;
                     decl.source_text_length = 0;
                     decl.source_line = decl.source_file.?.num_lines;
@@ -453,12 +453,66 @@ pub const DeclFolder = extern struct {
     }
 };
 
-pub const RuntimeDeclType = extern struct {
-    pub const AllocatorFn = fn () callconv(.C) *Decl;
+pub const DeclParseError = error{ParseFailed};
 
+fn DeclInterface(Type: type) type {
+    return struct {
+        pub fn create(allocator: std.mem.Allocator) std.mem.Allocator.Error!*Decl {
+            if (!std.meta.hasMethod(Type, "init")) @panic("not implemented");
+
+            const decl_typed = try allocator.create(Type);
+            decl_typed.init();
+
+            return @ptrCast(decl_typed);
+        }
+
+        pub fn destroy(decl: *Decl, allocator: std.mem.Allocator) void {
+            if (!std.meta.hasMethod(Type, "freeData")) @panic("not implemented");
+
+            const decl_typed: *Type = @ptrCast(decl);
+            decl_typed.freeData(allocator);
+        }
+
+        pub fn setDefaultText(decl: *Decl) error{}!void {
+            if (!std.meta.hasMethod(Type, "setDefaultText")) @panic("not implemented");
+
+            const decl_typed: *Type = @ptrCast(decl);
+            try decl_typed.setDefaultText();
+        }
+
+        pub fn getDefaultDefinition() []const u8 {
+            if (!@hasDecl(Type, "default_definition")) @panic("not implemented");
+
+            return Type.default_definition;
+        }
+
+        pub fn parse(
+            decl: *Decl,
+            definition_text: []const u8,
+            allow_binary_version: bool,
+            allocator: std.mem.Allocator,
+        ) DeclParseError!void {
+            if (!std.meta.hasMethod(Type, "parse")) @panic("not implemented");
+
+            const decl_typed: *Type = @ptrCast(decl);
+
+            decl_typed.parse(
+                definition_text,
+                allow_binary_version,
+                allocator,
+            ) catch return error.ParseFailed;
+        }
+    };
+}
+
+pub const RuntimeDeclType = struct {
     type_name: idlib.idStr,
     decl_type: DeclType,
-    allocator: *const AllocatorFn,
+    create: *const fn (std.mem.Allocator) std.mem.Allocator.Error!*Decl,
+    destroy: *const fn (*Decl, std.mem.Allocator) void,
+    parse: *const fn (*Decl, []const u8, bool, std.mem.Allocator) DeclParseError!void,
+    setDefaultText: *const fn (*Decl) error{}!void,
+    getDefaultDefinition: *const fn () []const u8,
 };
 
 pub const DeclTable = extern struct {
@@ -473,7 +527,7 @@ pub const DeclTable = extern struct {
         self.* = .{};
     }
 
-    pub fn setDefaultText(table: *DeclTable) error{}!bool {
+    pub fn setDefaultText(table: *DeclTable) error{}!void {
         _ = table;
 
         @panic("DeclTable.setDefaultText is not implemented");
@@ -486,6 +540,7 @@ pub const DeclTable = extern struct {
     }
 
     pub const ParseError =
+        DeclLocal.MakeDefaultError ||
         std.mem.Allocator.Error ||
         Lexer.LoadMemoryError;
     pub fn parse(
@@ -552,13 +607,10 @@ pub const DeclTable = extern struct {
     fn makeDefault(
         table: *DeclTable,
         allocator: std.mem.Allocator,
-    ) DeclLocal.MakeDefaultError(DeclTable)!void {
+    ) DeclLocal.MakeDefaultError!void {
         const decl_local = table.base.base.?;
-        const decl_index: u32 = @intCast(@intFromEnum(decl_local.decl_type));
-        const rt_decl_type =
-            instance.decl_types.constSlice()[decl_index] orelse
-            @panic("decl_type is not registered");
-        try decl_local.makeDefault(DeclTable, rt_decl_type, allocator);
+        const rt_decl_type = instance.getRuntimeType(decl_local.decl_type);
+        try decl_local.makeDefault(rt_decl_type, allocator);
     }
 
     pub fn tableLookup(table: *const DeclTable, arg_findex: f32) f32 {
@@ -601,18 +653,6 @@ pub const DeclTable = extern struct {
     }
 };
 
-fn DeclAllocator(DeclType_: type) type {
-    return struct {
-        pub fn alloc() callconv(.C) *Decl {
-            const allocator = global.gpa.allocator();
-            const decl_typed = allocator.create(DeclType_) catch @panic("decl alloc");
-            decl_typed.init();
-
-            return @ptrCast(decl_typed);
-        }
-    };
-}
-
 pub const DeclManager = extern struct {
     vptr: *anyopaque = undefined,
     mutex: idlib.idSysMutex = undefined, // TODO: initMutex
@@ -626,74 +666,80 @@ pub const DeclManager = extern struct {
     indent: u32 = 0,
     inside_level_load: bool = false,
 
-    pub const InitError = error{OutOfMemory} || RegisterDeclFolderError(Material);
+    pub fn getRuntimeType(manager: *const DeclManager, decl_type: DeclType) *RuntimeDeclType {
+        const decl_index: u32 = @intCast(@intFromEnum(decl_type));
+
+        return manager.decl_types.constSlice()[decl_index] orelse @panic("decl_type is not registered");
+    }
+
+    pub const InitError = std.mem.Allocator.Error || RegisterDeclFolderError;
     pub fn init(manager: *DeclManager, allocator: std.mem.Allocator) InitError!void {
         manager.* = .{};
 
         try manager.registerDeclType(
             "table",
             .table,
-            DeclAllocator(DeclTable).alloc,
+            DeclInterface(DeclTable),
         );
         try manager.registerDeclType(
             "material",
             .material,
-            DeclAllocator(Material).alloc,
+            DeclInterface(Material),
         );
         try manager.registerDeclType(
             "skin",
             .skin,
-            DeclAllocator(DeclSkin).alloc,
+            DeclInterface(DeclSkin),
         );
         try manager.registerDeclType(
             "entityDef",
             .entitydef,
-            DeclAllocator(DeclEntityDef).alloc,
+            DeclInterface(DeclEntityDef),
         );
         try manager.registerDeclType(
             "sound",
             .sound,
-            DeclAllocator(SoundShader).alloc,
+            DeclInterface(SoundShader),
         );
         try manager.registerDeclType(
             "mapDef",
             .mapdef,
-            DeclAllocator(DeclEntityDef).alloc,
+            DeclInterface(DeclEntityDef),
         );
         try manager.registerDeclType(
             "fx",
             .fx,
-            DeclAllocator(DeclFX).alloc,
+            DeclInterface(DeclFX),
         );
         try manager.registerDeclType(
             "particle",
             .particle,
-            DeclAllocator(DeclParticle).alloc,
+            DeclInterface(DeclParticle),
         );
         try manager.registerDeclType(
             "articulatedFigure",
             .af,
-            DeclAllocator(DeclAF).alloc,
+            DeclInterface(DeclAF),
         );
         try manager.registerDeclType(
             "pda",
             .pda,
-            DeclAllocator(decl_pda.DeclPDA).alloc,
+            DeclInterface(decl_pda.DeclPDA),
         );
         try manager.registerDeclType(
             "email",
             .email,
-            DeclAllocator(decl_pda.DeclEmail).alloc,
+            DeclInterface(decl_pda.DeclEmail),
         );
         try manager.registerDeclType(
             "video",
             .video,
-            DeclAllocator(decl_pda.DeclVideo).alloc,
+            DeclInterface(decl_pda.DeclVideo),
         );
         try manager.registerDeclType(
             "audio",
             .audio,
-            DeclAllocator(decl_pda.DeclAudio).alloc,
+            DeclInterface(decl_pda.DeclAudio),
         );
 
         try manager.registerDeclFolder(
@@ -701,20 +747,18 @@ pub const DeclManager = extern struct {
             ".mtr",
             .material,
             allocator,
-            Material,
         );
     }
 
     pub fn postInit(
         manager: *DeclManager,
         allocator: std.mem.Allocator,
-    ) (RegisterDeclFolderError(DeclSkin) || RegisterDeclFolderError(SoundShader))!void {
+    ) RegisterDeclFolderError!void {
         try manager.registerDeclFolder(
             "skins",
             ".skin",
             .skin,
             allocator,
-            DeclSkin,
         );
 
         try manager.registerDeclFolder(
@@ -722,21 +766,18 @@ pub const DeclManager = extern struct {
             ".sndshd",
             .sound,
             allocator,
-            SoundShader,
         );
     }
 
-    pub fn RegisterDeclFolderError(Type: type) type {
-        return std.mem.Allocator.Error || DeclFile.LoadAndParseError(Type);
-    }
+    pub const RegisterDeclFolderError =
+        std.mem.Allocator.Error || DeclFile.LoadAndParseError;
     fn registerDeclFolder(
         manager: *DeclManager,
         folder: []const u8,
         extension: []const u8,
         default_type: DeclType,
         allocator: std.mem.Allocator,
-        Type: type,
-    ) RegisterDeclFolderError(Type)!void {
+    ) RegisterDeclFolderError!void {
         const df = for (manager.decl_folders.slice()) |decl_folder| {
             const already_exists =
                 std.ascii.eqlIgnoreCase(folder, decl_folder.folder.constSlice()) and
@@ -802,7 +843,7 @@ pub const DeclManager = extern struct {
                 break :file decl_file;
             };
 
-            try decl_file_ptr.loadAndParse(manager, allocator, Type);
+            try decl_file_ptr.loadAndParse(manager, allocator);
         }
     }
 
@@ -810,8 +851,8 @@ pub const DeclManager = extern struct {
         manager: *DeclManager,
         type_name: []const u8,
         decl_type: DeclType,
-        alloc_fn: *const RuntimeDeclType.AllocatorFn,
-    ) error{OutOfMemory}!void {
+        DeclInterfaceType: type,
+    ) std.mem.Allocator.Error!void {
         const decl_type_index: usize = @intCast(@intFromEnum(decl_type));
         {
             const decl_types = manager.decl_types.constSlice();
@@ -826,14 +867,21 @@ pub const DeclManager = extern struct {
 
         const allocator = global.gpa.allocator();
         const runtime_decl_type = try allocator.create(RuntimeDeclType);
-        errdefer {
-            runtime_decl_type.type_name.deinit();
-            allocator.destroy(runtime_decl_type);
-        }
+        errdefer allocator.destroy(runtime_decl_type);
+
+        runtime_decl_type.* = .{
+            .type_name = .{},
+            .decl_type = decl_type,
+            .create = DeclInterfaceType.create,
+            .parse = DeclInterfaceType.parse,
+            .destroy = DeclInterfaceType.destroy,
+            .setDefaultText = DeclInterfaceType.setDefaultText,
+            .getDefaultDefinition = DeclInterfaceType.getDefaultDefinition,
+        };
+
         runtime_decl_type.type_name.initEmptyBuffer();
         try runtime_decl_type.type_name.assignSlice(type_name);
-        runtime_decl_type.decl_type = decl_type;
-        runtime_decl_type.allocator = alloc_fn;
+        errdefer runtime_decl_type.type_name.deinit();
 
         const required_size = decl_type_index + 1;
         if (required_size > manager.decl_types.num) {
@@ -922,83 +970,70 @@ pub const DeclManager = extern struct {
         return decl;
     }
 
-    pub fn FindDeclError(Type: type) type {
-        return std.mem.Allocator.Error || Type.ParseError || FindTypeError;
-    }
+    pub const FindDeclError =
+        std.mem.Allocator.Error || DeclParseError || FindTypeError;
 
     pub fn findType(
         manager: *DeclManager,
-        Type: type,
         decl_type: DeclType,
         name: []const u8,
         allocator: std.mem.Allocator,
-    ) FindDeclError(Type)!?*Type {
+    ) FindDeclError!?*Decl {
         // TODO: critical section
-        const decl =
-            try manager.findTypeWithoutParsing(decl_type, name) orelse return null;
-
-        return try manager.prepareDecl(Type, decl, allocator);
+        const decl = try manager.findTypeWithoutParsing(decl_type, name) orelse return null;
+        return try manager.prepareDecl(decl, allocator);
     }
 
     pub fn findTypeOrDefault(
         manager: *DeclManager,
-        Type: type,
         decl_type: DeclType,
         name: []const u8,
         allocator: std.mem.Allocator,
-    ) FindDeclError(Type)!*Type {
+    ) FindDeclError!*Decl {
         // TODO: critical section
         const decl =
             try manager.findTypeWithoutParsing(decl_type, name) orelse
             try manager.createDefault(decl_type, name, allocator);
 
-        return try manager.prepareDecl(Type, decl, allocator);
+        return try manager.prepareDecl(decl, allocator);
     }
 
     fn prepareDecl(
         manager: *const DeclManager,
-        Type: type,
         decl: *DeclLocal,
         allocator: std.mem.Allocator,
-    ) (std.mem.Allocator.Error || Type.ParseError)!*Type {
-        const decl_index: u32 = @intCast(@intFromEnum(decl.decl_type));
-        const rt_decl_type = manager.decl_types.constSlice()[decl_index] orelse
-            @panic("decl_type is not registered");
-
-        const self = decl.allocateSelf(rt_decl_type);
+    ) (std.mem.Allocator.Error || DeclParseError)!*Decl {
+        const rt_decl_type = manager.getRuntimeType(decl.decl_type);
+        const self = try decl.allocateSelf(rt_decl_type, allocator);
 
         if (decl.decl_state == .unparsed) {
-            try decl.parse(Type, rt_decl_type, allocator);
+            try decl.parse(rt_decl_type, allocator);
             decl.parsed_outside_level_load = !manager.inside_level_load;
         }
 
         decl.referenced_this_level = true;
         decl.ever_referenced = true;
 
-        return @ptrCast(self);
+        return self;
     }
 
     pub fn declByIndex(
         manager: *DeclManager,
-        Type: type,
         decl_type: DeclType,
         index: u32,
         force_parse: bool,
         allocator: std.mem.Allocator,
-    ) (std.mem.Allocator.Error || Type.ParseError)!*Type {
+    ) (std.mem.Allocator.Error || DeclParseError)!*Decl {
         const type_index: u32 = @intCast(@intFromEnum(decl_type));
-
         const decl = manager.linear_lists[type_index].slice()[index];
+        const rt_decl_type = manager.getRuntimeType(decl_type);
 
-        const rt_decl_type = manager.decl_types.constSlice()[type_index] orelse
-            @panic("decl_type is not registered");
-
-        const self = decl.allocateSelf(rt_decl_type);
+        const self = try decl.allocateSelf(rt_decl_type, allocator);
 
         if (force_parse and decl.decl_state == .unparsed) {
-            try decl.parse(Type, rt_decl_type, allocator);
+            try decl.parse(rt_decl_type, allocator);
         }
 
-        return @ptrCast(self);
+        return self;
     }
 };

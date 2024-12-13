@@ -153,7 +153,7 @@ pub const DeclSkin = extern struct {
         @panic("DeclSkin.parse is not implemented");
     }
 
-    pub fn setDefaultText(skin: *DeclSkin) error{}!bool {
+    pub fn setDefaultText(skin: *DeclSkin) error{}!void {
         _ = skin;
 
         @panic("DeclSkin.setDefaultText is not implemented");

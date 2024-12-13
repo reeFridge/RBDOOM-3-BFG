@@ -507,6 +507,10 @@ pub const Material = extern struct {
 
         lexer.skipUntilString("{");
 
+        std.debug.print("[MATERIAL] parse: {s}\n", .{
+            material.base.base.?.name.constSlice(),
+        });
+
         var parsing_data = std.mem.zeroes(MtrParsingData);
         material.pd = &parsing_data;
         defer material.pd = null;
@@ -718,13 +722,10 @@ pub const Material = extern struct {
     fn makeDefault(
         material: *Material,
         allocator: std.mem.Allocator,
-    ) DeclLocal.MakeDefaultError(Material)!void {
+    ) DeclLocal.MakeDefaultError!void {
         const decl_local = material.base.base.?;
-        const decl_index: u32 = @intCast(@intFromEnum(decl_local.decl_type));
-        const rt_decl_type =
-            decl.instance.decl_types.constSlice()[decl_index] orelse
-            @panic("decl_type is not registered");
-        try decl_local.makeDefault(Material, rt_decl_type, allocator);
+        const rt_decl_type = decl.instance.getRuntimeType(decl_local.decl_type);
+        try decl_local.makeDefault(rt_decl_type, allocator);
     }
 
     fn checkForConstantRegisters(material: *Material, allocator: std.mem.Allocator) EvaluateRegistersError!void {
@@ -851,7 +852,16 @@ pub const Material = extern struct {
             } else if (token.ieql("mikktspace")) {
                 material.mikktspace = true;
             } else if (token.ieql("lightFalloffImage")) {
-                @panic("not implemented");
+                const str = try image_program.parse(lexer);
+                material.light_falloff_image = try image_manager.instance.imageFromFile(
+                    str,
+                    .default,
+                    .clamp,
+                    .default,
+                    .@"2d",
+                    0,
+                    allocator,
+                );
             } else if (token.ieql("guisurf")) {
                 try lexer.readTokenOnLine(&token);
 
@@ -945,7 +955,7 @@ pub const Material = extern struct {
         }
     }
 
-    pub fn setDefaultText(material: *Material) error{}!bool {
+    pub fn setDefaultText(material: *Material) error{}!void {
         _ = material;
 
         @panic("Material.setDefaultText is not implemented");
@@ -1082,13 +1092,12 @@ pub const Material = extern struct {
                     registers[op.c] = @floatFromInt(@mod(@as(i32, @intFromFloat(registers[op.a])), b));
                 },
                 .table => {
-                    const table = try decl.instance.declByIndex(
-                        decl.DeclTable,
+                    const table: *decl.DeclTable = @ptrCast(try decl.instance.declByIndex(
                         .table,
                         op.a,
                         true,
                         allocator,
-                    );
+                    ));
                     registers[op.c] = table.tableLookup(registers[op.b]);
                 },
                 .sound => {
@@ -1257,7 +1266,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("map")) {
-                const str = try image_program.parsePastImageProgram(lexer);
+                const str = try image_program.parse(lexer);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 continue;
@@ -1358,7 +1367,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("cubeMap")) {
-                const str = try image_program.parsePastImageProgram(lexer);
+                const str = try image_program.parse(lexer);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .native;
@@ -1366,7 +1375,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("cubeMapSingle")) {
-                const str = try image_program.parsePastImageProgram(lexer);
+                const str = try image_program.parse(lexer);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .single;
@@ -1380,7 +1389,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("cameraCubeMap")) {
-                const str = try image_program.parsePastImageProgram(lexer);
+                const str = try image_program.parse(lexer);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .camera;
@@ -1388,7 +1397,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("quakeCubeMap")) {
-                const str = try image_program.parsePastImageProgram(lexer);
+                const str = try image_program.parse(lexer);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .quake1;
@@ -1758,6 +1767,7 @@ pub const Material = extern struct {
                     .coverage,
                     cube_map,
                     cube_map_size,
+                    allocator,
                 ) catch image_manager.instance.defaultImage;
             } else if (coverage_ts.cinematic == null and
                 coverage_ts.dynamic == .static and
@@ -1772,7 +1782,15 @@ pub const Material = extern struct {
         }
 
         if (image_name.constSlice().len != 0) {
-            @panic("not implemented");
+            ts.image = image_manager.instance.imageFromFile(
+                image_name.constSlice(),
+                texture_filter,
+                texture_repeat,
+                texture_usage,
+                cube_map,
+                cube_map_size,
+                allocator,
+            ) catch image_manager.instance.defaultImage;
         } else if (ts.cinematic == null and
             ts.dynamic == .static and
             ss.new_stage == null)

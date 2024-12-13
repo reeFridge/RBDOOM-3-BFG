@@ -118,12 +118,11 @@ pub fn spawn(
         &opt_last_index,
     )) |entry| {
         const def_name = entry.value_ptr.*;
-        const decl_entity = try decl_manager.instance.findType(
-            DeclEntityDef,
+        const decl_entity: *DeclEntityDef = @ptrCast(try decl_manager.instance.findType(
             .entitydef,
             def_name,
             allocator,
-        ) orelse continue;
+        ) orelse continue);
         var attach_spawn_args = SpawnArgs.init(allocator);
         defer attach_spawn_args.deinit();
         CopySpawnArgs.init(&decl_entity.dict, &attach_spawn_args);

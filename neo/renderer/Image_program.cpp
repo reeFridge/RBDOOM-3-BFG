@@ -78,7 +78,7 @@ properly without knowing the texture coordinate stretching.
 We can assume constant and equal ST vectors for walls, but not for characters.
 =================
 */
-static void R_HeightmapToNormalMap( byte* data, int width, int height, float scale )
+extern "C" void R_HeightmapToNormalMap( byte* data, int width, int height, float scale )
 {
 	int		i, j;
 	byte*	depth;
@@ -146,7 +146,7 @@ static void R_HeightmapToNormalMap( byte* data, int width, int height, float sca
 R_ImageScale
 =================
 */
-static void R_ImageScale( byte* data, int width, int height, float scale[4] )
+extern "C" void R_ImageScale( byte* data, int width, int height, float scale[4] )
 {
 	int		i, j;
 	int		c;
@@ -173,7 +173,7 @@ static void R_ImageScale( byte* data, int width, int height, float scale[4] )
 R_InvertAlpha
 =================
 */
-static void R_InvertAlpha( byte* data, int width, int height )
+extern "C" void R_InvertAlpha( byte* data, int width, int height )
 {
 	int		i;
 	int		c;
@@ -191,7 +191,7 @@ static void R_InvertAlpha( byte* data, int width, int height )
 R_InvertGreen
 =================
 */
-static void R_InvertGreen( byte* data, int width, int height )
+extern "C" void R_InvertGreen( byte* data, int width, int height )
 {
 	int		i;
 	int		c;
@@ -209,7 +209,7 @@ static void R_InvertGreen( byte* data, int width, int height )
 R_InvertColor
 =================
 */
-static void R_InvertColor( byte* data, int width, int height )
+extern "C" void R_InvertColor( byte* data, int width, int height )
 {
 	int		i;
 	int		c;
@@ -231,7 +231,7 @@ R_AddNormalMaps
 
 ===================
 */
-static void R_AddNormalMaps( byte* data1, int width1, int height1, byte* data2, int width2, int height2 )
+extern "C" void R_AddNormalMaps( byte* data1, int width1, int height1, byte* data2, int width2, int height2 )
 {
 	int		i, j;
 	byte*	newMap;
@@ -293,7 +293,7 @@ static void R_AddNormalMaps( byte* data1, int width1, int height1, byte* data2, 
 R_SmoothNormalMap
 ================
 */
-static void R_SmoothNormalMap( byte* data, int width, int height )
+extern "C" void R_SmoothNormalMap( byte* data, int width, int height )
 {
 	byte*	orig;
 	int		i, j, k, l;
@@ -355,7 +355,7 @@ R_ImageAdd
 
 ===================
 */
-static void R_ImageAdd( byte* data1, int width1, int height1, byte* data2, int width2, int height2 )
+extern "C" void R_ImageAdd( byte* data1, int width1, int height1, byte* data2, int width2, int height2 )
 {
 	int		i, j;
 	int		c;
@@ -392,7 +392,7 @@ static void R_ImageAdd( byte* data1, int width1, int height1, byte* data2, int w
 }
 
 // SP begin
-static void R_CombineRgba( byte* data1, int width1, int height1, byte* data2, int width2, int height2, byte* data3, int width3, int height3 )
+extern "C" void R_CombineRgba( byte* data1, int width1, int height1, byte* data2, int width2, int height2, byte* data3, int width3, int height3 )
 {
 	assert( width1 == width2 );
 	//assert(width2 == width3);

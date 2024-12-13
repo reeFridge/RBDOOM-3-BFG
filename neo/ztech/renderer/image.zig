@@ -9,7 +9,7 @@ const material = @import("material.zig");
 const frame_data = @import("frame_data.zig");
 const BinaryImage = @import("binary_image.zig").BinaryImage;
 
-pub const ImageGeneratorFunction = fn (*Image, *nvrhi.ICommandList) callconv(.C) void;
+pub const ImageGeneratorFunction = fn (*Image, ?*nvrhi.ICommandList) callconv(.C) void;
 
 pub const max_image_name = 256;
 
@@ -97,17 +97,17 @@ pub const TextureColor = enum(c_int) {
 };
 
 const ImageOptions = extern struct {
-    textureType: TextureType = .@"2d",
+    texture_type: TextureType = .@"2d",
     format: TextureFormat = .none,
-    colorFormat: TextureColor = .default,
+    color_format: TextureColor = .default,
     samples: u32 = 1,
     width: u32 = 0,
     height: u32 = 0,
-    numLevels: u32 = 0,
-    gammaMips: bool = false,
+    num_levels: u32 = 0,
+    gamma_mips: bool = false,
     readback: bool = false,
-    isRenderTarget: bool = false,
-    isUAV: bool = false,
+    is_render_target: bool = false,
+    is_uav: bool = false,
 };
 
 const vulkan = @import("vulkan");
@@ -196,7 +196,11 @@ pub const Image = extern struct {
         image.defaulted = false;
     }
 
-    pub fn makeDefault(image: *Image, opt_command_list: ?*nvrhi.ICommandList) error{OutOfMemory}!void {
+    pub fn makeDefault(
+        image: *Image,
+        opt_command_list: ?*nvrhi.ICommandList,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!void {
         const size = 16;
         var data: [size][size][4]u8 = undefined;
 
@@ -244,7 +248,7 @@ pub const Image = extern struct {
         }
 
         try image.generateImage(
-            @ptrCast(&data),
+            @as(*[size * size * 4]u8, @ptrCast(&data)),
             size,
             size,
             .default,
@@ -255,6 +259,7 @@ pub const Image = extern struct {
             false,
             1,
             .@"2d",
+            allocator,
         );
 
         image.defaulted = true;
@@ -267,7 +272,6 @@ pub const Image = extern struct {
         filter: material.TextureFilter,
         repeat: material.TextureRepeat,
         usage: TextureUsage,
-        _: *nvrhi.ICommandList,
     ) error{}!void {
         image.purgeImage();
 
@@ -276,11 +280,11 @@ pub const Image = extern struct {
         image.usage = usage;
         image.cube_files = .@"2d_array";
 
-        image.opts.textureType = .@"2d_array";
+        image.opts.texture_type = .@"2d_array";
         image.opts.width = width;
         image.opts.height = height;
-        image.opts.numLevels = 0;
-        image.opts.isRenderTarget = true;
+        image.opts.num_levels = 0;
+        image.opts.is_render_target = true;
 
         image.deriveOpts();
 
@@ -290,9 +294,46 @@ pub const Image = extern struct {
         image.is_loaded = true;
     }
 
+    pub fn generateImageInternal(
+        image: *Image,
+        width: u32,
+        height: u32,
+        filter: material.TextureFilter,
+        repeat: material.TextureRepeat,
+        usage: TextureUsage,
+        is_render_target: bool,
+        is_uav: bool,
+        sample_count: u32,
+        cube_files: CubeFiles,
+    ) error{}!void {
+        image.purgeImage();
+
+        image.filter = filter;
+        image.repeat = repeat;
+        image.usage = usage;
+        image.cube_files = cube_files;
+
+        image.opts.texture_type = if (sample_count > 1) .@"2d_multisample" else .@"2d";
+        image.opts.width = width;
+        image.opts.height = height;
+        image.opts.num_levels = 0;
+        image.opts.samples = sample_count;
+        image.opts.is_render_target = is_render_target;
+        image.opts.is_uav = is_uav;
+
+        if (image.cube_files == .@"2d_packed_mipchain") {
+            image.opts.width = @intFromFloat(@as(f32, @floatFromInt(width)) * (2.0 / 3.0));
+        }
+
+        image.deriveOpts();
+
+        image.createTexture();
+        image.is_loaded = true;
+    }
+
     pub fn generateImage(
         image: *Image,
-        pic: ?[*]const u8,
+        pic: []const u8,
         width: u32,
         height: u32,
         filter: material.TextureFilter,
@@ -303,7 +344,8 @@ pub const Image = extern struct {
         is_uav: bool,
         sample_count: u32,
         cube_files: CubeFiles,
-    ) error{OutOfMemory}!void {
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!void {
         image.purgeImage();
 
         image.filter = filter;
@@ -311,13 +353,13 @@ pub const Image = extern struct {
         image.usage = usage;
         image.cube_files = cube_files;
 
-        image.opts.textureType = if (sample_count > 1) .@"2d_multisample" else .@"2d";
+        image.opts.texture_type = if (sample_count > 1) .@"2d_multisample" else .@"2d";
         image.opts.width = width;
         image.opts.height = height;
-        image.opts.numLevels = 0;
+        image.opts.num_levels = 0;
         image.opts.samples = sample_count;
-        image.opts.isRenderTarget = is_render_target;
-        image.opts.isUAV = is_uav;
+        image.opts.is_render_target = is_render_target;
+        image.opts.is_uav = is_uav;
 
         if (image.cube_files == .@"2d_packed_mipchain") {
             image.opts.width = @intFromFloat(@as(f32, @floatFromInt(width)) * (2.0 / 3.0));
@@ -325,35 +367,34 @@ pub const Image = extern struct {
 
         image.deriveOpts();
 
-        if (pic == null or image.opts.textureType == .@"2d_multisample") {
+        if (image.opts.texture_type == .@"2d_multisample") {
             image.createTexture();
             image.is_loaded = true;
         } else {
             var im = BinaryImage{};
             try im.init(image.name.constSlice());
+            defer im.deinit(allocator);
 
             if (image.cube_files == .@"2d_packed_mipchain") {
                 im.load2DAtlasMipchainFromMemory(
                     width,
                     image.opts.height,
-                    pic.?,
-                    image.opts.numLevels,
+                    pic,
+                    image.opts.num_levels,
                     image.opts.format,
-                    image.opts.colorFormat,
+                    image.opts.color_format,
                 );
             } else {
                 im.load2DFromMemory(
                     width,
                     height,
-                    pic.?,
-                    image.opts.numLevels,
+                    pic,
+                    image.opts.num_levels,
                     image.opts.format,
-                    image.opts.colorFormat,
-                    image.opts.gammaMips,
+                    image.opts.color_format,
+                    image.opts.gamma_mips,
                 );
             }
-
-            //common.loadPacifierBinarizeEnd();
 
             image.createTexture();
 
@@ -371,9 +412,9 @@ pub const Image = extern struct {
                     const row_pitch = getRowPitch(image.opts.format, img.width);
                     command_list.writeTexture(
                         image.texture.ptr_.?,
-                        img.destZ,
+                        img.dest_z,
                         img.level,
-                        data,
+                        data.ptr,
                         row_pitch,
                         0,
                     );
@@ -390,65 +431,16 @@ pub const Image = extern struct {
         }
     }
 
-    fn getRowPitch(format: TextureFormat, width: u32) u32 {
-        if (format == .dxt1 or format == .dxt5) {
-            const block_size = blockSizeForFormat(format);
-
-            return @max(1, (width + 3) / 4) * block_size;
-        }
-
-        const bpe = bitsForFormat(format);
-        return width * (bpe / 8);
-    }
-
-    fn bitsForFormat(format: TextureFormat) u32 {
-        return switch (format) {
-            .none => 0,
-            .rgba8 => 32,
-            .xrgb8 => 32,
-            .rgb565 => 16,
-            .l8a8 => 16,
-            .alpha => 8,
-            .lum8 => 8,
-            .int8 => 8,
-            .dxt1 => 4,
-            .dxt5 => 8,
-            .etc1_rgb8_oes => 4,
-            .shadow_array => (32 * 6),
-            .rg16f => 32,
-            .rgba16f => 64,
-            .rgba16s => 64,
-            .rgba32f => 128,
-            .r32f => 32,
-            .r11g11b10f => 32,
-            .depth => 32,
-            .depth_stencil => 32,
-            .x16 => 16,
-            .y16_x16 => 32,
-            .r8 => 4,
-            else => unreachable,
-        };
-    }
-
-    fn blockSizeForFormat(format: TextureFormat) u32 {
-        return switch (format) {
-            .none => 0,
-            .dxt1 => 8,
-            .dxt5 => 16,
-            else => 1,
-        };
-    }
-
     fn deriveOpts(image: *Image) void {
         const opts = &image.opts;
 
         if (opts.format == .none) {
-            opts.colorFormat = .default;
+            opts.color_format = .default;
 
             switch (image.usage) {
                 .coverage => {
                     opts.format = .dxt1;
-                    opts.colorFormat = .green_alpha;
+                    opts.color_format = .green_alpha;
                 },
                 .depth => {
                     opts.format = .depth;
@@ -482,46 +474,46 @@ pub const Image = extern struct {
                 },
                 .diffuse => {
                     // TD_DIFFUSE gets only set to when its a diffuse texture for an interaction
-                    opts.gammaMips = true;
+                    opts.gamma_mips = true;
                     opts.format = .dxt5;
-                    opts.colorFormat = .ycocg_dxt5;
+                    opts.color_format = .ycocg_dxt5;
                 },
                 .specular => {
-                    opts.gammaMips = true;
+                    opts.gamma_mips = true;
                     opts.format = .dxt1;
-                    opts.colorFormat = .default;
+                    opts.color_format = .default;
                 },
                 .specular_pbr_rmao => {
-                    opts.gammaMips = false;
+                    opts.gamma_mips = false;
                     opts.format = .dxt1;
-                    opts.colorFormat = .default;
+                    opts.color_format = .default;
                 },
                 .specular_pbr_rmaod => {
-                    opts.gammaMips = false;
+                    opts.gamma_mips = false;
                     opts.format = .dxt5;
-                    opts.colorFormat = .default;
+                    opts.color_format = .default;
                 },
                 .default => {
-                    opts.gammaMips = true;
+                    opts.gamma_mips = true;
                     opts.format = .dxt5;
-                    opts.colorFormat = .default;
+                    opts.color_format = .default;
                 },
                 .bump => {
                     opts.format = .dxt5;
-                    opts.colorFormat = .normal_dxt5;
+                    opts.color_format = .normal_dxt5;
                 },
                 .font => {
                     opts.format = .dxt1;
-                    opts.colorFormat = .green_alpha;
-                    opts.numLevels = 4; // We only support 4 levels because we align to 16 in the exporter
-                    opts.gammaMips = true;
+                    opts.color_format = .green_alpha;
+                    opts.num_levels = 4; // We only support 4 levels because we align to 16 in the exporter
+                    opts.gamma_mips = true;
                 },
                 .light => {
                     // TODO check binary format version
                     // D3 BFG assets require RGB565 but it introduces color banding
                     // mods would prefer .FMT_RGBA8
                     opts.format = .rgb565; //.FMT_RGBA8;
-                    opts.gammaMips = true;
+                    opts.gamma_mips = true;
                 },
                 .lookup_table_mono => {
                     opts.format = .int8;
@@ -533,14 +525,14 @@ pub const Image = extern struct {
                     opts.format = .rgba8;
                 },
                 .highquality_cube => {
-                    opts.colorFormat = .default;
+                    opts.color_format = .default;
                     opts.format = .rgba8;
-                    opts.gammaMips = true;
+                    opts.gamma_mips = true;
                 },
                 .lowquality_cube => {
-                    opts.colorFormat = .default; // .CFM_YCOCG_DXT5;
+                    opts.color_format = .default; // .CFM_YCOCG_DXT5;
                     opts.format = .dxt5;
-                    opts.gammaMips = true;
+                    opts.gamma_mips = true;
                 },
                 else => {
                     opts.format = .rgba8;
@@ -549,8 +541,8 @@ pub const Image = extern struct {
             }
         }
 
-        if (opts.numLevels == 0) {
-            opts.numLevels = 1;
+        if (opts.num_levels == 0) {
+            opts.num_levels = 1;
 
             if (image.filter == .linear or image.filter == .nearest) {
                 // don't create mip maps if we aren't going to be using them
@@ -567,12 +559,13 @@ pub const Image = extern struct {
                     {
                         break;
                     }
-                    opts.numLevels += 1;
+                    opts.num_levels += 1;
                 }
             }
         }
     }
 
+    // TODO: return error (vma allocation error)
     fn createTexture(image: *Image) void {
         image.purgeImage();
         image.createSamplerDesc();
@@ -625,12 +618,12 @@ pub const Image = extern struct {
             .width = scaled_width,
             .height = scaled_height,
             .format = format,
-            .isUAV = image.opts.isUAV,
+            .isUAV = image.opts.is_uav,
             .sampleCount = image.opts.samples,
-            .mipLevels = image.opts.numLevels,
+            .mipLevels = image.opts.num_levels,
         };
 
-        if (image.opts.colorFormat == .green_alpha) {
+        if (image.opts.color_format == .green_alpha) {
             texture_desc.componentMapping.r = .One;
             texture_desc.componentMapping.g = .One;
             texture_desc.componentMapping.b = .One;
@@ -662,7 +655,7 @@ pub const Image = extern struct {
             texture_desc.componentMapping.a = .One;
         }
 
-        if (image.opts.isRenderTarget) {
+        if (image.opts.is_render_target) {
             texture_desc.initialState = .{ .RenderTarget = true };
             texture_desc.clearValue = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
             texture_desc.isRenderTarget = true;
@@ -676,28 +669,28 @@ pub const Image = extern struct {
                 texture_desc.clearValue = .{ .r = 1, .g = 1, .b = 1, .a = 1 };
             }
 
-            if (image.opts.isUAV) {
+            if (image.opts.is_uav) {
                 // This is a hack to make cszBuffer and ambient occlusion uav work.
                 texture_desc.isUAV = true;
             }
         }
 
-        if (image.opts.textureType == .@"2d") {
+        if (image.opts.texture_type == .@"2d") {
             texture_desc.dimension = .Texture2D;
-        } else if (image.opts.textureType == .cubic) {
+        } else if (image.opts.texture_type == .cubic) {
             texture_desc.dimension = .TextureCube;
             texture_desc.arraySize = 6;
-        } else if (image.opts.textureType == .@"2d_array") {
+        } else if (image.opts.texture_type == .@"2d_array") {
             texture_desc.dimension = .Texture2DArray;
             texture_desc.arraySize = 6;
-        } else if (image.opts.textureType == .@"2d_multisample") {
+        } else if (image.opts.texture_type == .@"2d_multisample") {
             texture_desc.dimension = .Texture2DMS;
             texture_desc.arraySize = 1;
         }
 
         if (device_manager.vma_allocator) |vma_allocator| {
             const image_create_info = vulkan.ImageCreateInfo{
-                .flags = if (image.opts.textureType == .cubic)
+                .flags = if (image.opts.texture_type == .cubic)
                     .{ .cube_compatible_bit = true }
                 else
                     .{},
@@ -708,7 +701,7 @@ pub const Image = extern struct {
                     .height = scaled_height,
                     .depth = 1,
                 },
-                .mip_levels = image.opts.numLevels,
+                .mip_levels = image.opts.num_levels,
                 .array_layers = texture_desc.arraySize,
                 .samples = vulkan.SampleCountFlags.fromInt(image.opts.samples),
                 .tiling = .optimal,
@@ -831,8 +824,151 @@ pub const Image = extern struct {
         return @ptrCast(image.texture.ptr_);
     }
 
-    pub fn actuallyLoadImage(_: *Image, _: bool, _: ?*nvrhi.ICommandList) error{}!void {
-        @panic("not implemented");
+    pub fn actuallyLoadImage(
+        image: *Image,
+        opt_command_list: ?*nvrhi.ICommandList,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!void {
+        if (image.is_loaded) return;
+
+        if (image.generator_function) |gen_fn| {
+            gen_fn(image, opt_command_list);
+            return;
+        }
+
+        const production_mode = false;
+        if (production_mode) {
+            image.source_file_time = fs.FILE_NOT_FOUND_TIMESTAMP;
+            if (image.cube_files != .@"2d") {
+                image.opts.texture_type = .cubic;
+                image.repeat = .clamp;
+            }
+        } else {
+            if (image.cube_files == .@"2d_array") {
+                image.opts.texture_type = .@"2d_array";
+            } else if (image.cube_files == .native or
+                image.cube_files == .camera or
+                image.cube_files == .quake1 or
+                image.cube_files == .single)
+            {
+                image.opts.texture_type = .cubic;
+                image.repeat = .clamp;
+                // image.source_file_time = image_program.getSourceFileTimeCube(image.name, ..);
+            } else {
+                image.opts.texture_type = .@"2d";
+                // image.source_file_time = image_program.getSourceFileTime(image.name, ..);
+            }
+        }
+
+        if (image.usage == .specular_pbr_rmao) {
+            var basename: []const u8 = image.name.constSlice();
+            const ext = std.fs.path.extension(basename);
+            basename = basename[0 .. basename.len - ext.len];
+            const find_str = "_s";
+            if (std.mem.eql(u8, basename[basename.len - find_str.len ..], find_str)) {
+                try image.name.assignSlice(basename);
+                try image.name.appendSlice(find_str);
+            }
+        }
+
+        image.deriveOpts();
+
+        var name_buffer: [fs.max_os_path]u8 = undefined;
+        const generated_name = formatGeneratedName(
+            &name_buffer,
+            image.name.constSlice(),
+            image.usage,
+            image.cube_files,
+        );
+
+        var im = BinaryImage{};
+        try im.init(generated_name);
+        defer im.deinit(allocator);
+
+        const binary_file_time = im.loadFromGenerated(image.source_file_time, allocator);
+
+        if (binary_file_time == fs.FILE_NOT_FOUND_TIMESTAMP and
+            fs.instance.usingResourceFiles())
+        {
+            @panic("not implemented");
+        }
+
+        if ((fs.instance.inProductionMode() and
+            binary_file_time != fs.FILE_NOT_FOUND_TIMESTAMP) or
+            (binary_file_time != fs.FILE_NOT_FOUND_TIMESTAMP and
+            im.header.color_format == image.opts.color_format and
+            (im.header.format == image.opts.format or
+            (im.header.format == .rgb565 and image.opts.format == .rgba8)) and
+            im.header.texture_type == image.opts.texture_type))
+        {
+            image.opts.width = im.header.width;
+            image.opts.height = im.header.height;
+            image.opts.num_levels = im.header.num_levels;
+            image.opts.color_format = im.header.color_format;
+
+            image.opts.format = if (im.header.format == .rgb565)
+                .rgba8
+            else
+                im.header.format;
+
+            image.opts.texture_type = im.header.texture_type;
+
+            const fs_build_resources = false;
+            if (fs_build_resources) {
+                @panic("not implemented");
+            }
+        } else {
+            // try to read the source image from fs
+            if (image.cube_files == .native or
+                image.cube_files == .camera or
+                image.cube_files == .quake1 or
+                image.cube_files == .single)
+            {
+                // loadCubeImages
+                // im.loadCubeFromMemory
+            } else {
+                // loadImageProgram
+                // nvrhi stuff
+                // if (pic == null) defaulted return;
+
+                if (image.cube_files == .@"2d_packed_mipchain") {
+                    // im.load2dAtlasMipchainFromMemory
+                } else {
+                    // im.load2dFromMemory
+                }
+            }
+
+            //binary_file_time = im.writeGeneratedFile(source_file_time);
+        }
+
+        _ = opt_command_list orelse return;
+
+        // image.allocImage;
+        // nvrhi stuff
+
+        image.is_loaded = true;
+        @breakpoint();
+    }
+
+    fn formatGeneratedName(
+        buffer: []u8,
+        name: []const u8,
+        usage: TextureUsage,
+        cube: CubeFiles,
+    ) []u8 {
+        const ext = std.fs.path.extension(name);
+        const basename = name[0 .. name.len - ext.len];
+
+        return std.fmt.bufPrint(
+            buffer,
+            "{s}#__{d:0>2}{d:0>2}{s}",
+            .{
+                basename,
+                @as(u32, @intCast(@intFromEnum(usage))),
+                @as(u32, @intCast(@intFromEnum(cube))),
+                ext,
+            },
+        ) catch @panic("generated name exceeded max length");
     }
 };
 
@@ -865,4 +1001,53 @@ fn selectImageUsage(desc: *const nvrhi.TextureDesc) vulkan.ImageUsageFlags {
         usage_flags.fragment_shading_rate_attachment_bit_khr = true;
 
     return usage_flags;
+}
+
+pub fn getRowPitch(format: TextureFormat, width: u32) u32 {
+    if (format == .dxt1 or format == .dxt5) {
+        const block_size = blockSizeForFormat(format);
+
+        return @max(1, (width + 3) / 4) * block_size;
+    }
+
+    const bpe = bitsForFormat(format);
+    return width * (bpe / 8);
+}
+
+pub fn bitsForFormat(format: TextureFormat) u32 {
+    return switch (format) {
+        .none => 0,
+        .rgba8 => 32,
+        .xrgb8 => 32,
+        .rgb565 => 16,
+        .l8a8 => 16,
+        .alpha => 8,
+        .lum8 => 8,
+        .int8 => 8,
+        .dxt1 => 4,
+        .dxt5 => 8,
+        .etc1_rgb8_oes => 4,
+        .shadow_array => (32 * 6),
+        .rg16f => 32,
+        .rgba16f => 64,
+        .rgba16s => 64,
+        .rgba32f => 128,
+        .r32f => 32,
+        .r11g11b10f => 32,
+        .depth => 32,
+        .depth_stencil => 32,
+        .x16 => 16,
+        .y16_x16 => 32,
+        .r8 => 4,
+        else => unreachable,
+    };
+}
+
+pub fn blockSizeForFormat(format: TextureFormat) u32 {
+    return switch (format) {
+        .none => 0,
+        .dxt1 => 8,
+        .dxt5 => 16,
+        else => 1,
+    };
 }

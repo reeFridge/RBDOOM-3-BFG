@@ -470,7 +470,10 @@ const JobListId = @import("parallel_job_list.zig").JobListId;
 const JobListPriority = @import("parallel_job_list.zig").JobListPriority;
 const global = @import("../global.zig");
 
-pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) RenderBackend.InitError!void {
+pub fn initBackend(
+    render_system: *RenderSystem,
+    allocator: std.mem.Allocator,
+) RenderBackend.InitError!void {
     if (render_system.initialized) return;
     // also inits frame_data
     try backend_.init(allocator);
@@ -487,7 +490,7 @@ pub fn initBackend(render_system: *RenderSystem, allocator: std.mem.Allocator) R
     };
 
     command_list_ptr.open();
-    try image_manager.instance.reloadImages(true, command_list_ptr);
+    try image_manager.instance.reloadImages(true, command_list_ptr, allocator);
     command_list_ptr.close();
     device.executeCommandList(command_list_ptr);
 }
@@ -530,7 +533,7 @@ pub fn destroyRenderWorld(
 
 pub const InitError =
     std.mem.Allocator.Error ||
-    decl_manager.DeclManager.FindDeclError(Material);
+    decl_manager.DeclManager.FindDeclError;
 pub fn init(
     render_system: *RenderSystem,
     allocator: std.mem.Allocator,
@@ -562,47 +565,42 @@ pub fn init(
     );
 
     // init materials
-    render_system.default_material = try decl_manager.instance.findType(
-        Material,
+    render_system.default_material = @ptrCast(try decl_manager.instance.findType(
         .material,
         "_default",
         allocator,
-    ) orelse @panic("default material not found");
+    ) orelse @panic("default material not found"));
 
-    render_system.default_point_light = try decl_manager.instance.findTypeOrDefault(
-        Material,
+    render_system.default_point_light = @ptrCast(try decl_manager.instance.findTypeOrDefault(
         .material,
         "lights/defaultPointLight",
         allocator,
-    );
+    ));
 
-    render_system.default_projected_light = try decl_manager.instance.findTypeOrDefault(
-        Material,
+    render_system.default_projected_light = @ptrCast(try decl_manager.instance.findTypeOrDefault(
         .material,
         "lights/defaultProjectedLight",
         allocator,
-    );
+    ));
 
-    render_system.white_material = try decl_manager.instance.findType(
-        Material,
+    // TODO: check not found
+    render_system.white_material = @ptrCast(try decl_manager.instance.findType(
         .material,
         "_white",
         allocator,
-    ) orelse @panic("white material not found");
+    ));
 
-    render_system.char_set_material = try decl_manager.instance.findType(
-        Material,
+    render_system.char_set_material = @ptrCast(try decl_manager.instance.findType(
         .material,
         "textures/bigchars",
         allocator,
-    ) orelse @panic("char_set material not found");
+    ) orelse @panic("char_set material not found"));
 
-    render_system.imgui_material = try decl_manager.instance.findTypeOrDefault(
-        Material,
+    render_system.imgui_material = @ptrCast(try decl_manager.instance.findTypeOrDefault(
         .material,
         "_imguiFont",
         allocator,
-    );
+    ));
 
     c_renderSystem_initImgui(render_system.imgui_material);
 

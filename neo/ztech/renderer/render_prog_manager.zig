@@ -1123,7 +1123,7 @@ pub const RenderProgManager = extern struct {
             else => unreachable,
         };
 
-        var buffer = std.mem.zeroes([fs.MAX_OS_PATH:0]u8);
+        var buffer = std.mem.zeroes([fs.max_os_path:0]u8);
         // TODO dxil support
         const adjusted_name = switch (device_manager.instance().getGraphicsApi()) {
             .VULKAN => std.fmt.bufPrintZ(

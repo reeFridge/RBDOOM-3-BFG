@@ -69,7 +69,7 @@ pub const DeclEntityDef = extern struct {
         @panic("DeclEntityDef.parse is not implemented");
     }
 
-    pub fn setDefaultText(decl: *DeclEntityDef) error{}!bool {
+    pub fn setDefaultText(decl: *DeclEntityDef) error{}!void {
         _ = decl;
 
         @panic("DeclEntityDef.setDefaultText is not implemented");

@@ -446,7 +446,7 @@ const DeclModelDef = extern struct {
         @panic("DeclModelDef.parse is not implemented");
     }
 
-    pub fn setDefaultText(decl: *DeclModelDef) error{}!bool {
+    pub fn setDefaultText(decl: *DeclModelDef) error{}!void {
         _ = decl;
 
         @panic("DeclModelDef.setDefaultText is not implemented");
@@ -554,16 +554,15 @@ fn freeData(animator: *Animator) void {
 
 pub const SetModelError =
     error{OutOfMemory} ||
-    decl_manager.DeclManager.FindDeclError(DeclModelDef);
+    decl_manager.DeclManager.FindDeclError;
 pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*RenderModel {
     animator.freeData();
 
-    const model_decl = try decl_manager.instance.findType(
-        DeclModelDef,
+    const model_decl: *DeclModelDef = @ptrCast(try decl_manager.instance.findType(
         .modeldef,
         model_name,
         animator.allocator,
-    ) orelse return null;
+    ) orelse return null);
     const render_model: *RenderModel = model_decl.modelHandle() orelse return null;
 
     animator.model_def = model_decl;

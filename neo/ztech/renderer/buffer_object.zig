@@ -194,7 +194,7 @@ pub fn BufferObject(buffer_object_type: BufferObjectType) type {
                 std.debug.assert(self.isMapped());
 
                 @memcpy(
-                    self.buffer.?[0..offset][0..num_bytes],
+                    self.buffer.?[offset..num_bytes],
                     data[0..num_bytes],
                 );
             } else {

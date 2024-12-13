@@ -18,7 +18,7 @@ pub const SearchPath = extern struct {
     }
 };
 
-pub const MAX_OS_PATH: usize = 256;
+pub const max_os_path: usize = 256;
 pub const FILE_NOT_FOUND_TIMESTAMP: idlib.ID_TIME_T = -1;
 
 pub var fs_basepath: CVar = CVar.init(
@@ -62,6 +62,14 @@ pub const FileSystem = extern struct {
 
     pub fn isInitialized(fs: *const FileSystem) void {
         return fs.searchPaths.num != 0;
+    }
+
+    pub inline fn usingResourceFiles(_: *const FileSystem) bool {
+        return false;
+    }
+
+    pub inline fn inProductionMode(_: *const FileSystem) bool {
+        return false;
     }
 
     pub fn init(fs: *FileSystem) AddDirectoryError!void {
@@ -363,7 +371,7 @@ pub const FileSystem = extern struct {
     }
 
     fn getResourceCacheEntry(fs: *const FileSystem, filename: []const u8) ?ResourceContainer.CacheEntry {
-        var buffer: [MAX_OS_PATH]u8 = std.mem.zeroes([MAX_OS_PATH]u8);
+        var buffer: [max_os_path]u8 = std.mem.zeroes([max_os_path]u8);
         const canonical_path = buffer[0..filename.len];
         _ = std.mem.replace(u8, filename, '\\', '/', canonical_path);
         for (canonical_path) |*char| {

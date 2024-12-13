@@ -2782,7 +2782,7 @@ const MapError = error{
 };
 
 pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
-    var buffer: [fs.MAX_OS_PATH * 2]u8 = undefined;
+    var buffer: [fs.max_os_path * 2]u8 = undefined;
     var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
     defer fixed_allocator.reset();
 
@@ -3136,7 +3136,7 @@ fn floodConnectedAreas(
 
 fn setupLightGrid(render_world: *RenderWorld) error{OutOfMemory}!void {
     const portal_areas = render_world.portal_areas orelse @panic("portal_areas is not alloced");
-    var buffer: [fs.MAX_OS_PATH * 2]u8 = undefined;
+    var buffer: [fs.max_os_path * 2]u8 = undefined;
     var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
     defer fixed_allocator.reset();
 
@@ -3443,12 +3443,11 @@ inline fn createModelSurface(
     surface_triangles.numVerts = @intCast(num_vertices);
     surface_triangles.numIndexes = @intCast(indices.len);
 
-    const opt_material_ptr = try decl_manager.instance.findType(
-        Material,
+    const opt_material_ptr: ?*Material = @ptrCast(try decl_manager.instance.findType(
         .material,
         meterial_name,
         render_world.allocator,
-    );
+    ));
     if (opt_material_ptr) |material_ptr| material_ptr.addReference();
 
     const surface: model.ModelSurface = .{

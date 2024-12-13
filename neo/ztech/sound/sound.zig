@@ -48,7 +48,7 @@ pub const SoundShader = extern struct {
         @panic("SoundShader.parse is not implemented");
     }
 
-    pub fn setDefaultText(sound_shader: *SoundShader) error{}!bool {
+    pub fn setDefaultText(sound_shader: *SoundShader) error{}!void {
         _ = sound_shader;
 
         @panic("SoundShader.setDefaultText is not implemented");

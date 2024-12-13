@@ -40,7 +40,7 @@ fn cmd_bind(args: *const cmd.CmdArgs) callconv(.C) void {
 
     for (2..@intCast(args.argc)) |i| {
         const token_str = std.mem.span(args.argv[i]);
-        @memcpy(cmd_buffer[len .. len + token_str.len], token_str);
+        @memcpy(cmd_buffer[len..][0..token_str.len], token_str);
         len += token_str.len;
         if (i != @as(usize, @intCast(args.argc - 1))) {
             cmd_buffer[len] = ' ';

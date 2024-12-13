@@ -11,34 +11,42 @@ var parse_buffer = std.BoundedArray(u8, max_image_name).init(0) catch unreachabl
 
 fn appendToken(token_slice: []const u8) void {
     if (parse_buffer.constSlice().len > 0) {
-        parse_buffer.append(" ") catch unreachable;
+        parse_buffer.appendSlice(" ") catch unreachable;
     }
 
-    parse_buffer.append(token_slice) catch unreachable;
+    parse_buffer.appendSlice(token_slice) catch unreachable;
 }
 
 fn matchAndAppendToken(lexer: *Lexer, match: []const u8) void {
     lexer.expectTokenString(match) catch return;
-
-    parse_buffer.append(match) catch unreachable;
+    parse_buffer.appendSlice(match) catch unreachable;
 }
 
+extern fn R_HeightmapToNormalMap([*]u8, u32, u32, f32) void;
+extern fn R_AddNormalMaps([*]u8, u32, u32, [*]u8, u32, u32) void;
+
 pub const ParseImageProgramError =
-    error{OutOfMemory} ||
+    std.mem.Allocator.Error ||
     Lexer.ReadTokenError;
-fn parseImageProgramRecursive(
+
+const ParseState = struct {
+    const Image = struct {
+        data: []u8,
+        width: u32,
+        height: u32,
+    };
+
+    opt_image: ?Image = null,
+    opt_timestamp: ?idlib.ID_TIME_T = null,
+    opt_usage: ?TextureUsage = null,
+};
+
+fn parseRecursive(
     lexer: *Lexer,
-    pic: ?[*][*]u8,
-    width: ?*u32,
-    height: ?*u32,
-    timestamps: ?[*]idlib.ID_TIME_T,
-    usage: ?*TextureUsage,
-) ParseImageProgramError!bool {
+) ParseImageProgramError!void {
     var token = Token{};
     token.initEmpty();
     defer token.deinit();
-
-    var timestamp: idlib.ID_TIME_T = -1;
 
     try lexer.readToken(&token);
 
@@ -48,103 +56,134 @@ fn parseImageProgramRecursive(
         try token.base.assignSlice("guis/assets/white");
     }
 
+    appendToken(token.slice());
+
     if (token.ieql("heightmap")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ",");
+        try lexer.readToken(&token);
+        appendToken(token.slice());
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("addnormals")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ",");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("smoothnormals")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("add")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ",");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("scale")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        for (0..4) |_| {
+            matchAndAppendToken(lexer, ",");
+            try lexer.readToken(&token);
+            appendToken(token.slice());
+        }
+        matchAndAppendToken(lexer, ")");
+
+        return;
+    }
+
+    if (token.ieql("invertAlpha")) {
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("invertGreen")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("invertColor")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("makeIntensity")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("makeAlpha")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
 
     if (token.ieql("combineRgba")) {
-        // TODO
-        return true;
+        matchAndAppendToken(lexer, "(");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ",");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ",");
+        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, ")");
+
+        return;
     }
-
-    if (timestamps == null and pic == null) return true;
-
-    loadImage(
-        token.slice(),
-        pic,
-        width,
-        height,
-        &timestamp,
-        true,
-        usage,
-    );
-
-    if (timestamp == -1) return false;
-
-    if (timestamps) |timestamps_| {
-        if (timestamp > timestamps_[0]) {
-            timestamps_[0] = timestamp;
-        }
-    }
-
-    return true;
 }
 
+const ImageData = struct {
+    data: []u8,
+    width: u32,
+    height: u32,
+    timestamp: idlib.ID_TIME_T,
+    usage: TextureUsage,
+};
+
+const LoadImageError = error{};
 fn loadImage(
     path: []const u8,
-    pic: ?[*][*]u8,
-    width: ?*u32,
-    height: ?*u32,
-    timestamp: *idlib.ID_TIME_T,
     make_power_of_2: bool,
-    usage: ?*TextureUsage,
-) void {
+) LoadImageError!ImageData {
     _ = path;
-    _ = pic;
-    _ = width;
-    _ = height;
-    _ = timestamp;
     _ = make_power_of_2;
-    _ = usage;
 
-    return;
+    return std.mem.zeroes(ImageData);
 }
 
-pub fn parsePastImageProgram(lexer: *Lexer) ParseImageProgramError![]const u8 {
+pub fn parse(lexer: *Lexer) ParseImageProgramError![]const u8 {
     parse_buffer.len = 0;
-
-    _ = try parseImageProgramRecursive(lexer, null, null, null, null, null);
-
+    try parseRecursive(lexer);
     return parse_buffer.constSlice();
 }

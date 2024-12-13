@@ -86,7 +86,8 @@ pub const ImageManager = extern struct {
         arg_usage: image_.TextureUsage,
         cube_map: image_.CubeFiles,
         cube_map_size: u32,
-    ) error{OutOfMemory}!*Image {
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!*Image {
         if (std.ascii.eqlIgnoreCase(arg_name, "default") or
             std.ascii.eqlIgnoreCase(arg_name, "_default"))
         {
@@ -143,7 +144,7 @@ pub const ImageManager = extern struct {
                         !image_manager.inside_level_load and
                         !image_manager.preloading_map_images;
 
-                    try image.actuallyLoadImage(false, null);
+                    try image.actuallyLoadImage(null, allocator);
                 }
 
                 return image;
@@ -163,7 +164,7 @@ pub const ImageManager = extern struct {
                 !image_manager.inside_level_load and
                 !image_manager.preloading_map_images;
 
-            try image.actuallyLoadImage(false, null);
+            try image.actuallyLoadImage(null, allocator);
         }
 
         return image;
@@ -173,22 +174,24 @@ pub const ImageManager = extern struct {
         image_manager: *ImageManager,
         all: bool,
         command_list: *nvrhi.ICommandList,
-    ) error{OutOfMemory}!void {
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!void {
         for (image_manager.images.constSlice()) |image| {
             try image.reload(all, command_list);
         }
 
-        try image_manager.loadDeferredImages(command_list);
+        try image_manager.loadDeferredImages(command_list, allocator);
     }
 
     fn loadDeferredImages(
         image_manager: *ImageManager,
         command_list: *nvrhi.ICommandList,
-    ) error{OutOfMemory}!void {
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!void {
         if (image_manager.inside_level_load) return;
 
         for (image_manager.images_to_load.slice()) |image| {
-            try image.actuallyLoadImage(false, command_list);
+            try image.actuallyLoadImage(command_list, allocator);
         }
 
         image_manager.images_to_load.clear();
@@ -434,19 +437,18 @@ pub const ImageManager = extern struct {
 pub const instance = @extern(*ImageManager, .{ .name = "imageManager" });
 
 const image_gen = struct {
-    fn defaultImage(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
-        image.makeDefault(command_list) catch |err| genFatal(image, err);
+    fn defaultImage(image: *Image, opt_command_list: ?*nvrhi.ICommandList) callconv(.C) void {
+        const allocator = global.gpa.allocator();
+        image.makeDefault(opt_command_list, allocator) catch |err| genFatal(image, err);
     }
 
-    fn envprobeImageHdr(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn envprobeImageHdr(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             framebuffer.ENVPROBE_CAPTURE_SIZE,
             framebuffer.ENVPROBE_CAPTURE_SIZE,
             .nearest,
             .clamp,
             .rgba16f,
-            null,
             true,
             false,
             1,
@@ -454,15 +456,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn guiEditDepthStencilFunction(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn guiEditDepthStencilFunction(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.SCREEN_WIDTH,
             RenderSystem.SCREEN_HEIGHT,
             .nearest,
             .clamp,
             .depth_stencil,
-            null,
             true,
             false,
             1,
@@ -470,15 +470,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn envprobeImageDepth(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn envprobeImageDepth(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             framebuffer.ENVPROBE_CAPTURE_SIZE,
             framebuffer.ENVPROBE_CAPTURE_SIZE,
             .nearest,
             .clamp,
             .depth_stencil,
-            null,
             true,
             false,
             1,
@@ -486,15 +484,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn ldrNativeImage(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn ldrNativeImage(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .lookup_table_rgba,
-            null,
             true,
             false,
             1,
@@ -502,15 +498,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hdrRGBA16FImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn hdrRGBA16FImageResNative(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .rgba16f,
-            null,
             true,
             false,
             1,
@@ -518,16 +512,14 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hdrRGBA16FImageResNativeMSAAOpt(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+    fn hdrRGBA16FImageResNativeMSAAOpt(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const sample_count = 1;
-        image.generateImage(
-            null,
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .rgba16f,
-            null,
             true,
             sample_count == 1,
             sample_count,
@@ -535,16 +527,14 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn depthImage(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+    fn depthImage(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const sample_count = 1;
-        image.generateImage(
-            null,
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .depth_stencil,
-            null,
             true,
             false,
             sample_count,
@@ -552,15 +542,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn ambientOcclusionImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn ambientOcclusionImageResNative(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .linear,
             .clamp,
             .r8f,
-            null,
             true,
             true,
             1,
@@ -568,15 +556,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hierarchicalZBufferImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn hierarchicalZBufferImageResNative(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest_mipmap,
             .clamp,
             .r32f,
-            null,
             true,
             true,
             1,
@@ -584,16 +570,14 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn geometryBufferImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
+    fn geometryBufferImageResNative(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const sample_count = 1;
-        image.generateImage(
-            null,
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .linear,
             .clamp,
             .rgba16f,
-            null,
             true,
             false,
             sample_count,
@@ -601,15 +585,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hdrRGBA16FImageResNativeUav(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn hdrRGBA16FImageResNativeUav(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .rgba16f,
-            null,
             true,
             true,
             1,
@@ -617,15 +599,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hdrRGBA16SImageResNativeUav(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn hdrRGBA16SImageResNativeUav(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .rgba16s,
-            null,
             true,
             true,
             1,
@@ -633,15 +613,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hdrRGBA16FImageResQuarterLinear(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn hdrRGBA16FImageResQuarterLinear(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth() / 4,
             RenderSystem.instance.getHeight() / 4,
             .linear,
             .clamp,
             .lookup_table_rgba,
-            null,
             true,
             false,
             1,
@@ -649,15 +627,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn hdrRG16FImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn hdrRG16FImageResNative(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .nearest,
             .clamp,
             .rg16f,
-            null,
             true,
             false,
             1,
@@ -665,15 +641,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn smaaImageResNative(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn smaaImageResNative(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.instance.getWidth(),
             RenderSystem.instance.getHeight(),
             .linear,
             .clamp,
             .lookup_table_rgba,
-            null,
             true,
             false,
             1,
@@ -681,15 +655,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn RGBA8ImageRT(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn RGBA8ImageRT(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             512,
             512,
             .nearest,
             .clamp,
             .lookup_table_rgba,
-            null,
             true,
             false,
             1,
@@ -697,15 +669,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn guiEditFunction(image: *Image, _: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn guiEditFunction(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             RenderSystem.SCREEN_WIDTH,
             RenderSystem.SCREEN_HEIGHT,
             .nearest,
             .clamp,
             .lookup_table_rgba,
-            null,
             true,
             false,
             1,
@@ -713,15 +683,13 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn createShadowMapImageAtlas(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
-        image.generateImage(
-            null,
+    fn createShadowMapImageAtlas(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
+        image.generateImageInternal(
             @intCast(RenderSystem.r_shadow_map_atlas_size.integer_value),
             @intCast(RenderSystem.r_shadow_map_atlas_size.integer_value),
             .linear,
             .clamp_to_zero_alpha,
             .depth,
-            command_list,
             true,
             false,
             1,
@@ -729,7 +697,7 @@ const image_gen = struct {
         ) catch |err| genFatal(image, err);
     }
 
-    fn createShadowMapImageRes0(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+    fn createShadowMapImageRes0(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const size = framebuffer.shadow_map_resolutions[0];
         image.generateShadowArray(
             size,
@@ -737,11 +705,10 @@ const image_gen = struct {
             .linear,
             .clamp_to_zero_alpha,
             .shadow_array,
-            command_list,
         ) catch |err| genFatal(image, err);
     }
 
-    fn createShadowMapImageRes1(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+    fn createShadowMapImageRes1(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const size = framebuffer.shadow_map_resolutions[1];
         image.generateShadowArray(
             size,
@@ -749,11 +716,10 @@ const image_gen = struct {
             .linear,
             .clamp_to_zero_alpha,
             .shadow_array,
-            command_list,
         ) catch |err| genFatal(image, err);
     }
 
-    fn createShadowMapImageRes2(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+    fn createShadowMapImageRes2(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const size = framebuffer.shadow_map_resolutions[2];
         image.generateShadowArray(
             size,
@@ -761,11 +727,10 @@ const image_gen = struct {
             .linear,
             .clamp_to_zero_alpha,
             .shadow_array,
-            command_list,
         ) catch |err| genFatal(image, err);
     }
 
-    fn createShadowMapImageRes3(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+    fn createShadowMapImageRes3(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const size = framebuffer.shadow_map_resolutions[3];
         image.generateShadowArray(
             size,
@@ -773,11 +738,10 @@ const image_gen = struct {
             .linear,
             .clamp_to_zero_alpha,
             .shadow_array,
-            command_list,
         ) catch |err| genFatal(image, err);
     }
 
-    fn createShadowMapImageRes4(image: *Image, command_list: *nvrhi.ICommandList) callconv(.C) void {
+    fn createShadowMapImageRes4(image: *Image, _: ?*nvrhi.ICommandList) callconv(.C) void {
         const size = framebuffer.shadow_map_resolutions[4];
         image.generateShadowArray(
             size,
@@ -785,7 +749,6 @@ const image_gen = struct {
             .linear,
             .clamp_to_zero_alpha,
             .shadow_array,
-            command_list,
         ) catch |err| genFatal(image, err);
     }
 
