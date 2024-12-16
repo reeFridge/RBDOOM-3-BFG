@@ -1,4 +1,5 @@
 const std = @import("std");
+const image_program = @import("image_program.zig");
 const render_system = @import("render_system.zig");
 const fs = @import("../framework/file_system.zig");
 const device_manager = @import("../sys/device_manager.zig");
@@ -824,11 +825,12 @@ pub const Image = extern struct {
         return @ptrCast(image.texture.ptr_);
     }
 
-    pub fn actuallyLoadImage(
+    pub const ActuallyLoadImageError = std.mem.Allocator.Error;
+    pub fn actuallyLoadImageOrDefault(
         image: *Image,
         opt_command_list: ?*nvrhi.ICommandList,
         allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+    ) ActuallyLoadImageError!void {
         if (image.is_loaded) return;
 
         if (image.generator_function) |gen_fn| {
@@ -853,10 +855,18 @@ pub const Image = extern struct {
             {
                 image.opts.texture_type = .cubic;
                 image.repeat = .clamp;
-                // image.source_file_time = image_program.getSourceFileTimeCube(image.name, ..);
+                image.source_file_time = try image_program.parseAndGetCubeFileTimestamp(
+                    image.name.constSlice(),
+                    image.cube_files,
+                    image.cube_map_size,
+                    allocator,
+                );
             } else {
                 image.opts.texture_type = .@"2d";
-                // image.source_file_time = image_program.getSourceFileTime(image.name, ..);
+                image.source_file_time = try image_program.parseAndGetFileTimestamp(
+                    image.name.constSlice(),
+                    allocator,
+                );
             }
         }
 
@@ -924,20 +934,80 @@ pub const Image = extern struct {
                 image.cube_files == .quake1 or
                 image.cube_files == .single)
             {
+                @panic("not implemented");
                 // loadCubeImages
                 // im.loadCubeFromMemory
             } else {
-                // loadImageProgram
-                // nvrhi stuff
-                // if (pic == null) defaulted return;
+                _ = image_program.parseAndLoad(
+                    image.name.constSlice(),
+                    allocator,
+                ) catch |err| {
+                    std.debug.print(
+                        "[WARN][IMAGE] Load {s} failed err: {s} => defaulted\n",
+                        .{
+                            image.name.constSlice(),
+                            @errorName(err),
+                        },
+                    );
+
+                    // defaulted
+                    image.opts.width = 8;
+                    image.opts.height = 8;
+                    image.opts.num_levels = 1;
+                    image.deriveOpts();
+                    image.defaulted = true;
+
+                    const command_list = opt_command_list orelse return;
+
+                    image.createTexture();
+
+                    // it was unset by createTexture().purgeImage()
+                    image.defaulted = true;
+
+                    const clear = try allocator.alloc(
+                        u8,
+                        image.opts.width * image.opts.height * 4,
+                    );
+                    defer allocator.free(clear);
+
+                    command_list.beginTrackingTextureState(
+                        image.texture.ptr_.?,
+                        nvrhi.AllSubresources,
+                        .{ .Common = true },
+                    );
+
+                    for (0..image.opts.num_levels) |level| {
+                        const row_pitch = getRowPitch(image.opts.format, image.opts.width);
+                        command_list.writeTexture(
+                            image.texture.ptr_.?,
+                            0,
+                            @intCast(level),
+                            clear.ptr,
+                            row_pitch,
+                            0,
+                        );
+                    }
+
+                    command_list.setPermanentTextureState(
+                        image.texture.ptr_.?,
+                        .{ .ShaderResource = true },
+                    );
+                    command_list.commitBarriers();
+
+                    image.is_loaded = true;
+                    return;
+                };
 
                 if (image.cube_files == .@"2d_packed_mipchain") {
                     // im.load2dAtlasMipchainFromMemory
                 } else {
                     // im.load2dFromMemory
                 }
+
+                @panic("not implemented");
             }
 
+            @panic("not implemented");
             //binary_file_time = im.writeGeneratedFile(source_file_time);
         }
 
@@ -947,7 +1017,6 @@ pub const Image = extern struct {
         // nvrhi stuff
 
         image.is_loaded = true;
-        @breakpoint();
     }
 
     fn formatGeneratedName(

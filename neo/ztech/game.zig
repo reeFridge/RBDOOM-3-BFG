@@ -47,34 +47,6 @@ pub const DeclEntityDef = extern struct {
         self.* = .{};
     }
 
-    pub fn freeData(decl: *DeclEntityDef, allocator: std.mem.Allocator) void {
-        _ = decl;
-        _ = allocator;
-
-        @panic("DeclEntityDef.freeData is not implemented");
-    }
-
-    pub const ParseError = error{};
-    pub fn parse(
-        decl: *DeclEntityDef,
-        definition_text: []const u8,
-        allow_binary_version: bool,
-        allocator: std.mem.Allocator,
-    ) ParseError!void {
-        _ = decl;
-        _ = allocator;
-        _ = definition_text;
-        _ = allow_binary_version;
-
-        @panic("DeclEntityDef.parse is not implemented");
-    }
-
-    pub fn setDefaultText(decl: *DeclEntityDef) error{}!void {
-        _ = decl;
-
-        @panic("DeclEntityDef.setDefaultText is not implemented");
-    }
-
     pub fn name(self: DeclEntityDef) []const u8 {
         const c_str = c_declGetName(&self);
 

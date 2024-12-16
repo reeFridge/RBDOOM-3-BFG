@@ -1456,9 +1456,9 @@ void R_TransformSkyboxToEnv_f( const idCmdArgs& args )
 
 //============================================================================
 
-extern "C" void c_renderSystem_initColorMappings(unsigned short* gammaTable) {
-	float b = r_brightness.GetFloat();
-	float invg = 1.0f / r_gamma.GetFloat();
+extern "C" void c_renderSystem_initColorMappings(float brightness, float gamma, unsigned short* gammaTable) {
+	float b = brightness;
+	float invg = 1.0f / gamma;
 
 	float j = 0.0f;
 	for( int i = 0; i < 256; i++, j += b )
@@ -1466,12 +1466,6 @@ extern "C" void c_renderSystem_initColorMappings(unsigned short* gammaTable) {
 		int inf = idMath::Ftoi( 0xffff * pow( j / 255.0f, invg ) + 0.5f );
 		gammaTable[i] = idMath::ClampInt( 0, 0xFFFF, inf );
 	}
-// SRS - Generalized Vulkan SDL platform
-#if defined( VULKAN_USE_PLATFORM_SDL )
-	VKimp_SetGamma( gammaTable, gammaTable, gammaTable );
-#else
-	GLimp_SetGamma( gammaTable, gammaTable, gammaTable );
-#endif
 }
 
 /*

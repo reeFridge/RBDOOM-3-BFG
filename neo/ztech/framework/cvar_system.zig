@@ -51,8 +51,8 @@ pub const CVar = extern struct {
     value: [*:0]const u8,
     description: [*:0]const u8,
     flags: c_int,
-    valueMin: f32,
-    valueMax: f32,
+    value_min: f32,
+    value_max: f32,
     valueStrings: ?[*]?[*:0]const u8,
     valueCompletion: ?*const cmd.ArgCompletionFn,
     integer_value: i32,
@@ -75,8 +75,8 @@ pub const CVar = extern struct {
             .value = value.ptr,
             .flags = flags,
             .description = desc.ptr,
-            .valueMin = 0,
-            .valueMax = 0,
+            .value_min = 0,
+            .value_max = 0,
             .valueCompletion = null,
             .valueStrings = null,
             .integer_value = 0,
@@ -95,12 +95,12 @@ pub const CVar = extern struct {
         value: [:0]const u8,
         flags: c_int,
         desc: [:0]const u8,
-        min: c_int,
-        max: c_int,
+        min: f32,
+        max: f32,
     ) CVar {
         var c = init(name, value, flags, desc);
-        c.valueMin = min;
-        c.valueMax = max;
+        c.value_min = min;
+        c.value_max = max;
 
         return c;
     }
@@ -179,9 +179,9 @@ pub const CVar = extern struct {
                 return;
             };
             cvar.integer_value = @intCast(int);
-            if (cvar.valueMin < cvar.valueMax) {
-                const min_int: c_int = @intFromFloat(cvar.valueMin);
-                const max_int: c_int = @intFromFloat(cvar.valueMax);
+            if (cvar.value_min < cvar.value_max) {
+                const min_int: c_int = @intFromFloat(cvar.value_min);
+                const max_int: c_int = @intFromFloat(cvar.value_max);
                 if (cvar.integer_value < min_int) {
                     cvar.integer_value = min_int;
                     clamped = true;
@@ -206,12 +206,12 @@ pub const CVar = extern struct {
             };
 
             cvar.float_value = float;
-            if (cvar.valueMin < cvar.valueMax) {
-                if (cvar.float_value < cvar.valueMin) {
-                    cvar.float_value = cvar.valueMin;
+            if (cvar.value_min < cvar.value_max) {
+                if (cvar.float_value < cvar.value_min) {
+                    cvar.float_value = cvar.value_min;
                     clamped = true;
-                } else if (cvar.float_value > cvar.valueMax) {
-                    cvar.float_value = cvar.valueMax;
+                } else if (cvar.float_value > cvar.value_max) {
+                    cvar.float_value = cvar.value_max;
                     clamped = true;
                 }
             }

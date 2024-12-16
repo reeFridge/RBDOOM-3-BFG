@@ -11,6 +11,7 @@ const ResolutionScale = @import("resolution_scale.zig");
 const decl_manager = @import("../framework/decl_manager.zig");
 const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
+const Image = @import("image.zig").Image;
 
 pub const SMALLCHAR_WIDTH: c_int = 8;
 pub const SMALLCHAR_HEIGHT: c_int = 16;
@@ -470,10 +471,11 @@ const JobListId = @import("parallel_job_list.zig").JobListId;
 const JobListPriority = @import("parallel_job_list.zig").JobListPriority;
 const global = @import("../global.zig");
 
+pub const InitBackendError = RenderBackend.InitError || Image.ActuallyLoadImageError;
 pub fn initBackend(
     render_system: *RenderSystem,
     allocator: std.mem.Allocator,
-) RenderBackend.InitError!void {
+) InitBackendError!void {
     if (render_system.initialized) return;
     // also inits frame_data
     try backend_.init(allocator);
@@ -495,8 +497,8 @@ pub fn initBackend(
     device.executeCommandList(command_list_ptr);
 }
 
-extern fn c_renderSystem_initColorMappings([*]c_ushort) callconv(.C) void;
-extern fn c_renderSystem_initImgui(?*const Material) callconv(.C) void;
+extern fn c_renderSystem_initColorMappings(f32, f32, [*]c_ushort) void;
+extern fn c_renderSystem_initImgui(?*const Material) void;
 const framebuffer = @import("framebuffer.zig");
 
 pub fn createRenderWorld(render_system: *RenderSystem, allocator: std.mem.Allocator) !*RenderWorld {
@@ -602,11 +604,24 @@ pub fn init(
         allocator,
     ));
 
-    c_renderSystem_initImgui(render_system.imgui_material);
+    // TODO: imgui
+    //c_renderSystem_initImgui(render_system.imgui_material);
 
-    c_renderSystem_initColorMappings((&render_system.gamma_table).ptr);
+    {
+        c_renderSystem_initColorMappings(
+            r_brightness.float_value,
+            r_gamma.float_value,
+            &render_system.gamma_table,
+        );
+        vulkan_impl.setGamma(
+            &render_system.gamma_table,
+            &render_system.gamma_table,
+            &render_system.gamma_table,
+        );
+    }
 
-    render_model_manager.instance.init();
+    const device = device_manager.instance().getDevice();
+    try render_model_manager.instance.init(device, allocator);
 
     render_system.front_end_job_list = parallel_job_manager.instance.allocJobList(
         .RENDERER_FRONTEND,
@@ -648,7 +663,7 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     deinitGlobalTris(render_system.test_image_triangles, allocator);
 
     image_manager.instance.purgeAllImages();
-    render_model_manager.instance.shutdown();
+    render_model_manager.instance.shutdown(allocator);
     image_manager.instance.shutdown();
     framebuffer.shutdown();
     render_system.gui_model.heapDestroy();
@@ -991,6 +1006,24 @@ pub fn setColor(render_system: *RenderSystem, rgba: Vec4(f32)) void {
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
 const CFlags = cvar.CVarFlags;
+
+pub var r_gamma = CVar.initMinMax(
+    "r_gamma",
+    "1.0",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_FLOAT,
+    "changes gamma tables",
+    0.5,
+    3.0,
+);
+
+pub var r_brightness = CVar.initMinMax(
+    "r_brightness",
+    "1",
+    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_FLOAT,
+    "changes gamma tables",
+    0.5,
+    2.0,
+);
 
 pub var stereo_render_enable = CVar.init(
     "stereoRender_enable",

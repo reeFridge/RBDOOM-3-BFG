@@ -87,7 +87,7 @@ pub const ImageManager = extern struct {
         cube_map: image_.CubeFiles,
         cube_map_size: u32,
         allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!*Image {
+    ) Image.ActuallyLoadImageError!*Image {
         if (std.ascii.eqlIgnoreCase(arg_name, "default") or
             std.ascii.eqlIgnoreCase(arg_name, "_default"))
         {
@@ -144,7 +144,7 @@ pub const ImageManager = extern struct {
                         !image_manager.inside_level_load and
                         !image_manager.preloading_map_images;
 
-                    try image.actuallyLoadImage(null, allocator);
+                    try image.actuallyLoadImageOrDefault(null, allocator);
                 }
 
                 return image;
@@ -164,7 +164,7 @@ pub const ImageManager = extern struct {
                 !image_manager.inside_level_load and
                 !image_manager.preloading_map_images;
 
-            try image.actuallyLoadImage(null, allocator);
+            try image.actuallyLoadImageOrDefault(null, allocator);
         }
 
         return image;
@@ -175,7 +175,7 @@ pub const ImageManager = extern struct {
         all: bool,
         command_list: *nvrhi.ICommandList,
         allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+    ) Image.ActuallyLoadImageError!void {
         for (image_manager.images.constSlice()) |image| {
             try image.reload(all, command_list);
         }
@@ -187,11 +187,11 @@ pub const ImageManager = extern struct {
         image_manager: *ImageManager,
         command_list: *nvrhi.ICommandList,
         allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+    ) Image.ActuallyLoadImageError!void {
         if (image_manager.inside_level_load) return;
 
         for (image_manager.images_to_load.slice()) |image| {
-            try image.actuallyLoadImage(command_list, allocator);
+            try image.actuallyLoadImageOrDefault(command_list, allocator);
         }
 
         image_manager.images_to_load.clear();

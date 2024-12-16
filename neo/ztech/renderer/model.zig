@@ -469,7 +469,7 @@ pub const RenderModelStatic = extern struct {
     purged: bool,
     fastLoad: bool,
     reloadable: bool,
-    levelLoadReferenced: bool,
+    level_load_referenced: bool,
     hasDrawingSurfaces: bool,
     hasInteractingSurfaces: bool,
     hasShadowCastingSurfaces: bool,
@@ -488,5 +488,15 @@ pub const RenderModelStatic = extern struct {
         }
 
         return false;
+    }
+
+    pub fn makeDefaultModel(_: *RenderModelStatic) void {
+        @panic("not implemented");
+    }
+
+    pub fn initEmpty(_: *RenderModelStatic, name: []const u8) void {
+        _ = name;
+
+        @panic("not implemented");
     }
 };

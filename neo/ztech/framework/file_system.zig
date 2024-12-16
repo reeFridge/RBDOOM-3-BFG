@@ -201,27 +201,51 @@ pub const FileSystem = extern struct {
 
     const MAX_FILE_SIZE = 1000 * 1024;
     pub const ReadFileAnyAllocError =
+        ReadInnerResourceFileError ||
         OpenOSFileError ||
         std.fs.File.Reader.Error ||
         std.mem.Allocator.Error ||
         error{StreamTooLong};
 
     pub fn readFileAnyAlloc(
-        fs: *const FileSystem,
+        fs: *FileSystem,
         filename: []const u8,
     ) ReadFileAnyAllocError![]u8 {
-        // TODO: search file inside .resource files
-        var file = try fs.openFileRead(filename);
-        defer file.close();
+        const allocator = global.gpa.allocator();
 
-        var reader = file.reader();
-        const buffer = try reader.readAllAlloc(global.gpa.allocator(), MAX_FILE_SIZE);
-
-        return buffer;
+        return if (fs.openFileRead(filename)) |file| buffer: {
+            defer file.close();
+            var reader = file.reader();
+            break :buffer try reader.readAllAlloc(
+                allocator,
+                MAX_FILE_SIZE,
+            );
+        } else |err| switch (err) {
+            error.FileNotFound => buffer: {
+                const inner_file = try fs.readInnerResourceFile(
+                    filename,
+                    allocator,
+                ) orelse return error.FileNotFound;
+                break :buffer inner_file.resource_buffer orelse unreachable;
+            },
+            else => |left_err| return left_err,
+        };
     }
 
     pub fn freeFileBuffer(_: *const FileSystem, buffer: []u8) void {
         global.gpa.allocator().free(buffer);
+    }
+
+    pub fn getFileTimestamp(
+        fs: *const FileSystem,
+        path: []const u8,
+    ) idlib.ID_TIME_T {
+        var file = fs.openFileRead(path) catch return FILE_NOT_FOUND_TIMESTAMP;
+        defer file.close();
+
+        const file_stat = file.stat() catch return FILE_NOT_FOUND_TIMESTAMP;
+
+        return @intCast(file_stat.mtime);
     }
 
     pub fn openFileRead(fs: *const FileSystem, filename: []const u8) OpenOSFileError!std.fs.File {
@@ -310,10 +334,11 @@ pub const FileSystem = extern struct {
         internal_file_pos: usize = 0,
         resource_buffer: ?[]u8 = null,
 
+        pub const ReadBufferError = std.fs.File.GetSeekPosError || std.fs.File.ReadError;
         pub fn readBuffer(
             res: *InnerResourceFile,
             dest: []u8,
-        ) std.fs.File.ReadError!usize {
+        ) ReadBufferError!usize {
             const len = if (res.internal_file_pos + dest.len > res.length)
                 res.length - res.internal_file_pos
             else
@@ -341,31 +366,29 @@ pub const FileSystem = extern struct {
         }
     };
 
-    fn getInnerResourceFile(fs: *const FileSystem, filename: []const u8) !?InnerResourceFile {
+    const ReadInnerResourceFileError =
+        std.mem.Allocator.Error ||
+        InnerResourceFile.ReadBufferError;
+    fn readInnerResourceFile(
+        fs: *FileSystem,
+        filename: []const u8,
+        allocator: std.mem.Allocator,
+    ) ReadInnerResourceFileError!?InnerResourceFile {
         const cache_entry = fs.getResourceCacheEntry(filename) orelse return null;
 
         var inner_file = InnerResourceFile{
-            .name = cache_entry.constSlice(),
+            .name = cache_entry.filename.constSlice(),
             .offset = cache_entry.offset,
             .length = cache_entry.length,
-            .resource_file = cache_entry.owner.resourceFile,
+            .resource_file = cache_entry.owner.resource_file orelse unreachable,
             .internal_file_pos = 0,
         };
 
-        if ((cache_entry.length <= fs.resourceBufferAvailable) or
-            cache_entry.length < 8 * 1024 * 1024)
-        {
-            const allocator = global.gpa.allocator();
-            const buf = if (cache_entry.length < fs.resourceBufferAvailable) buf: {
-                fs.resourceBufferAvailable = 0;
-                break :buf fs.resourceBufferPtr[0..cache_entry.length];
-            } else try allocator.alloc(u8, cache_entry.length);
+        const buffer = try allocator.alloc(u8, cache_entry.length);
+        _ = try inner_file.readBuffer(buffer);
+        inner_file.resource_buffer = buffer;
 
-            try inner_file.readBuffer(buf);
-
-            inner_file.resource_buffer = buf;
-            return inner_file;
-        }
+        // TODO: cache resources while level load
 
         return inner_file;
     }
@@ -373,31 +396,25 @@ pub const FileSystem = extern struct {
     fn getResourceCacheEntry(fs: *const FileSystem, filename: []const u8) ?ResourceContainer.CacheEntry {
         var buffer: [max_os_path]u8 = std.mem.zeroes([max_os_path]u8);
         const canonical_path = buffer[0..filename.len];
-        _ = std.mem.replace(u8, filename, '\\', '/', canonical_path);
+        _ = std.mem.replace(u8, filename, "\\", "/", canonical_path);
         for (canonical_path) |*char| {
             char.* = std.ascii.toLower(char.*);
         }
 
-        const search_paths = fs.searchPaths.constSlice();
-        var search_path_index = if (search_paths.len > 0) search_paths.len - 1 else 0;
-        while (search_path_index >= 0) : (search_path_index -= 1) {
-            const search_path = &search_paths[search_path_index];
-            const resource_files = search_path.resourceFiles.constSlice();
+        var paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
+        while (paths_iterator.next()) |search_path| {
+            var res_files_iterator = std.mem.reverseIterator(search_path.resourceFiles.constSlice());
+            while (res_files_iterator.next()) |res_file| {
+                const key = res_file.cache_hash.generateKey(canonical_path, false);
 
-            var resource_file_index = if (resource_files.len > 0) resource_files.len - 1 else 0;
-            while (resource_file_index >= 0) : (resource_file_index -= 1) {
-                const res_file = &resource_files[resource_file_index];
-                const key = res_file.cacheHash.generateKey(canonical_path, false);
-
-                var cache_index = res_file.cacheHash.getFirst(key);
-
-                while (cache_index != idlib.idHashIndex.NULL_INDEX) : (cache_index = res_file.cacheHash.getNext(cache_index)) {
-                    if (res_file.cacheTable.getValue(cache_index)) |rt| {
-                        if (std.ascii.eqlIgnoreCase(
-                            rt.filename.constSlice(),
-                            canonical_path,
-                        )) return rt;
-                    }
+                var cache_index = res_file.cache_hash.first(key);
+                while (cache_index != -1) : (cache_index = res_file.cache_hash.next(@intCast(cache_index))) {
+                    const index: u32 = @intCast(cache_index);
+                    const entry = &res_file.cache_table.constSlice()[index];
+                    if (std.ascii.eqlIgnoreCase(
+                        entry.filename.constSlice(),
+                        canonical_path,
+                    )) return entry.*;
                 }
             }
         }

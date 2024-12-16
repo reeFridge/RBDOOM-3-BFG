@@ -138,34 +138,6 @@ pub const DeclSkin = extern struct {
         self.* = .{};
     }
 
-    pub const ParseError = error{};
-    pub fn parse(
-        skin: *DeclSkin,
-        definition_text: []const u8,
-        allow_binary_version: bool,
-        allocator: std.mem.Allocator,
-    ) ParseError!void {
-        _ = skin;
-        _ = allocator;
-        _ = definition_text;
-        _ = allow_binary_version;
-
-        @panic("DeclSkin.parse is not implemented");
-    }
-
-    pub fn setDefaultText(skin: *DeclSkin) error{}!void {
-        _ = skin;
-
-        @panic("DeclSkin.setDefaultText is not implemented");
-    }
-
-    pub fn freeData(skin: *DeclSkin, allocator: std.mem.Allocator) void {
-        _ = skin;
-        _ = allocator;
-
-        @panic("DeclSkin.freeData is not implemented");
-    }
-
     pub fn remapShaderBySkin(skin: *const DeclSkin, shader: ?*const Material) ?*const Material {
         return c_declSkin_remapShaderBySkin(skin, shader);
     }

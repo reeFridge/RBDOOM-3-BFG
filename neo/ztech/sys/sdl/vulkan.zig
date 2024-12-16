@@ -22,6 +22,19 @@ pub fn beforeInit() void {
     }
 }
 
+pub fn setGamma(
+    red: *[256]c_ushort,
+    green: *[256]c_ushort,
+    blue: *[256]c_ushort,
+) void {
+    const window_ = window orelse @panic("called without window");
+
+    const result = c.SDL_SetWindowGammaRamp(window_, red, green, blue);
+    if (result < 0) {
+        std.debug.print("[SDL] Couldn't set gamma ramp: {s}\n", .{c.SDL_GetError()});
+    }
+}
+
 pub const InitError = error{
     NoDisplay,
     NoWindow,

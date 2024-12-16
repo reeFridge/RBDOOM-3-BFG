@@ -25,7 +25,7 @@ const ScreenRect = @import("screen_rect.zig").ScreenRect;
 const RenderSystem = @import("render_system.zig");
 const fs = @import("../framework/file_system.zig");
 const Image = @import("image.zig").Image;
-const RenderModelManager = @import("render_model_manager.zig");
+const render_model_manager = @import("render_model_manager.zig");
 const GuiModel = @import("gui_model.zig").GuiModel;
 const math = @import("../math/math.zig");
 const framebuffer = @import("framebuffer.zig");
@@ -2707,7 +2707,7 @@ pub fn freeWorld(render_world: *RenderWorld) void {
     }
 
     for (render_world.local_models.items) |item| {
-        RenderModelManager.instance.removeModel(item);
+        render_model_manager.instance.removeModel(item);
         item.deinit(render_world);
     }
     render_world.local_models.clearAndFree();
@@ -2874,7 +2874,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             if (std.mem.eql(u8, token.slice(), "model")) {
                 const render_model = try render_world.parseModel(&lexer);
                 // add it to the model manager list
-                RenderModelManager.instance.addModel(render_model);
+                try render_model_manager.instance.addModel(render_model);
 
                 // save it in the list to free when clearing this map
                 try render_world.local_models.append(render_model);
@@ -2983,7 +2983,7 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         def.world = render_world;
 
         const model_name = try std.fmt.allocPrintZ(string_allocator, "_area{d}", .{area_index});
-        const model_ptr = try RenderModelManager.instance.findModel(model_name);
+        const model_ptr = try render_model_manager.instance.findModel(model_name);
         def.parms.hModel = model_ptr;
 
         if (model_ptr.isDefaultModel() or !model_ptr.isStaticWorldModel())

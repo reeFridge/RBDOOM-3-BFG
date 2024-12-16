@@ -464,14 +464,6 @@ pub const Material = extern struct {
     ref_count: u32 = 0,
 
     extern fn c_material_isLodVisibleForDistance(*const Material, f32, f32) bool;
-    extern fn c_material_evaluateRegisters(
-        *const Material,
-        [*]f32,
-        [*]const f32,
-        [*]const f32,
-        f32,
-        ?*anyopaque,
-    ) void;
 
     pub fn init(self: *Material) void {
         self.* = .{};
@@ -498,17 +490,19 @@ pub const Material = extern struct {
         lexer.initEmpty();
         defer lexer.deinit(allocator);
 
+        const decl_local = material.base.base.?;
+
         try lexer.loadMemory(
             definition_text,
-            material.base.base.?.filename() orelse unreachable,
-            material.base.base.?.source_line,
+            decl_local.filename() orelse "*invalid*",
+            decl_local.source_line,
             allocator,
         );
 
         lexer.skipUntilString("{");
 
         std.debug.print("[MATERIAL] parse: {s}\n", .{
-            material.base.base.?.name.constSlice(),
+            decl_local.name.constSlice(),
         });
 
         var parsing_data = std.mem.zeroes(MtrParsingData);
@@ -955,10 +949,38 @@ pub const Material = extern struct {
         }
     }
 
-    pub fn setDefaultText(material: *Material) error{}!void {
-        _ = material;
+    pub fn setDefaultText(
+        material: *Material,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!void {
+        const decl_local = material.base.base orelse @panic("uninitialized material");
 
-        @panic("Material.setDefaultText is not implemented");
+        var buffer: [2048]u8 = undefined;
+
+        const mat_name = decl_local.name.constSlice();
+
+        const prefix = "lighteditor/";
+        const fmt =
+            \\material {s} // IMPLICITLY GENERATED
+            \\{{
+            \\  {{
+            \\      blend blend
+            \\      colored
+            \\      map "{s}"
+            \\      clamp
+            \\  }}
+            \\}}
+        ;
+        const generated_text = if (std.ascii.startsWithIgnoreCase(mat_name, prefix))
+            std.fmt.bufPrint(
+                &buffer,
+                fmt,
+                .{ mat_name, mat_name[prefix.len..] },
+            ) catch unreachable
+        else
+            std.fmt.bufPrint(&buffer, fmt, .{ mat_name, mat_name }) catch unreachable;
+
+        try decl_local.setText(generated_text, allocator);
     }
 
     pub fn freeData(material: *Material, allocator: std.mem.Allocator) void {

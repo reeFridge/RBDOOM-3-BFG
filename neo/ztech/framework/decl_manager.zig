@@ -86,14 +86,14 @@ pub const DeclLocal = extern struct {
         return if (decl.source_file) |sf| sf.filename.constSlice() else null;
     }
 
-    fn freeText(decl: *DeclLocal, allocator: std.mem.Allocator) void {
+    pub fn freeText(decl: *DeclLocal, allocator: std.mem.Allocator) void {
         if (decl.text_source) |text_source_ptr| {
             allocator.free(text_source_ptr[0..decl.text_length :0]);
             decl.text_source = null;
         }
     }
 
-    fn setText(
+    pub fn setText(
         decl: *DeclLocal,
         text: []const u8,
         allocator: std.mem.Allocator,
@@ -118,7 +118,7 @@ pub const DeclLocal = extern struct {
         rt_decl_type.destroy(abstract_decl, allocator);
 
         if (decl.text_source == null) {
-            default_text_generated = if (rt_decl_type.setDefaultText(abstract_decl))
+            default_text_generated = if (rt_decl_type.setDefaultText(abstract_decl, allocator))
                 true
             else |_|
                 false;
@@ -473,11 +473,14 @@ fn DeclInterface(Type: type) type {
             decl_typed.freeData(allocator);
         }
 
-        pub fn setDefaultText(decl: *Decl) error{}!void {
+        pub fn setDefaultText(
+            decl: *Decl,
+            allocator: std.mem.Allocator,
+        ) std.mem.Allocator.Error!void {
             if (!std.meta.hasMethod(Type, "setDefaultText")) @panic("not implemented");
 
             const decl_typed: *Type = @ptrCast(decl);
-            try decl_typed.setDefaultText();
+            try decl_typed.setDefaultText(allocator);
         }
 
         pub fn getDefaultDefinition() []const u8 {
@@ -511,7 +514,7 @@ pub const RuntimeDeclType = struct {
     create: *const fn (std.mem.Allocator) std.mem.Allocator.Error!*Decl,
     destroy: *const fn (*Decl, std.mem.Allocator) void,
     parse: *const fn (*Decl, []const u8, bool, std.mem.Allocator) DeclParseError!void,
-    setDefaultText: *const fn (*Decl) error{}!void,
+    setDefaultText: *const fn (*Decl, std.mem.Allocator) std.mem.Allocator.Error!void,
     getDefaultDefinition: *const fn () []const u8,
 };
 
@@ -525,12 +528,6 @@ pub const DeclTable = extern struct {
 
     pub fn init(self: *DeclTable) void {
         self.* = .{};
-    }
-
-    pub fn setDefaultText(table: *DeclTable) error{}!void {
-        _ = table;
-
-        @panic("DeclTable.setDefaultText is not implemented");
     }
 
     pub fn freeData(table: *DeclTable, _: std.mem.Allocator) void {
@@ -555,10 +552,12 @@ pub const DeclTable = extern struct {
         lexer.initEmpty();
         defer lexer.deinit(allocator);
 
+        const decl_local = table.base.base.?;
+
         try lexer.loadMemory(
             definition_text,
-            table.base.base.?.filename() orelse unreachable,
-            table.base.base.?.source_line,
+            decl_local.filename() orelse "*invalid*",
+            decl_local.source_line,
             allocator,
         );
 
