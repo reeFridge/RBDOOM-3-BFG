@@ -167,7 +167,7 @@ allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
 map_name: []u8,
 // for fast reloads of the same level
-map_time_stamp: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
+map_time_stamp: idlib.Time = fs.not_found_time,
 area_nodes: ?[]AreaNode = null,
 portal_areas: ?[]PortalArea = null,
 // incremented every time a door portal state changes
@@ -2814,10 +2814,10 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
     });
 
     // 3. if we are reloading the same map, check the timestamp and try to skip all the work
-    const current_time_stamp = fs.instance.getTimestamp(proc_filename);
+    const current_time_stamp = fs.instance.getFileTimestamp(proc_filename);
 
     if (std.mem.eql(u8, map_name, render_world.map_name)) {
-        if (current_time_stamp != fs.FILE_NOT_FOUND_TIMESTAMP and current_time_stamp == render_world.map_time_stamp) {
+        if (current_time_stamp != fs.not_found_time and current_time_stamp == render_world.map_time_stamp) {
             std.debug.print("Retaining existing map\n", .{});
             //render_world.freeDefs();
             //render_world.touchWorldModels();
@@ -2861,16 +2861,15 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
         render_world.map_time_stamp = current_time_stamp;
 
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(render_world.allocator);
 
-        if (!lexer.readTokenOk(&token) or !std.mem.eql(u8, token.slice(), PROC_FILE_ID)) {
+        if (!lexer.readTokenOk(&token, render_world.allocator) or !std.mem.eql(u8, token.slice(), PROC_FILE_ID)) {
             std.debug.print("Bad id {s} instead of {s}\n", .{ token.slice(), PROC_FILE_ID });
             return error.BadProcFileId;
         }
 
         var numEntries: usize = 0;
-        while (lexer.readTokenOk(&token)) {
+        while (lexer.readTokenOk(&token, render_world.allocator)) {
             if (std.mem.eql(u8, token.slice(), "model")) {
                 const render_model = try render_world.parseModel(&lexer);
                 // add it to the model manager list
@@ -3177,29 +3176,28 @@ const sys_types = @import("../sys/types.zig");
 const model = @import("model.zig");
 
 fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
-    try lexer.expectTokenString("{");
+    try lexer.expectTokenString("{", render_world.allocator);
 
     // reusable token
     var token = Token{};
-    token.initEmpty();
-    defer token.deinit();
+    defer token.deinit(render_world.allocator);
 
     // model name
-    try lexer.expectAnyToken(&token);
+    try lexer.readToken(&token, render_world.allocator);
 
     var render_model = try model.RenderModel.initEmpty(token.slice());
     errdefer render_model.deinit(render_world);
 
-    const num_surfaces = try lexer.parseSize();
+    const num_surfaces = try lexer.parseSize(render_world.allocator);
 
     for (0..num_surfaces) |surface_id| {
         // surface parsing start
-        try lexer.expectTokenString("{");
+        try lexer.expectTokenString("{", render_world.allocator);
 
-        try lexer.expectAnyToken(&token);
+        try lexer.readToken(&token, render_world.allocator);
 
-        const num_vertices = try lexer.parseSize();
-        const num_indices = try lexer.parseSize();
+        const num_vertices = try lexer.parseSize(render_world.allocator);
+        const num_indices = try lexer.parseSize(render_world.allocator);
 
         // parse vertices
         const row_len = 8;
@@ -3208,18 +3206,18 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
         for (0..num_vertices) |vi| {
             const start = vi * row_len;
             const end = start + row_len;
-            try lexer.parse1DMatrix(vertices[start..end]);
+            try lexer.parse1DMatrix(vertices[start..end], render_world.allocator);
         }
 
         // parse indices
         const indices = try render_world.allocator.alloc(sys_types.TriIndex, num_indices);
         defer render_world.allocator.free(indices);
         for (indices) |*index| {
-            index.* = @intCast(try lexer.parseSize());
+            index.* = @intCast(try lexer.parseSize(render_world.allocator));
         }
 
         // surface parsing end
-        try lexer.expectTokenString("}");
+        try lexer.expectTokenString("}", render_world.allocator);
 
         // add the completed surface to the model
         render_model.addSurface(try render_world.createModelSurface(
@@ -3231,7 +3229,7 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
         ));
     }
 
-    try lexer.expectTokenString("}");
+    try lexer.expectTokenString("}", render_world.allocator);
 
     // RB: FIXME add check for mikktspace
     render_model.finishSurfaces(false);
@@ -3240,11 +3238,12 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
 }
 
 fn parseNodes(render_world: *RenderWorld, lexer: *Lexer) !void {
-    try lexer.expectTokenString("{");
-    const num_area_nodes = try lexer.parseSize();
+    const allocator = render_world.allocator;
+    try lexer.expectTokenString("{", allocator);
+    const num_area_nodes = try lexer.parseSize(allocator);
 
-    const area_nodes = try render_world.allocator.alloc(AreaNode, num_area_nodes);
-    errdefer render_world.allocator.free(area_nodes);
+    const area_nodes = try allocator.alloc(AreaNode, num_area_nodes);
+    errdefer allocator.free(area_nodes);
     for (area_nodes) |*node| {
         node.* = std.mem.zeroes(AreaNode);
     }
@@ -3253,30 +3252,31 @@ fn parseNodes(render_world: *RenderWorld, lexer: *Lexer) !void {
 
     for (area_nodes) |*node| {
         var vec = std.mem.zeroes([4]f32);
-        try lexer.parse1DMatrix(&vec);
+        try lexer.parse1DMatrix(&vec, allocator);
 
         node.plane = Plane.fromSlice(&vec);
-        node.children[0] = try lexer.parseInt();
-        node.children[1] = try lexer.parseInt();
+        node.children[0] = try lexer.parseInt(allocator);
+        node.children[1] = try lexer.parseInt(allocator);
     }
-    try lexer.expectTokenString("}");
+    try lexer.expectTokenString("}", allocator);
 }
 
 fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
-    try lexer.expectTokenString("{");
-    const num_portal_areas = try lexer.parseSize();
-    const num_inter_area_portals = try lexer.parseSize();
+    const allocator = render_world.allocator;
+    try lexer.expectTokenString("{", allocator);
+    const num_portal_areas = try lexer.parseSize(allocator);
+    const num_inter_area_portals = try lexer.parseSize(allocator);
 
-    const portal_areas = try render_world.allocator.alloc(PortalArea, num_portal_areas);
-    errdefer render_world.allocator.free(portal_areas);
+    const portal_areas = try allocator.alloc(PortalArea, num_portal_areas);
+    errdefer allocator.free(portal_areas);
     for (portal_areas) |*area| {
         area.* = std.mem.zeroes(PortalArea);
     }
 
     render_world.portal_areas = portal_areas;
 
-    const screen_rects = try render_world.allocator.alloc(ScreenRect, num_portal_areas);
-    errdefer render_world.allocator.free(screen_rects);
+    const screen_rects = try allocator.alloc(ScreenRect, num_portal_areas);
+    errdefer allocator.free(screen_rects);
     for (screen_rects) |*rect| {
         rect.* = std.mem.zeroes(ScreenRect);
     }
@@ -3285,8 +3285,8 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
 
     render_world.setupAreaRefs(portal_areas);
 
-    const double_portals = try render_world.allocator.alloc(DoublePortal, num_inter_area_portals);
-    errdefer render_world.allocator.free(double_portals);
+    const double_portals = try allocator.alloc(DoublePortal, num_inter_area_portals);
+    errdefer allocator.free(double_portals);
     for (double_portals) |*portal| {
         portal.* = std.mem.zeroes(DoublePortal);
     }
@@ -3294,24 +3294,24 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
     render_world.double_portals = double_portals;
 
     for (0..num_inter_area_portals) |i| {
-        const num_points = try lexer.parseSize();
-        const a1 = try lexer.parseSize();
-        const a2 = try lexer.parseSize();
+        const num_points = try lexer.parseSize(allocator);
+        const a1 = try lexer.parseSize(allocator);
+        const a2 = try lexer.parseSize(allocator);
 
         const w = CWinding.create(num_points);
         w.setNumPoints(num_points);
 
         for (0..num_points) |j| {
             const vec = @as([*]f32, @ptrCast(&w.p[j]))[0..3];
-            try lexer.parse1DMatrix(vec);
+            try lexer.parse1DMatrix(vec, allocator);
 
             w.p[j].s = 0;
             w.p[j].t = 0;
         }
 
         {
-            const portal = try render_world.allocator.create(Portal);
-            errdefer render_world.allocator.destroy(portal);
+            const portal = try allocator.create(Portal);
+            errdefer allocator.destroy(portal);
             portal.* = .{
                 .intoArea = @intCast(a2),
                 .doublePortal = &double_portals[i],
@@ -3325,8 +3325,8 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
 
         {
             const w_reversed = w.reverse();
-            const portal = try render_world.allocator.create(Portal);
-            errdefer render_world.allocator.destroy(portal);
+            const portal = try allocator.create(Portal);
+            errdefer allocator.destroy(portal);
             portal.* = .{
                 .intoArea = @intCast(a1),
                 .doublePortal = &double_portals[i],
@@ -3339,36 +3339,36 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
         }
     }
 
-    try lexer.expectTokenString("}");
+    try lexer.expectTokenString("}", allocator);
 }
 
-fn parseShadowModel(_: *RenderWorld, lexer: *Lexer) !?*model.RenderModel {
+fn parseShadowModel(render_world: *RenderWorld, lexer: *Lexer) !?*model.RenderModel {
     // TODO
-    try lexer.expectTokenString("{");
+    const allocator = render_world.allocator;
+    try lexer.expectTokenString("{", allocator);
 
     // reusable token
     var token = Token{};
-    token.initEmpty();
-    defer token.deinit();
+    defer token.deinit(allocator);
 
     // model name
-    try lexer.expectAnyToken(&token);
-    const num_verts = try lexer.parseSize(); // numVerts
-    _ = try lexer.parseSize();
-    _ = try lexer.parseSize();
-    const num_indexes = try lexer.parseSize(); // numIndexes
-    _ = try lexer.parseSize();
+    try lexer.readToken(&token, allocator);
+    const num_verts = try lexer.parseSize(allocator); // numVerts
+    _ = try lexer.parseSize(allocator);
+    _ = try lexer.parseSize(allocator);
+    const num_indexes = try lexer.parseSize(allocator); // numIndexes
+    _ = try lexer.parseSize(allocator);
 
     for (0..num_verts) |_| {
         var vec = std.mem.zeroes([3]f32);
-        try lexer.parse1DMatrix(&vec);
+        try lexer.parse1DMatrix(&vec, allocator);
     }
 
     for (0..num_indexes) |_| {
-        _ = try lexer.parseSize();
+        _ = try lexer.parseSize(allocator);
     }
 
-    try lexer.expectTokenString("}");
+    try lexer.expectTokenString("}", allocator);
 
     return null;
 }

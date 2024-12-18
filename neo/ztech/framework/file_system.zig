@@ -5,21 +5,17 @@ const cvar = @import("cvar_system.zig");
 const global = @import("../global.zig");
 const ResourceContainer = @import("file_resource.zig");
 const CVar = cvar.CVar;
+const Allocator = std.mem.Allocator;
 
 pub const SearchPath = extern struct {
-    path: idlib.idStr = .{},
-    gamedir: idlib.idStr = .{},
-    resourceFiles: idlib.idList(*ResourceContainer) = .{},
-    zipFiles: idlib.idList(*idlib.idZipContainer) = .{},
-
-    pub fn initPathStrings(search_path: *SearchPath) void {
-        search_path.path.initEmptyBuffer();
-        search_path.gamedir.initEmptyBuffer();
-    }
+    path: idlib.Str = .{},
+    gamedir: idlib.Str = .{},
+    resourceFiles: idlib.List(*ResourceContainer) = .{},
+    zipFiles: idlib.List(*idlib.ZipContainer) = .{},
 };
 
 pub const max_os_path: usize = 256;
-pub const FILE_NOT_FOUND_TIMESTAMP: idlib.ID_TIME_T = -1;
+pub const not_found_time: idlib.Time = -1;
 
 pub var fs_basepath: CVar = CVar.init(
     "fs_basepath",
@@ -36,13 +32,13 @@ pub const FsMode = enum(c_int) {
 
 pub const FileSystem = extern struct {
     vptr: *anyopaque,
-    searchPaths: idlib.idList(SearchPath),
+    searchPaths: idlib.List(SearchPath),
     loadCount: c_int,
     loadStack: c_int,
-    gameFolder: idlib.idStr,
-    manifestName: idlib.idStr,
-    fileManifest: idlib.idStrList,
-    preloadList: idlib.idPreloadManifest,
+    gameFolder: idlib.Str,
+    manifestName: idlib.Str,
+    fileManifest: idlib.StrList,
+    preloadList: idlib.PreloadManifest,
     resourceBufferPtr: ?[*]u8,
     resourceBufferSize: c_int,
     resourceBufferAvailable: c_int,
@@ -51,14 +47,6 @@ pub const FileSystem = extern struct {
     zipFilesFound: bool,
     doom2004Found: bool,
     doom2019Found: bool,
-
-    extern fn c_fileSystem_readFile(
-        *FileSystem,
-        [*:0]const u8,
-        ?*?*anyopaque,
-        ?*idlib.ID_TIME_T,
-    ) c_int;
-    extern fn c_fileSystem_freeFile(*FileSystem, ?[*:0]u8) void;
 
     pub fn isInitialized(fs: *const FileSystem) void {
         return fs.searchPaths.num != 0;
@@ -72,24 +60,24 @@ pub const FileSystem = extern struct {
         return false;
     }
 
-    pub fn init(fs: *FileSystem) AddDirectoryError!void {
-        try cvar.setCVarsFromArgs("fs_basepath");
-        try cvar.setCVarsFromArgs("fs_savepath");
-        try cvar.setCVarsFromArgs("fs_game");
-        try cvar.setCVarsFromArgs("fs_game_base");
-        try cvar.setCVarsFromArgs("fs_copyfiles");
+    pub fn init(fs: *FileSystem, allocator: Allocator) AddDirectoryError!void {
+        try cvar.setCVarsFromArgs("fs_basepath", allocator);
+        try cvar.setCVarsFromArgs("fs_savepath", allocator);
+        try cvar.setCVarsFromArgs("fs_game", allocator);
+        try cvar.setCVarsFromArgs("fs_game_base", allocator);
+        try cvar.setCVarsFromArgs("fs_copyfiles", allocator);
 
         //TODO: set default fs_basepath
         //TODO: set default fs_savepath
 
-        try fs.startup();
+        try fs.startup(allocator);
     }
 
     const BASE_GAMEDIR: []const u8 = "base";
-    fn startup(fs: *FileSystem) AddDirectoryError!void {
+    fn startup(fs: *FileSystem, allocator: Allocator) AddDirectoryError!void {
         fs.numFilesOpenedAsCached = 0;
 
-        try fs.setupGameDirectories(BASE_GAMEDIR);
+        try fs.setupGameDirectories(BASE_GAMEDIR, allocator);
 
         // TODO: setupGameDirectories(fs_game_base);
         // TODO: setupGameDirectories(fs_game);
@@ -100,6 +88,7 @@ pub const FileSystem = extern struct {
             cmd.CmdFlags.CMD_FL_SYSTEM,
             "lists search paths",
             null,
+            allocator,
         );
         // TODO: addCommand dir
         // TODO: addCommand dirtree
@@ -115,10 +104,14 @@ pub const FileSystem = extern struct {
         cmd_printSearchPaths(&.{});
     }
 
-    fn setupGameDirectories(fs: *FileSystem, game_name: []const u8) AddDirectoryError!void {
+    fn setupGameDirectories(
+        fs: *FileSystem,
+        game_name: []const u8,
+        allocator: Allocator,
+    ) AddDirectoryError!void {
         // setup basepath
         if (fs_basepath.getString().len > 0) {
-            try fs.addGameDirectory(fs_basepath.getString(), game_name);
+            try fs.addGameDirectory(fs_basepath.getString(), game_name, allocator);
         }
 
         // TODO: setup savepath
@@ -127,11 +120,12 @@ pub const FileSystem = extern struct {
         //}
     }
 
-    const AddDirectoryError = error{OutOfMemory} || std.fs.File.OpenError;
+    const AddDirectoryError = Allocator.Error || std.fs.File.OpenError;
     fn addGameDirectory(
         fs: *FileSystem,
         path: []const u8,
         dir: []const u8,
+        allocator: Allocator,
     ) AddDirectoryError!void {
         for (fs.searchPaths.constSlice()) |*search_path| {
             if (std.mem.eql(u8, search_path.path.constSlice(), path) and
@@ -141,24 +135,25 @@ pub const FileSystem = extern struct {
             }
         }
 
-        try fs.gameFolder.assignSlice(dir);
+        try fs.gameFolder.assignSlice(dir, allocator);
 
-        const search = try fs.searchPaths.allocOne();
+        const search = try fs.searchPaths.allocOne(allocator);
         search.* = SearchPath{};
-        search.initPathStrings();
 
-        try search.path.assignSlice(path);
-        try search.gamedir.assignSlice(dir);
+        try search.path.assignSlice(path, allocator);
+        try search.gamedir.assignSlice(dir, allocator);
 
         // TODO: support .pk4/zip files
 
-        var resources_path = idlib.idStr{};
-        resources_path.initEmptyBuffer();
-        defer resources_path.deinit();
+        var resources_path = idlib.Str{};
+        defer resources_path.deinit(allocator);
 
         const resources_os_path = buildOSPath(path, dir, "") catch return error.OutOfMemory;
         // strip trailing sep: slice[0 .. len - 1]
-        try resources_path.assignSlice(resources_os_path[0 .. resources_os_path.len - 1]);
+        try resources_path.assignSlice(
+            resources_os_path[0 .. resources_os_path.len - 1],
+            allocator,
+        );
 
         var resources_dir = try std.fs.openDirAbsolute(
             resources_path.constSlice(),
@@ -167,7 +162,6 @@ pub const FileSystem = extern struct {
         var dir_iterator = resources_dir.iterate();
         defer resources_dir.close();
 
-        const allocator = global.gpa.allocator();
         var file_list = std.ArrayList([]const u8).init(allocator);
         var arena = std.heap.ArenaAllocator.init(allocator);
         const file_list_allocator = arena.allocator();
@@ -192,8 +186,8 @@ pub const FileSystem = extern struct {
         for (file_list_slice) |filename| {
             const rc = try allocator.create(ResourceContainer);
             rc.* = .{};
-            if (rc.init(filename)) {
-                _ = try search.resourceFiles.append(rc);
+            if (rc.init(filename, allocator)) {
+                _ = try search.resourceFiles.append(rc, allocator);
                 fs.resourceFilesFound = true;
             }
         }
@@ -204,15 +198,14 @@ pub const FileSystem = extern struct {
         ReadInnerResourceFileError ||
         OpenOSFileError ||
         std.fs.File.Reader.Error ||
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         error{StreamTooLong};
 
     pub fn readFileAnyAlloc(
         fs: *FileSystem,
         filename: []const u8,
+        allocator: Allocator,
     ) ReadFileAnyAllocError![]u8 {
-        const allocator = global.gpa.allocator();
-
         return if (fs.openFileRead(filename)) |file| buffer: {
             defer file.close();
             var reader = file.reader();
@@ -232,18 +225,14 @@ pub const FileSystem = extern struct {
         };
     }
 
-    pub fn freeFileBuffer(_: *const FileSystem, buffer: []u8) void {
-        global.gpa.allocator().free(buffer);
-    }
-
     pub fn getFileTimestamp(
         fs: *const FileSystem,
         path: []const u8,
-    ) idlib.ID_TIME_T {
-        var file = fs.openFileRead(path) catch return FILE_NOT_FOUND_TIMESTAMP;
+    ) idlib.Time {
+        var file = fs.openFileRead(path) catch return not_found_time;
         defer file.close();
 
-        const file_stat = file.stat() catch return FILE_NOT_FOUND_TIMESTAMP;
+        const file_stat = file.stat() catch return not_found_time;
 
         return @intCast(file_stat.mtime);
     }
@@ -367,12 +356,12 @@ pub const FileSystem = extern struct {
     };
 
     const ReadInnerResourceFileError =
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         InnerResourceFile.ReadBufferError;
     fn readInnerResourceFile(
         fs: *FileSystem,
         filename: []const u8,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) ReadInnerResourceFileError!?InnerResourceFile {
         const cache_entry = fs.getResourceCacheEntry(filename) orelse return null;
 
@@ -440,22 +429,11 @@ pub const FileSystem = extern struct {
         return false;
     }
 
-    pub fn getTimestamp(fs: *FileSystem, relative_path: [:0]const u8) idlib.ID_TIME_T {
-        var timestamp = FILE_NOT_FOUND_TIMESTAMP;
-
-        if (relative_path.len == 0)
-            return timestamp;
-
-        _ = fs.readFile(relative_path, null, &timestamp);
-
-        return timestamp;
-    }
-
     pub fn listFilenames(
         fs: *const FileSystem,
-        allocator: std.mem.Allocator,
         folder: []const u8,
         extensions: []const []const u8,
+        allocator: Allocator,
     ) ListOSFilesError![][]u8 {
         if (extensions.len == 0) return &.{};
         if (folder.len == 0) return &.{};
@@ -466,8 +444,8 @@ pub const FileSystem = extern struct {
             list.deinit(allocator);
         }
 
-        var hash_index = idlib.idHashIndex{};
-        defer hash_index.free();
+        var hash_index = idlib.HashIndex{};
+        defer hash_index.free(allocator);
 
         // TODO: using_zip_files
 
@@ -495,7 +473,7 @@ pub const FileSystem = extern struct {
             ) catch return error.OutOfMemory;
 
             for (extensions) |extension| {
-                const filenames = try listOSFiles(allocator, full_path, extension);
+                const filenames = try listOSFiles(full_path, extension, allocator);
                 defer {
                     for (filenames) |filename| allocator.free(filename);
                     allocator.free(filenames);
@@ -503,10 +481,10 @@ pub const FileSystem = extern struct {
 
                 for (filenames) |filename| {
                     _ = try listAppendUnique(
-                        allocator,
                         filename,
                         &list,
                         &hash_index,
+                        allocator,
                     );
                 }
             }
@@ -515,11 +493,11 @@ pub const FileSystem = extern struct {
         return list.toOwnedSlice(allocator);
     }
 
-    pub const ListOSFilesError = std.mem.Allocator.Error || std.fs.Dir.OpenError;
+    pub const ListOSFilesError = Allocator.Error || std.fs.Dir.OpenError;
     fn listOSFiles(
-        allocator: std.mem.Allocator,
         directory: []const u8,
         extension: []const u8,
+        allocator: Allocator,
     ) ListOSFilesError![][]u8 {
         var dir = try std.fs.cwd().openDir(
             directory,
@@ -546,11 +524,11 @@ pub const FileSystem = extern struct {
     }
 
     fn listAppendUnique(
-        allocator: std.mem.Allocator,
         item: []const u8,
         list: *std.ArrayListUnmanaged([]u8),
-        hash_index: *idlib.idHashIndex,
-    ) error{OutOfMemory}!usize {
+        hash_index: *idlib.HashIndex,
+        allocator: Allocator,
+    ) Allocator.Error!usize {
         const hash_key = hash_index.generateKey(item, false);
         var i = hash_index.first(hash_key);
         while (i >= 0) : (i = hash_index.next(@intCast(i))) {
@@ -563,22 +541,9 @@ pub const FileSystem = extern struct {
         const index = list.items.len;
         const copy = try allocator.dupe(u8, item);
         try list.append(allocator, copy);
-        try hash_index.add(hash_key, @intCast(index));
+        try hash_index.add(hash_key, @intCast(index), allocator);
 
         return index;
-    }
-
-    pub fn readFile(
-        fs: *FileSystem,
-        relative_path: [:0]const u8,
-        buffer: ?*?*anyopaque,
-        timestamp: ?*idlib.ID_TIME_T,
-    ) c_int {
-        return c_fileSystem_readFile(fs, relative_path.ptr, buffer, timestamp);
-    }
-
-    pub fn freeFile(fs: *FileSystem, buffer: [:0]u8) void {
-        return c_fileSystem_freeFile(fs, @ptrCast(buffer));
     }
 
     pub fn openFileReadMemory(_: *FileSystem, _: [:0]const u8) ?std.fs.File {
@@ -618,8 +583,8 @@ fn cmd_printSearchPaths(_: *const cmd.CmdArgs) callconv(.C) void {
             std.debug.print("\t(zip) {s}/{s}/{s} (contains {} files)\n", .{
                 search.path.constSlice(),
                 search.gamedir.constSlice(),
-                zip_container.fileName.constSlice(),
-                zip_container.numFileResources,
+                std.mem.sliceTo(&zip_container.filename, 0),
+                zip_container.num_file_resources,
             });
         }
 

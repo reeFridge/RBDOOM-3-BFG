@@ -1,8 +1,12 @@
+const std = @import("std");
 const nvrhi = @import("nvrhi.zig");
 const CVec2 = @import("../math/vector.zig").CVec2;
 const Vec2 = @import("../math/vector.zig").Vec2;
 const ViewDef = @import("common.zig").ViewDef;
 const Image = @import("image.zig").Image;
+const Allocator = std.mem.Allocator;
+const RenderProgManager = @import("render_prog_manager.zig").RenderProgManager;
+const Shader = @import("render_prog_manager.zig").Shader;
 
 fn CppStdUnorderedMap(Key: type, T: type, Hash: type) type {
     _ = Key;
@@ -14,44 +18,384 @@ fn CppStdUnorderedMap(Key: type, T: type, Hash: type) type {
     };
 }
 
+pub const BlitConstants = extern struct {
+    source_origin: CVec2,
+    source_size: CVec2,
+    target_origin: CVec2,
+    target_size: CVec2,
+    sharpen_factor: f32,
+};
+
 pub const CommonRenderPasses = extern struct {
     const PsoCacheKey = extern struct {
         const Hash = extern struct {};
 
         fbinfo: nvrhi.FramebufferInfoEx,
         shader: *nvrhi.IShader,
-        blendState: nvrhi.BlendState.RenderTarget,
+        blend_state: nvrhi.BlendState.RenderTarget,
     };
 
-    m_Device: nvrhi.DeviceHandle,
-    m_BlitPsoCache: CppStdUnorderedMap(PsoCacheKey, nvrhi.GraphicsPipelineHandle, PsoCacheKey.Hash),
-    m_RectVS: nvrhi.ShaderHandle,
-    m_BlitPS: nvrhi.ShaderHandle,
-    m_BlitArrayPS: nvrhi.ShaderHandle,
-    m_SharpenPS: nvrhi.ShaderHandle,
-    m_SharpenArrayPS: nvrhi.ShaderHandle,
-    m_BlackTexture: nvrhi.TextureHandle,
-    m_GrayTexture: nvrhi.TextureHandle,
-    m_WhiteTexture: nvrhi.TextureHandle,
-    m_BlackTexture2DArray: nvrhi.TextureHandle,
-    m_WhiteTexture2DArray: nvrhi.TextureHandle,
-    m_BlackCubeMapArray: nvrhi.TextureHandle,
-    m_PointClampSampler: nvrhi.SamplerHandle,
-    m_PointWrapSampler: nvrhi.SamplerHandle,
-    m_LinearClampSampler: nvrhi.SamplerHandle,
-    m_LinearBorderSampler: nvrhi.SamplerHandle, // D3 zeroClamp
-    m_LinearClampCompareSampler: nvrhi.SamplerHandle,
-    m_LinearWrapSampler: nvrhi.SamplerHandle,
-    m_AnisotropicWrapSampler: nvrhi.SamplerHandle,
-    m_AnisotropicClampEdgeSampler: nvrhi.SamplerHandle,
-    m_BlitBindingLayout: nvrhi.BindingLayoutHandle,
+    device_handle: nvrhi.DeviceHandle,
+    blit_pso_cache: CppStdUnorderedMap(
+        PsoCacheKey,
+        nvrhi.GraphicsPipelineHandle,
+        PsoCacheKey.Hash,
+    ),
+    rect_vs: nvrhi.ShaderHandle,
+    blit_ps: nvrhi.ShaderHandle,
+    blit_array_ps: nvrhi.ShaderHandle,
+    sharpen_ps: nvrhi.ShaderHandle,
+    sharpen_array_ps: nvrhi.ShaderHandle,
+    black_texture: nvrhi.TextureHandle,
+    gray_texture: nvrhi.TextureHandle,
+    white_texture: nvrhi.TextureHandle,
+    black_texture_2d_array: nvrhi.TextureHandle,
+    white_texture_2d_array: nvrhi.TextureHandle,
+    black_cube_map_array: nvrhi.TextureHandle,
+    point_clamp_sampler: nvrhi.SamplerHandle,
+    point_wrap_sampler: nvrhi.SamplerHandle,
+    linear_clamp_sampler: nvrhi.SamplerHandle,
+    linear_border_sampler: nvrhi.SamplerHandle, // D3 zeroClamp
+    linear_clamp_compare_sampler: nvrhi.SamplerHandle,
+    linear_wrap_sampler: nvrhi.SamplerHandle,
+    anisotropic_wrap_sampler: nvrhi.SamplerHandle,
+    anisotropic_clamp_edge_sampler: nvrhi.SamplerHandle,
+    blit_binding_layout: nvrhi.BindingLayoutHandle,
 
-    extern fn c_commonRenderPasses_init(*CommonRenderPasses, *nvrhi.IDevice) callconv(.C) void;
     extern fn c_commonRenderPasses_shutdown(*CommonRenderPasses) callconv(.C) void;
 
-    pub fn init(common_pass: *CommonRenderPasses, device: *nvrhi.IDevice) void {
-        //common_pass.m_Device = nvrhi.DeviceHandle.init(device);
-        c_commonRenderPasses_init(common_pass, device);
+    pub const InitError = RenderProgManager.LoadShaderError;
+    pub fn init(
+        common_pass: *CommonRenderPasses,
+        device: *nvrhi.IDevice,
+        prog_manager: *RenderProgManager,
+        allocator: Allocator,
+    ) InitError!void {
+        common_pass.device_handle = nvrhi.DeviceHandle.init(device);
+
+        {
+            const rect_index = try prog_manager.findShader(
+                "builtin/rect",
+                Shader.Stage.vertex,
+                "",
+                &.{},
+                true,
+                allocator,
+            );
+            common_pass.rect_vs = nvrhi.ShaderHandle.init(
+                prog_manager.shaders.constSlice()[rect_index].handle.ptr_,
+            );
+        }
+
+        {
+            const blit_index = try prog_manager.findShader(
+                "builtin/blit",
+                Shader.Stage.fragment,
+                "",
+                &.{&.{ "TEXTURE_ARRAY", "0" }},
+                true,
+                allocator,
+            );
+            common_pass.blit_ps = nvrhi.ShaderHandle.init(
+                prog_manager.shaders.constSlice()[blit_index].handle.ptr_,
+            );
+        }
+
+        {
+            const blit_index = try prog_manager.findShader(
+                "builtin/blit",
+                Shader.Stage.fragment,
+                "",
+                &.{&.{ "TEXTURE_ARRAY", "1" }},
+                true,
+                allocator,
+            );
+            common_pass.blit_array_ps = nvrhi.ShaderHandle.init(
+                prog_manager.shaders.constSlice()[blit_index].handle.ptr_,
+            );
+        }
+
+        common_pass.point_clamp_sampler = device.createSampler(&.{
+            .minFilter = false,
+            .magFilter = false,
+            .mipFilter = false,
+            .addressU = .ClampToEdge,
+            .addressV = .ClampToEdge,
+            .addressW = .ClampToEdge,
+        });
+
+        common_pass.point_wrap_sampler = device.createSampler(&.{
+            .minFilter = false,
+            .magFilter = false,
+            .mipFilter = false,
+            .addressU = .Repeat,
+            .addressV = .Repeat,
+            .addressW = .Repeat,
+        });
+
+        common_pass.linear_wrap_sampler = device.createSampler(&.{
+            .minFilter = true,
+            .magFilter = true,
+            .mipFilter = true,
+            .addressU = .ClampToEdge,
+            .addressV = .ClampToEdge,
+            .addressW = .ClampToEdge,
+        });
+
+        common_pass.linear_border_sampler = device.createSampler(&.{
+            .borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
+            .minFilter = true,
+            .magFilter = true,
+            .mipFilter = true,
+            .addressU = .ClampToBorder,
+            .addressV = .ClampToBorder,
+            .addressW = .ClampToBorder,
+        });
+
+        common_pass.linear_clamp_compare_sampler = device.createSampler(&.{
+            .borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
+            .minFilter = true,
+            .magFilter = true,
+            .mipFilter = true,
+            .addressU = .ClampToBorder,
+            .addressV = .ClampToBorder,
+            .addressW = .ClampToBorder,
+            .reductionType = .Comparison,
+        });
+
+        common_pass.linear_wrap_sampler = device.createSampler(&.{
+            .borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
+            .minFilter = true,
+            .magFilter = true,
+            .mipFilter = true,
+            .addressU = .Repeat,
+            .addressV = .Repeat,
+            .addressW = .Repeat,
+            .reductionType = .Comparison,
+        });
+
+        common_pass.anisotropic_wrap_sampler = device.createSampler(&.{
+            .maxAnisotropy = 16,
+            .borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
+            .minFilter = true,
+            .magFilter = true,
+            .mipFilter = true,
+            .addressU = .Repeat,
+            .addressV = .Repeat,
+            .addressW = .Repeat,
+            .reductionType = .Comparison,
+        });
+
+        common_pass.anisotropic_clamp_edge_sampler = device.createSampler(&.{
+            .maxAnisotropy = 16,
+            .borderColor = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
+            .minFilter = true,
+            .magFilter = true,
+            .mipFilter = true,
+            .addressU = .ClampToEdge,
+            .addressV = .ClampToEdge,
+            .addressW = .ClampToEdge,
+            .reductionType = .Comparison,
+        });
+
+        common_pass.black_texture = device.createTexture(&.{
+            .format = .RGBA8_UNORM,
+            .width = 1,
+            .height = 1,
+            .mipLevels = 1,
+        });
+
+        common_pass.gray_texture = device.createTexture(&.{
+            .format = .RGBA8_UNORM,
+            .width = 1,
+            .height = 1,
+            .mipLevels = 1,
+        });
+
+        common_pass.white_texture = device.createTexture(&.{
+            .format = .RGBA8_UNORM,
+            .width = 1,
+            .height = 1,
+            .mipLevels = 1,
+        });
+
+        common_pass.black_cube_map_array = device.createTexture(&.{
+            .format = .RGBA8_UNORM,
+            .width = 1,
+            .height = 1,
+            .mipLevels = 1,
+            .arraySize = 6,
+            .dimension = .TextureCubeArray,
+        });
+
+        common_pass.black_texture_2d_array = device.createTexture(&.{
+            .format = .RGBA8_UNORM,
+            .width = 1,
+            .height = 1,
+            .mipLevels = 1,
+            .arraySize = 6,
+            .dimension = .Texture2DArray,
+        });
+
+        common_pass.white_texture_2d_array = device.createTexture(&.{
+            .format = .RGBA8_UNORM,
+            .width = 1,
+            .height = 1,
+            .mipLevels = 1,
+            .arraySize = 6,
+            .dimension = .Texture2DArray,
+        });
+
+        // Write the textures using a temporary command_list
+        {
+            var command_list_handle = device.createCommandList(.{});
+            defer command_list_handle.deinit();
+
+            const command_list = command_list_handle.ptr_.?;
+
+            command_list.open();
+
+            command_list.beginTrackingTextureState(
+                common_pass.black_texture.ptr_.?,
+                nvrhi.AllSubresources,
+                .{ .Common = true },
+            );
+
+            command_list.beginTrackingTextureState(
+                common_pass.white_texture.ptr_.?,
+                nvrhi.AllSubresources,
+                .{ .Common = true },
+            );
+
+            command_list.beginTrackingTextureState(
+                common_pass.black_cube_map_array.ptr_.?,
+                nvrhi.AllSubresources,
+                .{ .Common = true },
+            );
+
+            command_list.beginTrackingTextureState(
+                common_pass.black_texture_2d_array.ptr_.?,
+                nvrhi.AllSubresources,
+                .{ .Common = true },
+            );
+
+            command_list.beginTrackingTextureState(
+                common_pass.white_texture_2d_array.ptr_.?,
+                nvrhi.AllSubresources,
+                .{ .Common = true },
+            );
+
+            const black_image = std.mem.asBytes(&@as(u32, 0xff000000));
+            command_list.writeTexture(
+                common_pass.black_texture.ptr_.?,
+                0,
+                0,
+                black_image.ptr,
+                0,
+                0,
+            );
+
+            const gray_image = std.mem.asBytes(&@as(u32, 0xff808080));
+            command_list.writeTexture(
+                common_pass.gray_texture.ptr_.?,
+                0,
+                0,
+                gray_image.ptr,
+                0,
+                0,
+            );
+
+            const white_image = std.mem.asBytes(&@as(u32, 0xffffffff));
+            command_list.writeTexture(
+                common_pass.white_texture.ptr_.?,
+                0,
+                0,
+                white_image.ptr,
+                0,
+                0,
+            );
+
+            {
+                var array_slice: u32 = 0;
+                while (array_slice < 6) : (array_slice += 1) {
+                    command_list.writeTexture(
+                        common_pass.black_texture_2d_array.ptr_.?,
+                        array_slice,
+                        0,
+                        black_image.ptr,
+                        0,
+                        0,
+                    );
+
+                    command_list.writeTexture(
+                        common_pass.white_texture_2d_array.ptr_.?,
+                        array_slice,
+                        0,
+                        white_image.ptr,
+                        0,
+                        0,
+                    );
+
+                    command_list.writeTexture(
+                        common_pass.black_cube_map_array.ptr_.?,
+                        array_slice,
+                        0,
+                        black_image.ptr,
+                        0,
+                        0,
+                    );
+                }
+            }
+
+            command_list.setPermanentTextureState(
+                common_pass.black_texture.ptr_.?,
+                .{ .ShaderResource = true },
+            );
+
+            command_list.setPermanentTextureState(
+                common_pass.gray_texture.ptr_.?,
+                .{ .ShaderResource = true },
+            );
+
+            command_list.setPermanentTextureState(
+                common_pass.white_texture.ptr_.?,
+                .{ .ShaderResource = true },
+            );
+
+            command_list.setPermanentTextureState(
+                common_pass.black_cube_map_array.ptr_.?,
+                .{ .ShaderResource = true },
+            );
+
+            command_list.setPermanentTextureState(
+                common_pass.black_texture_2d_array.ptr_.?,
+                .{ .ShaderResource = true },
+            );
+
+            command_list.setPermanentTextureState(
+                common_pass.white_texture_2d_array.ptr_.?,
+                .{ .ShaderResource = true },
+            );
+
+            command_list.commitBarriers();
+
+            command_list.close();
+            device.executeCommandList(command_list);
+        }
+
+        const BindingsArray = std.meta.FieldType(nvrhi.BindingLayoutDesc, .bindings);
+        common_pass.blit_binding_layout = device.createBindingLayout(&.{
+            .visibility = .All,
+            .bindings = BindingsArray.fromSlice(&.{
+                .{
+                    .type = .PushConstants,
+                    .slot = 0,
+                    .size = @sizeOf(BlitConstants),
+                },
+                .{ .type = .Texture_SRV, .slot = 0 },
+                .{ .type = .Sampler, .slot = 0 },
+            }),
+        });
     }
 
     pub fn shutdown(common_pass: *CommonRenderPasses) void {

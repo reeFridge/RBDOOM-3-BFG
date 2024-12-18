@@ -44,7 +44,7 @@ const DeviceContextLegacy = extern struct {
     x_offset: f32,
     y_offset: f32,
     cursor: u32,
-    clip_rects: idlib.idList(Rectangle),
+    clip_rects: idlib.List(Rectangle),
     enable_clipping: bool,
     over_strike_mode: bool,
     mat: CMat3,
@@ -66,8 +66,8 @@ pub const UserInterfaceManager = extern struct {
     screen_rect: Rectangle,
     device_context_legacy: DeviceContextLegacy,
     device_context: DeviceContext,
-    guis: idlib.idList(?*UserInterface),
-    demo_guis: idlib.idList(?*UserInterface),
+    guis: idlib.List(?*UserInterface),
+    demo_guis: idlib.List(?*UserInterface),
     map_parser: TokenParser,
 
     pub const FindGuiOrLoadError = error{} || std.mem.Allocator.Error;

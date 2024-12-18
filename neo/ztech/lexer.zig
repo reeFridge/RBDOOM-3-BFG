@@ -169,25 +169,27 @@ var default_punctuation_table: [256]i32 = undefined;
 var default_next_punctuation: [default_punctuations.len]i32 = undefined;
 var default_setup: bool = false;
 
-pub const Lexer = extern struct {
+pub const Lexer = struct {
+    const Allocator = std.mem.Allocator;
+
     var base_folder_buffer: [256]u8 = undefined;
     var base_folder: []const u8 = &.{};
 
-    loaded: u32 = @intFromBool(false),
-    filename: idlib.idStr = .{},
-    allocated: u32 = @intFromBool(false),
+    loaded: bool = false,
+    filename: idlib.Str = .{},
+    allocated: bool = false,
     buffer: ?[*:0]const u8 = null,
     script_p: ?[*]const u8 = null,
     end_p: ?[*]const u8 = null,
     last_script_p: ?[*]const u8 = null,
     white_space_start_p: ?[*]const u8 = null,
     white_space_end_p: ?[*]const u8 = null,
-    file_time: idlib.ID_TIME_T = 0,
+    file_time: idlib.Time = 0,
     length: u32 = 0,
     line: u32 = 0,
     last_line: u32 = 0,
     initial_line: u32 = 0,
-    token_available: u32 = 0,
+    token_available: bool = false,
     flags: Flags = .{},
     punctuations: ?[*]const Punctuation = null,
     punctuation_table: ?[*]i32 = null,
@@ -250,20 +252,20 @@ pub const Lexer = extern struct {
         return true;
     }
 
-    pub const LoadMemoryError = error{ OutOfMemory, AlreadyLoaded };
+    pub const LoadMemoryError = error{AlreadyLoaded} || Allocator.Error;
     pub fn loadMemory(
         lexer: *Lexer,
         text: []const u8,
         name: []const u8,
         start_line: u32,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) LoadMemoryError!void {
         if (lexer.isLoaded()) return error.AlreadyLoaded;
 
         try lexer.createPunctuationTable(null, allocator);
         std.debug.assert(lexer.punctuations != null);
 
-        try lexer.filename.assignSlice(name);
+        try lexer.filename.assignSlice(name, allocator);
         lexer.buffer = @ptrCast(text.ptr);
         lexer.length = @intCast(text.len);
         lexer.file_time = 0;
@@ -271,24 +273,19 @@ pub const Lexer = extern struct {
         lexer.last_script_p = lexer.buffer;
         lexer.end_p = lexer.buffer.? + text.len;
 
-        lexer.token_available = 0;
+        lexer.token_available = false;
         lexer.line = 0;
         lexer.last_line = start_line;
         lexer.initial_line = start_line;
-        lexer.allocated = @intFromBool(false);
-        lexer.loaded = @intFromBool(true);
-    }
-
-    pub fn initEmpty(lexer: *Lexer) void {
-        lexer.filename.initEmptyBuffer();
-        lexer.token.initEmpty();
+        lexer.allocated = false;
+        lexer.loaded = true;
     }
 
     /// null = default_punctuations
     pub fn createPunctuationTable(
         lexer: *Lexer,
         new_punctuations: ?[]const Punctuation,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) error{OutOfMemory}!void {
         const punctuations = new_punctuations orelse default_punctuations;
         defer {
@@ -374,9 +371,8 @@ pub const Lexer = extern struct {
         lexer: *Lexer,
         path: [:0]const u8,
         flags: Flags,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) LoadFileError!void {
-        lexer.initEmpty();
         lexer.flags = flags;
         try lexer.createPunctuationTable(null, allocator);
         std.debug.assert(lexer.punctuations != null);
@@ -390,8 +386,13 @@ pub const Lexer = extern struct {
         AlreadyLoaded,
         StreamTooLong,
     } || fs.FileSystem.OpenOSFileError || std.fs.File.Reader.Error;
-    fn loadFile(lexer: *Lexer, path: [:0]const u8, os_path: bool, allocator: std.mem.Allocator) LoadFileError!void {
-        if (lexer.loaded != 0) return error.AlreadyLoaded;
+    fn loadFile(
+        lexer: *Lexer,
+        path: [:0]const u8,
+        os_path: bool,
+        allocator: Allocator,
+    ) LoadFileError!void {
+        if (lexer.loaded) return error.AlreadyLoaded;
 
         var path_buffer: [256]u8 = undefined;
         const path_name: []const u8 = if (!os_path and base_folder.len != 0)
@@ -416,7 +417,7 @@ pub const Lexer = extern struct {
         const buffer = try reader.readAllAlloc(allocator, MAX_FILE_SIZE);
 
         lexer.file_time = @intCast(file_stat.mtime);
-        try lexer.filename.assignSlice(path_name);
+        try lexer.filename.assignSlice(path_name, allocator);
 
         lexer.buffer = @ptrCast(buffer.ptr);
         lexer.length = @intCast(buffer.len);
@@ -425,43 +426,47 @@ pub const Lexer = extern struct {
         lexer.last_script_p = lexer.buffer;
         lexer.end_p = lexer.buffer.? + buffer.len;
 
-        lexer.token_available = 0;
+        lexer.token_available = false;
         lexer.line = 1;
         lexer.line = 1;
         lexer.last_line = 1;
-        lexer.allocated = @intFromBool(true);
-        lexer.loaded = @intFromBool(true);
+        lexer.allocated = true;
+        lexer.loaded = true;
     }
 
-    pub fn deinit(lexer: *Lexer, allocator: std.mem.Allocator) void {
-        if (lexer.allocated != 0) {
+    pub fn deinit(lexer: *Lexer, allocator: Allocator) void {
+        if (lexer.allocated) {
             if (lexer.buffer) |buffer_ptr| {
                 allocator.free(buffer_ptr[0..lexer.length]);
             }
         }
 
-        lexer.filename.deinit();
-        lexer.token.deinit();
+        lexer.filename.deinit(allocator);
+        lexer.token.deinit(allocator);
     }
 
     pub fn isLoaded(lexer: *Lexer) bool {
-        return lexer.loaded != 0;
+        return lexer.loaded;
     }
 
-    pub fn readTokenOk(lexer: *Lexer, token: *Token) bool {
-        return if (lexer.readToken(token))
+    pub fn readTokenOk(lexer: *Lexer, token: *Token, allocator: Allocator) bool {
+        return if (lexer.readToken(token, allocator))
             true
         else |_|
             false;
     }
 
-    pub fn unreadToken(lexer: *Lexer, token: *const Token) error{OutOfMemory}!void {
-        if (lexer.token_available != 0) {
+    pub fn unreadToken(
+        lexer: *Lexer,
+        token: *const Token,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        if (lexer.token_available) {
             @panic("unread token twice");
         }
 
-        try lexer.token.assignToken(token);
-        lexer.token_available = 1;
+        try lexer.token.assignToken(token, allocator);
+        lexer.token_available = true;
     }
 
     pub fn skipBracedSection(
@@ -469,6 +474,7 @@ pub const Lexer = extern struct {
         parse_first_brace: bool,
         skip_mode: BraceSkipMode,
         opt_skipped: ?*u32,
+        allocator: Allocator,
     ) ReadTokenError!void {
         const open_tokens: []const []const u8 = &.{ "{", "[" };
         const close_tokens: []const []const u8 = &.{ "}", "]" };
@@ -478,8 +484,7 @@ pub const Lexer = extern struct {
         }
 
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
         var depth: u32 = if (parse_first_brace) 0 else 1;
 
@@ -487,7 +492,7 @@ pub const Lexer = extern struct {
         while (depth != 0 or first) {
             first = false;
 
-            try lexer.readToken(&token);
+            try lexer.readToken(&token, allocator);
 
             if (token.type == .punctuation) {
                 if (std.mem.eql(
@@ -525,13 +530,17 @@ pub const Lexer = extern struct {
         OutOfMemory,
         NotAnEscapeChar,
     } || ReadStringError || ReadNumberError;
-    pub fn readToken(lexer: *Lexer, token: *Token) ReadTokenError!void {
-        if (lexer.loaded == 0) return error.FileNotLoaded;
+    pub fn readToken(
+        lexer: *Lexer,
+        token: *Token,
+        allocator: Allocator,
+    ) ReadTokenError!void {
+        if (!lexer.loaded) return error.FileNotLoaded;
         if (lexer.script_p == null) return error.ScriptPIsNull;
 
-        if (lexer.token_available != 0) {
-            lexer.token_available = 0;
-            try token.assignToken(&lexer.token);
+        if (lexer.token_available) {
+            lexer.token_available = false;
+            try token.assignToken(&lexer.token, allocator);
 
             return;
         }
@@ -539,7 +548,7 @@ pub const Lexer = extern struct {
         lexer.last_script_p = lexer.script_p;
         lexer.last_line = lexer.line;
 
-        try token.base.empty();
+        token.str.empty();
         lexer.white_space_start_p = lexer.script_p;
         lexer.token.white_space_start_p = lexer.script_p;
 
@@ -559,39 +568,43 @@ pub const Lexer = extern struct {
 
         if (lexer.flags.only_strings) {
             if (char == '\"' or char == '\'') {
-                try lexer.readString(token, char);
+                try lexer.readString(token, char, allocator);
             } else {
-                try lexer.readName(token);
+                try lexer.readName(token, allocator);
             }
         } else if ((char >= '0' and char <= '9') or
             (char == '.' and (next_char >= '0' and next_char <= '9')))
         {
-            try lexer.readNumber(token);
+            try lexer.readNumber(token, allocator);
 
             if (lexer.flags.allow_number_names) {
                 const c = lexer.current();
                 if ((c >= 'a' and c <= 'z') or
                     (c >= 'A' and c <= 'Z') or c == '_')
                 {
-                    try lexer.readName(token);
+                    try lexer.readName(token, allocator);
                 }
             }
         } else if (char == '\"' or char == '\'') {
-            try lexer.readString(token, char);
+            try lexer.readString(token, char, allocator);
         } else if ((char >= 'a' and char <= 'z') or
             (char >= 'A' and char <= 'Z') or char == '_')
         {
-            try lexer.readName(token);
+            try lexer.readName(token, allocator);
         } else if (lexer.flags.allow_path_names and
             ((char == '/' or char == '\\') or char == '.'))
         {
-            try lexer.readName(token);
+            try lexer.readName(token, allocator);
         } else {
-            try lexer.readPunctuation(token);
+            try lexer.readPunctuation(token, allocator);
         }
     }
 
-    pub fn readName(lexer: *Lexer, token: *Token) error{OutOfMemory}!void {
+    pub fn readName(
+        lexer: *Lexer,
+        token: *Token,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         token.type = .name;
 
         var first = true;
@@ -606,11 +619,10 @@ pub const Lexer = extern struct {
         {
             first = false;
 
-            try token.appendDirty(lexer.current());
+            try token.append(lexer.current(), allocator);
             char = lexer.consume();
         }
 
-        token.base.data.?[token.base.len] = 0;
         token.subtype = @bitCast(@as(u32, @intCast(token.slice().len)));
     }
 
@@ -621,7 +633,12 @@ pub const Lexer = extern struct {
         UnexpectedEndOfLine,
         EndOfStream,
     };
-    pub fn readString(lexer: *Lexer, token: *Token, quote: u8) ReadStringError!void {
+    pub fn readString(
+        lexer: *Lexer,
+        token: *Token,
+        quote: u8,
+        allocator: Allocator,
+    ) ReadStringError!void {
         token.type = if (quote == '\"')
             .string
         else
@@ -632,7 +649,7 @@ pub const Lexer = extern struct {
         while (true) {
             if (lexer.current() == '\\' and !lexer.flags.no_string_escape_chars) {
                 const char = try lexer.readEscapeCharacter();
-                try token.appendDirty(char);
+                try token.append(char, allocator);
             } else if (lexer.current() == quote) {
                 _ = lexer.consume();
 
@@ -674,15 +691,14 @@ pub const Lexer = extern struct {
                 if (lexer.checkEndOfStream()) return error.EndOfStream;
                 if (lexer.current() == '\n') return error.UnexpectedEndOfLine;
 
-                try token.appendDirty(lexer.current());
+                try token.append(lexer.current(), allocator);
                 _ = lexer.consume();
             }
         }
 
-        token.base.data.?[token.base.len] = 0;
         if (token.type == .literal) {
             if (!lexer.flags.allow_multichar_literals) {
-                if (token.base.constSlice().len != 1) {
+                if (token.str.constSlice().len != 1) {
                     std.debug.print("[WARN] literal is not one character long\n", .{});
                 }
             }
@@ -699,7 +715,11 @@ pub const Lexer = extern struct {
         IpAddressNotAllowed,
         IpAddressParseError,
     };
-    pub fn readNumber(lexer: *Lexer, token: *Token) ReadNumberError!void {
+    pub fn readNumber(
+        lexer: *Lexer,
+        token: *Token,
+        allocator: Allocator,
+    ) ReadNumberError!void {
         token.type = .number;
         token.subtype = .{};
         token.int_value = 0;
@@ -710,38 +730,38 @@ pub const Lexer = extern struct {
 
         if (char == '0' and next_char != '.') {
             if (next_char == 'x' or next_char == 'X') {
-                try token.appendDirty(lexer.current());
+                try token.append(lexer.current(), allocator);
                 char = lexer.consume();
-                try token.appendDirty(lexer.current());
+                try token.append(lexer.current(), allocator);
                 char = lexer.consume();
 
                 while ((char >= '0' and char <= '9') or
                     (char >= 'a' and char <= 'f') or
                     (char >= 'A' and char <= 'F'))
                 {
-                    try token.appendDirty(char);
+                    try token.append(char, allocator);
                     char = lexer.consume();
                 }
 
                 token.subtype = .{ .hex = true, .integer = true };
             } else if (next_char == 'b' or next_char == 'B') {
-                try token.appendDirty(lexer.current());
+                try token.append(lexer.current(), allocator);
                 char = lexer.consume();
-                try token.appendDirty(lexer.current());
+                try token.append(lexer.current(), allocator);
                 char = lexer.consume();
 
                 while (char == '0' or char == '1') {
-                    try token.appendDirty(char);
+                    try token.append(char, allocator);
                     char = lexer.consume();
                 }
 
                 token.subtype = .{ .binary = true, .integer = true };
             } else {
-                try token.appendDirty(lexer.current());
+                try token.append(lexer.current(), allocator);
                 char = lexer.consume();
 
                 while (char >= '0' and char <= '7') {
-                    try token.appendDirty(char);
+                    try token.append(char, allocator);
                     char = lexer.consume();
                 }
 
@@ -755,7 +775,7 @@ pub const Lexer = extern struct {
                     dot += 1;
                 } else break;
 
-                try token.appendDirty(char);
+                try token.append(char, allocator);
                 char = lexer.consume();
             }
 
@@ -766,19 +786,19 @@ pub const Lexer = extern struct {
             if (dot == 1) {
                 token.subtype = .{ .decimal = true, .float = true };
                 if (char == 'e') {
-                    try token.appendDirty(char);
+                    try token.append(char, allocator);
                     char = lexer.consume();
 
                     if (char == '-') {
-                        try token.appendDirty(char);
+                        try token.append(char, allocator);
                         char = lexer.consume();
                     } else if (char == '+') {
-                        try token.appendDirty(char);
+                        try token.append(char, allocator);
                         char = lexer.consume();
                     }
 
                     while (char >= '0' and char <= '9') {
-                        try token.appendDirty(char);
+                        try token.append(char, allocator);
                         char = lexer.consume();
                     }
                 } else if (char == '#') {
@@ -798,17 +818,17 @@ pub const Lexer = extern struct {
                     }
 
                     for (0..char2) |_| {
-                        try token.appendDirty(char);
+                        try token.append(char, allocator);
                         char = lexer.consume();
                     }
 
                     while (char >= '0' and char <= '9') {
-                        try token.appendDirty(char);
+                        try token.append(char, allocator);
                         char = lexer.consume();
                     }
 
                     if (!lexer.flags.allow_float_exceptions) {
-                        try token.appendDirty(0);
+                        try token.append(0, allocator);
                         return error.FloatExceptionsNotAllowed;
                     }
                 }
@@ -855,17 +875,15 @@ pub const Lexer = extern struct {
             }
         } else if (token.subtype.ip_address) {
             if (char == ':') {
-                try token.appendDirty(char);
+                try token.append(char, allocator);
                 char = lexer.consume();
                 while (char >= '0' and char <= '9') {
-                    try token.appendDirty(char);
+                    try token.append(char, allocator);
                     char = lexer.consume();
                 }
                 token.subtype.ip_port = true;
             }
         }
-
-        token.base.data.?[token.base.len] = 0;
     }
 
     pub fn readEscapeCharacter(lexer: *Lexer) error{NotAnEscapeChar}!u8 {
@@ -945,7 +963,7 @@ pub const Lexer = extern struct {
         return char;
     }
 
-    pub fn readPunctuation(lexer: *Lexer, token: *Token) error{OutOfMemory}!void {
+    pub fn readPunctuation(lexer: *Lexer, token: *Token, allocator: Allocator) Allocator.Error!void {
         var n = lexer.punctuation_table.?[@as(u32, lexer.script_p.?[0])];
         while (n >= 0) : (n = lexer.next_punctuation.?[@intCast(n)]) {
             const punct = &(lexer.punctuations.?[@intCast(n)]);
@@ -957,12 +975,12 @@ pub const Lexer = extern struct {
             }
 
             if (p[l] == 0) {
-                try token.base.ensureAlloced(l + 1, false);
+                try token.str.ensureAlloced(l + 1, false, allocator);
 
                 for (0..l + 1) |i| {
-                    token.base.data.?[i] = p[i];
+                    token.str.buffer()[i] = p[i];
                 }
-                token.base.len = l;
+                token.str.len = l;
                 _ = lexer.consumeN(l);
                 token.type = .punctuation;
                 token.subtype = @bitCast(@as(u32, @intCast(@intFromEnum(punct.n))));
@@ -1033,20 +1051,21 @@ pub const Lexer = extern struct {
         }
     }
 
-    pub fn expectAnyToken(lexer: *Lexer, token: *Token) ReadTokenError!void {
-        try lexer.readToken(token);
-    }
-
     pub const ExpectTokenStringError = error{
         NotExpectedTokenContent,
     } || ReadTokenError;
-    pub fn expectTokenString(lexer: *Lexer, string: []const u8) ExpectTokenStringError!void {
+    pub fn expectTokenString(
+        lexer: *Lexer,
+        string: []const u8,
+        allocator: Allocator,
+    ) ExpectTokenStringError!void {
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
-        try lexer.readToken(&token);
-        if (!std.mem.eql(u8, token.slice(), string)) return error.NotExpectedTokenContent;
+        try lexer.readToken(&token, allocator);
+
+        if (!std.mem.eql(u8, token.slice(), string))
+            return error.NotExpectedTokenContent;
     }
 
     pub const ExpectTokenTypeError = error{
@@ -1058,8 +1077,9 @@ pub const Lexer = extern struct {
         token_type: TokenType,
         token_subtype: TokenSubtype,
         token: *Token,
+        allocator: Allocator,
     ) ExpectTokenTypeError!void {
-        try lexer.readToken(token);
+        try lexer.readToken(token, allocator);
 
         if (token.type != token_type) return error.NotExpectedTokenType;
 
@@ -1076,21 +1096,26 @@ pub const Lexer = extern struct {
 
     const ParseSizeError = ParseIntError || error{IntLtZero};
 
-    pub fn parseSize(lexer: *Lexer) ParseSizeError!usize {
-        const count = try lexer.parseInt();
+    pub fn parseSize(lexer: *Lexer, allocator: Allocator) ParseSizeError!usize {
+        const count = try lexer.parseInt(allocator);
         if (count < 0) return error.IntLtZero;
 
         return @intCast(count);
     }
 
-    pub fn parse1DMatrix(lexer: *Lexer, slice: []f32) !void {
-        try lexer.expectTokenString("(");
+    pub const Parse1DMatrixError = ExpectTokenStringError || ParseFloatError;
+    pub fn parse1DMatrix(
+        lexer: *Lexer,
+        slice: []f32,
+        allocator: Allocator,
+    ) Parse1DMatrixError!void {
+        try lexer.expectTokenString("(", allocator);
 
         for (slice) |*elem| {
-            elem.* = try lexer.parseFloat();
+            elem.* = try lexer.parseFloat(allocator);
         }
 
-        try lexer.expectTokenString(")");
+        try lexer.expectTokenString(")", allocator);
     }
 
     pub const ParseIntError = error{
@@ -1098,12 +1123,11 @@ pub const Lexer = extern struct {
         TokenIsNotAnInteger,
     } || ReadTokenError || ExpectTokenTypeError;
 
-    pub fn parseInt(lexer: *Lexer) ParseIntError!i32 {
+    pub fn parseInt(lexer: *Lexer, allocator: Allocator) ParseIntError!i32 {
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
-        try lexer.readToken(&token);
+        try lexer.readToken(&token, allocator);
         if (token.getType() == .punctuation and
             std.mem.eql(u8, token.slice(), "-"))
         {
@@ -1111,6 +1135,7 @@ pub const Lexer = extern struct {
                 .number,
                 .{ .integer = true },
                 &token,
+                allocator,
             );
             return -token.getIntValue();
         } else if (token.getType() != .number)
@@ -1126,16 +1151,15 @@ pub const Lexer = extern struct {
         TokenIsNotANumber,
     } || ReadTokenError || ExpectTokenTypeError;
 
-    pub fn parseFloat(lexer: *Lexer) ParseFloatError!f32 {
+    pub fn parseFloat(lexer: *Lexer, allocator: Allocator) ParseFloatError!f32 {
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
-        try lexer.readToken(&token);
+        try lexer.readToken(&token, allocator);
         if (token.getType() == .punctuation and
             std.mem.eql(u8, token.slice(), "-"))
         {
-            try lexer.expectTokenType(.number, .{}, &token);
+            try lexer.expectTokenType(.number, .{}, &token, allocator);
             return -token.getFloatValue();
         } else if (token.getType() != .number)
             return error.TokenIsNotANumber;
@@ -1148,12 +1172,12 @@ pub const Lexer = extern struct {
         token_type: TokenType,
         token_subtype: TokenSubtype,
         token: *Token,
-    ) error{OutOfMemory}!bool {
+        allocator: Allocator,
+    ) Allocator.Error!bool {
         var tok = Token{};
-        tok.initEmpty();
-        defer tok.deinit();
+        defer tok.deinit(allocator);
 
-        lexer.readToken(&tok) catch return false;
+        lexer.readToken(&tok, allocator) catch return false;
 
         const tok_subtype_u32: u32 = @bitCast(tok.subtype);
         const token_subtype_u32: u32 = @bitCast(token_subtype);
@@ -1161,7 +1185,7 @@ pub const Lexer = extern struct {
         if (tok.type == token_type and
             (tok_subtype_u32 & token_subtype_u32) == token_subtype_u32)
         {
-            try token.assignToken(&tok);
+            try token.assignToken(&tok, allocator);
             return true;
         }
 
@@ -1171,24 +1195,30 @@ pub const Lexer = extern struct {
         return false;
     }
 
-    pub fn skipUntilString(lexer: *Lexer, str: []const u8) void {
+    pub fn skipUntilString(
+        lexer: *Lexer,
+        str: []const u8,
+        allocator: Allocator,
+    ) ReadTokenError!void {
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
         while (true) {
-            lexer.readToken(&token) catch break;
+            try lexer.readToken(&token, allocator);
             if (std.mem.eql(u8, token.slice(), str)) break;
         }
     }
 
-    pub const ReadOnLineError = error{NoTokenOnLine} || std.mem.Allocator.Error;
-    pub fn readTokenOnLine(lexer: *Lexer, token: *Token) ReadOnLineError!void {
+    pub const ReadOnLineError = error{NoTokenOnLine} || Allocator.Error;
+    pub fn readTokenOnLine(
+        lexer: *Lexer,
+        token: *Token,
+        allocator: Allocator,
+    ) ReadOnLineError!void {
         var tok = Token{};
-        tok.initEmpty();
-        defer tok.deinit();
+        defer tok.deinit(allocator);
 
-        lexer.readToken(&tok) catch {
+        lexer.readToken(&tok, allocator) catch {
             lexer.script_p = lexer.last_script_p;
             lexer.line = lexer.last_line;
 
@@ -1198,22 +1228,25 @@ pub const Lexer = extern struct {
         if (tok.lines_crossed != 0) {
             lexer.script_p = lexer.last_script_p;
             lexer.line = lexer.last_line;
-            try token.base.empty();
+            token.str.empty();
 
             return error.NoTokenOnLine;
         }
 
-        try token.assignToken(&tok);
+        try token.assignToken(&tok, allocator);
     }
 
-    pub fn parseRestOfLine(lexer: *Lexer, out: *idlib.idStr) error{OutOfMemory}!void {
+    pub fn parseRestOfLine(
+        lexer: *Lexer,
+        out: *idlib.Str,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         var tok = Token{};
-        tok.initEmpty();
-        defer tok.deinit();
+        defer tok.deinit(allocator);
 
-        try out.empty();
+        out.empty();
         while (true) {
-            lexer.readToken(&tok) catch break;
+            lexer.readToken(&tok, allocator) catch break;
 
             if (tok.lines_crossed != 0) {
                 lexer.script_p = lexer.last_script_p;
@@ -1222,19 +1255,21 @@ pub const Lexer = extern struct {
             }
 
             if (out.len != 0) {
-                try out.appendSlice(" ");
+                try out.appendSlice(" ", allocator);
             }
-            try out.appendSlice(tok.slice());
+            try out.appendSlice(tok.slice(), allocator);
         }
     }
 
-    pub fn skipRestOfLine(lexer: *Lexer) ReadTokenError!void {
+    pub fn skipRestOfLine(
+        lexer: *Lexer,
+        allocator: Allocator,
+    ) ReadTokenError!void {
         var tok = Token{};
-        tok.initEmpty();
-        defer tok.deinit();
+        defer tok.deinit(allocator);
 
         while (true) {
-            try lexer.readToken(&tok);
+            try lexer.readToken(&tok, allocator);
 
             if (tok.lines_crossed != 0) {
                 lexer.script_p = lexer.last_script_p;

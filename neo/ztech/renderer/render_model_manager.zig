@@ -4,6 +4,7 @@ const idlib = @import("../idlib.zig");
 const backend = @import("render_backend.zig");
 const RenderModel = @import("model.zig").RenderModel;
 const RenderModelStatic = @import("model.zig").RenderModelStatic;
+const Allocator = std.mem.Allocator;
 
 pub const RenderModelManager = extern struct {
     pub const GetModelError = error{ModelNotFound};
@@ -17,19 +18,19 @@ pub const RenderModelManager = extern struct {
     extern fn c_renderModelManager_shutdown(*RenderModelManager) void;
 
     vptr: *anyopaque = undefined,
-    models: idlib.idList(*RenderModel) = .{},
-    hash: idlib.idHashIndex = .{},
-    default_model: ?*RenderModel = null,
-    beam_model: ?*RenderModel = null,
-    sprite_model: ?*RenderModel = null,
+    models: idlib.List(*RenderModel) = .{},
+    hash: idlib.HashIndex = .{},
+    default_model: ?*RenderModelStatic = null,
+    beam_model: ?*RenderModelStatic = null,
+    sprite_model: ?*RenderModelStatic = null,
     inside_level_load: bool = false,
     command_list_handle: nvrhi.CommandListHandle = .{},
 
     pub fn init(
         manager: *RenderModelManager,
         device: *nvrhi.IDevice,
-        allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         manager.* = .{};
 
         _ = if (manager.command_list_handle.ptr_) |ptr|
@@ -54,31 +55,30 @@ pub const RenderModelManager = extern struct {
         model.initEmpty("_DEFAULT");
         model.makeDefaultModel();
         model.level_load_referenced = true;
-        manager.default_model = @ptrCast(model);
+        manager.default_model = model;
         try manager.addModel(@ptrCast(model));
 
         const beam = try allocator.create(RenderModelStatic);
         beam.initEmpty("_BEAM");
         beam.level_load_referenced = true;
-        manager.beam_model = @ptrCast(beam);
+        manager.beam_model = beam;
         try manager.addModel(@ptrCast(beam));
 
         const sprite = try allocator.create(RenderModelStatic);
         sprite.initEmpty("_SPRITE");
         sprite.level_load_referenced = true;
-        manager.sprite_model = @ptrCast(sprite);
+        manager.sprite_model = sprite;
         try manager.addModel(@ptrCast(sprite));
     }
 
-    pub fn shutdown(manager: *RenderModelManager, allocator: std.mem.Allocator) void {
+    pub fn shutdown(manager: *RenderModelManager, allocator: Allocator) void {
         for (manager.models.constSlice()) |_| {
-            _ = allocator;
             // TODO: provide type_id to upcast
             //allocator.destroy(model_ptr);
         }
 
-        manager.models.clear();
-        manager.hash.free();
+        manager.models.clear(allocator);
+        manager.hash.free(allocator);
         _ = manager.command_list_handle.reset();
     }
 

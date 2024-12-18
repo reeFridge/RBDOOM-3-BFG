@@ -453,27 +453,28 @@ pub const RenderModel = opaque {
     }
 };
 
+/// All model types contains it
 pub const RenderModelStatic = extern struct {
     vptr: *anyopaque,
-    surfaces: idlib.idList(ModelSurface),
+    surfaces: idlib.List(ModelSurface),
     bounds: CBounds,
-    overlaysAdded: c_int,
-    numInvertedJoints: c_int,
-    jointsInverted: ?[*]JointMat,
-    jointsInvertedBuffer: VertexCacheHandle,
-    lastModifiedFrame: c_int,
-    lastArchivedFrame: c_int,
-    name: idlib.idStr,
-    isStaticWorldModel: bool,
+    overlays_added: c_int,
+    num_inverted_joints: c_int,
+    joints_inverted: ?[*]JointMat,
+    joints_inverted_buffer: VertexCacheHandle,
+    last_modified_frame: c_int,
+    last_archived_frame: c_int,
+    name: idlib.Str,
+    is_static_world_model: bool,
     defaulted: bool,
     purged: bool,
-    fastLoad: bool,
+    fast_load: bool,
     reloadable: bool,
     level_load_referenced: bool,
-    hasDrawingSurfaces: bool,
-    hasInteractingSurfaces: bool,
-    hasShadowCastingSurfaces: bool,
-    timeStamp: idlib.ID_TIME_T,
+    has_drawing_surfaces: bool,
+    has_interacting_surfaces: bool,
+    has_shadow_casting_surfaces: bool,
+    timestamp: idlib.Time,
 
     pub fn findSurfaceWithId(
         model: *const RenderModelStatic,

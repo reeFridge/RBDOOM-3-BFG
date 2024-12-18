@@ -1,22 +1,23 @@
 const idlib = @import("../idlib.zig");
 const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
-const alc = @cImport(@cInclude("AL/alc.h"));
+const c = @import("../sys/c_import.zig").c;
 
 const SoundVoice = extern struct {};
 const SoundSample = extern struct {};
 const SoundWorld = extern struct {};
 const SoundHardware = extern struct {
-    device: *alc.ALCdevice,
-    context: *alc.ALCcontext,
-    lastResetTime: c_int,
-    voices: idlib.idStaticList(*SoundVoice, max_hardware_voices * 2),
-    zombieVoices: idlib.idStaticList(*SoundVoice, max_hardware_voices * 2),
-    freeVoices: idlib.idStaticList(*SoundVoice, max_hardware_voices * 2),
+    device: *c.ALCdevice,
+    context: *c.ALCcontext,
+    last_reset_time: c_int,
+    voices: idlib.StaticList(*SoundVoice, max_hardware_voices * 2),
+    zombie_voices: idlib.StaticList(*SoundVoice, max_hardware_voices * 2),
+    free_voices: idlib.StaticList(*SoundVoice, max_hardware_voices * 2),
 
     pub fn init(hw: *SoundHardware) error{}!void {
         _ = hw;
     }
 };
+
 const Random = extern struct {
     seed: c_uint,
 };
@@ -30,29 +31,29 @@ pub const SoundSystem = extern struct {
     const BufferContext = extern struct {
         voice: ?*SoundVoice = null,
         sample: ?*SoundSample = null,
-        bufferNumber: c_int = 0,
+        buffer_number: c_int = 0,
     };
 
     vptr: *anyopaque,
-    streamBufferMutex: idlib.idSysMutex,
-    freeStreamBufferContexts: idlib.idStaticList(*BufferContext, max_sound_buffers),
-    activeStreamBufferContexts: idlib.idStaticList(*BufferContext, max_sound_buffers),
-    bufferContexts: idlib.idStaticList(BufferContext, max_sound_buffers),
-    currentSoundWorld: ?*SoundWorld = null,
-    soundWorlds: idlib.idStaticList(*SoundWorld, 32),
-    samples: idlib.idList(*SoundSample),
-    sampleHash: idlib.idHashIndex,
+    stream_buffer_mutex: idlib.SysMutex,
+    free_stream_buffer_contexts: idlib.StaticList(*BufferContext, max_sound_buffers),
+    active_stream_buffer_contexts: idlib.StaticList(*BufferContext, max_sound_buffers),
+    buffer_contexts: idlib.StaticList(BufferContext, max_sound_buffers),
+    current_sound_world: ?*SoundWorld = null,
+    sound_worlds: idlib.StaticList(*SoundWorld, 32),
+    samples: idlib.List(*SoundSample),
+    sample_hash: idlib.HashIndex,
     hardware: SoundHardware,
     random: Random,
-    soundTime: c_int = 0,
+    sound_time: c_int = 0,
     muted: bool = false,
-    musicMuted: bool = false,
-    needsRestart: bool = false,
-    insideLevelLoad: bool = false,
+    music_muted: bool = false,
+    needs_restart: bool = false,
+    inside_level_load: bool = false,
 
     pub fn init(sound_system: *SoundSystem) error{}!void {
-        sound_system.soundTime = getMilliseconds();
-        sound_system.random.seed = @intCast(sound_system.soundTime);
+        sound_system.sound_time = getMilliseconds();
+        sound_system.random.seed = @intCast(sound_system.sound_time);
 
         // if (!s_no_sound.getBool()) {
         try sound_system.hardware.init();

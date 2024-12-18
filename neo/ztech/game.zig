@@ -41,7 +41,7 @@ pub const DeclEntityDef = extern struct {
     ;
 
     base: Decl = .{},
-    dict: idlib.idDict = .{},
+    dict: idlib.Dict = .{},
 
     pub fn init(self: *DeclEntityDef) void {
         self.* = .{};

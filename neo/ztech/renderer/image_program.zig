@@ -7,6 +7,7 @@ const Token = token_.Token;
 const TextureUsage = @import("image.zig").TextureUsage;
 const idlib = @import("../idlib.zig");
 const image = @import("image.zig");
+const Allocator = std.mem.Allocator;
 
 var parse_buffer = std.BoundedArray(u8, image.max_image_name).init(0) catch unreachable;
 
@@ -18,8 +19,8 @@ fn appendToken(token_slice: []const u8) void {
     parse_buffer.appendSlice(token_slice) catch unreachable;
 }
 
-fn matchAndAppendToken(lexer: *Lexer, match: []const u8) void {
-    lexer.expectTokenString(match) catch return;
+fn matchAndAppendToken(lexer: *Lexer, match: []const u8, allocator: Allocator) void {
+    lexer.expectTokenString(match, allocator) catch return;
     parse_buffer.appendSlice(match) catch unreachable;
 }
 
@@ -34,7 +35,7 @@ extern fn R_InvertColor([*]u8, u32, u32) void;
 extern fn R_CombineRgba([*]u8, u32, u32, [*]u8, u32, u32, [*]u8, u32, u32) void;
 
 pub const ParseImageProgramError =
-    std.mem.Allocator.Error ||
+    Allocator.Error ||
     Lexer.ReadTokenError;
 
 const LoadImageResult = struct {
@@ -45,7 +46,7 @@ const LoadImageResult = struct {
     };
 
     image: Image,
-    timestamp: idlib.ID_TIME_T,
+    timestamp: idlib.Time,
 };
 
 pub const ParseAndLoadError =
@@ -54,33 +55,32 @@ pub const ParseAndLoadError =
 fn parseRecursiveAndLoad(
     lexer: *Lexer,
     usage: *TextureUsage,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
 ) ParseAndLoadError!LoadImageResult {
     var token = Token{};
-    token.initEmpty();
-    defer token.deinit();
+    defer token.deinit(allocator);
 
-    try lexer.readToken(&token);
+    try lexer.readToken(&token, allocator);
 
     if (token.eql("_black")) {
-        try token.base.assignSlice("textures/black");
+        try token.str.assignSlice("textures/black", allocator);
     } else if (token.eql("_white")) {
-        try token.base.assignSlice("guis/assets/white");
+        try token.str.assignSlice("guis/assets/white", allocator);
     }
 
     appendToken(token.slice());
 
     if (token.ieql("heightmap")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
         errdefer allocator.free(arg.image.data);
-        matchAndAppendToken(lexer, ",");
+        matchAndAppendToken(lexer, ",", allocator);
 
-        try lexer.readToken(&token);
+        try lexer.readToken(&token, allocator);
         appendToken(token.slice());
         const scale = token.getFloatValue();
 
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_HeightmapToNormalMap(
             arg.image.data.ptr,
@@ -94,15 +94,15 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("addnormals")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
         const arg_0 = try parseRecursiveAndLoad(lexer, usage, allocator);
         errdefer allocator.free(arg_0.image.data);
 
-        matchAndAppendToken(lexer, ",");
+        matchAndAppendToken(lexer, ",", allocator);
 
         const arg_1 = try parseRecursiveAndLoad(lexer, usage, allocator);
         defer allocator.free(arg_1.image.data);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_AddNormalMaps(
             arg_0.image.data.ptr,
@@ -118,10 +118,10 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("smoothnormals")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
 
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_SmoothNormalMap(
             arg.image.data.ptr,
@@ -134,15 +134,15 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("add")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
         const arg_0 = try parseRecursiveAndLoad(lexer, usage, allocator);
         errdefer allocator.free(arg_0.image.data);
 
-        matchAndAppendToken(lexer, ",");
+        matchAndAppendToken(lexer, ",", allocator);
 
         const arg_1 = try parseRecursiveAndLoad(lexer, usage, allocator);
         defer allocator.free(arg_1.image.data);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_ImageAdd(
             arg_0.image.data.ptr,
@@ -157,19 +157,19 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("scale")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
         errdefer allocator.free(arg.image.data);
 
         var scale: [4]f32 = undefined;
         for (0..4) |i| {
-            matchAndAppendToken(lexer, ",");
-            try lexer.readToken(&token);
+            matchAndAppendToken(lexer, ",", allocator);
+            try lexer.readToken(&token, allocator);
             appendToken(token.slice());
 
             scale[i] = token.getFloatValue();
         }
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_ImageScale(
             arg.image.data.ptr,
@@ -182,10 +182,10 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("invertAlpha")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
 
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_InvertAlpha(
             arg.image.data.ptr,
@@ -197,10 +197,10 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("invertGreen")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
 
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_InvertGreen(
             arg.image.data.ptr,
@@ -212,10 +212,10 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("invertColor")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
 
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_InvertColor(
             arg.image.data.ptr,
@@ -227,10 +227,10 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("makeIntensity")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
 
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         var i: u32 = 0;
         while (i < (arg.image.width * arg.image.height * 4)) : (i += 4) {
@@ -243,10 +243,10 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("makeAlpha")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
 
         const arg = try parseRecursiveAndLoad(lexer, usage, allocator);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         var i: u32 = 0;
         while (i < (arg.image.width * arg.image.height * 4)) : (i += 4) {
@@ -263,21 +263,21 @@ fn parseRecursiveAndLoad(
     }
 
     if (token.ieql("combineRgba")) {
-        matchAndAppendToken(lexer, "(");
+        matchAndAppendToken(lexer, "(", allocator);
         const arg_0 = try parseRecursiveAndLoad(lexer, usage, allocator);
         errdefer allocator.free(arg_0.image.data);
 
-        matchAndAppendToken(lexer, ",");
+        matchAndAppendToken(lexer, ",", allocator);
 
         const arg_1 = try parseRecursiveAndLoad(lexer, usage, allocator);
         defer allocator.free(arg_1.image.data);
 
-        matchAndAppendToken(lexer, ",");
+        matchAndAppendToken(lexer, ",", allocator);
 
         const arg_2 = try parseRecursiveAndLoad(lexer, usage, allocator);
         defer allocator.free(arg_2.image.data);
 
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         R_CombineRgba(
             arg_0.image.data.ptr,
@@ -299,122 +299,122 @@ fn parseRecursiveAndLoad(
 
 fn parseRecursiveAndGetLatestTimestamp(
     lexer: *Lexer,
-    timestamp: *idlib.ID_TIME_T,
+    timestamp: *idlib.Time,
+    allocator: Allocator,
 ) ParseImageProgramError!void {
     var token = Token{};
-    token.initEmpty();
-    defer token.deinit();
+    defer token.deinit(allocator);
 
-    try lexer.readToken(&token);
+    try lexer.readToken(&token, allocator);
 
     if (token.eql("_black")) {
-        try token.base.assignSlice("textures/black");
+        try token.str.assignSlice("textures/black", allocator);
     } else if (token.eql("_white")) {
-        try token.base.assignSlice("guis/assets/white");
+        try token.str.assignSlice("guis/assets/white", allocator);
     }
 
     appendToken(token.slice());
 
     if (token.ieql("heightmap")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ",");
-        try lexer.readToken(&token);
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try lexer.readToken(&token, allocator);
         appendToken(token.slice());
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("addnormals")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("smoothnormals")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("add")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("scale")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
         for (0..4) |_| {
-            matchAndAppendToken(lexer, ",");
-            try lexer.readToken(&token);
+            matchAndAppendToken(lexer, ",", allocator);
+            try lexer.readToken(&token, allocator);
             appendToken(token.slice());
         }
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("invertAlpha")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("invertGreen")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("invertColor")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("makeIntensity")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("makeAlpha")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("combineRgba")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursiveAndGetLatestTimestamp(lexer, timestamp, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
@@ -428,143 +428,142 @@ fn parseRecursiveAndGetLatestTimestamp(
 
 fn parseRecursive(
     lexer: *Lexer,
+    allocator: Allocator,
 ) ParseImageProgramError!void {
     var token = Token{};
-    token.initEmpty();
-    defer token.deinit();
+    defer token.deinit(allocator);
 
-    try lexer.readToken(&token);
+    try lexer.readToken(&token, allocator);
 
     if (token.eql("_black")) {
-        try token.base.assignSlice("textures/black");
+        try token.str.assignSlice("textures/black", allocator);
     } else if (token.eql("_white")) {
-        try token.base.assignSlice("guis/assets/white");
+        try token.str.assignSlice("guis/assets/white", allocator);
     }
 
     appendToken(token.slice());
 
     if (token.ieql("heightmap")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ",");
-        try lexer.readToken(&token);
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try lexer.readToken(&token, allocator);
         appendToken(token.slice());
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("addnormals")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("smoothnormals")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("add")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("scale")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
         for (0..4) |_| {
-            matchAndAppendToken(lexer, ",");
-            try lexer.readToken(&token);
+            matchAndAppendToken(lexer, ",", allocator);
+            try lexer.readToken(&token, allocator);
             appendToken(token.slice());
         }
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("invertAlpha")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("invertGreen")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("invertColor")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("makeIntensity")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("makeAlpha")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 
     if (token.ieql("combineRgba")) {
-        matchAndAppendToken(lexer, "(");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ",");
-        try parseRecursive(lexer);
-        matchAndAppendToken(lexer, ")");
+        matchAndAppendToken(lexer, "(", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ",", allocator);
+        try parseRecursive(lexer, allocator);
+        matchAndAppendToken(lexer, ")", allocator);
 
         return;
     }
 }
 
 const LoadImageError =
-    std.mem.Allocator.Error ||
+    Allocator.Error ||
     fs.FileSystem.ReadFileAnyAllocError;
 fn loadImage(
     path: []const u8,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
 ) LoadImageError!LoadImageResult {
-    _ = allocator;
-    const buffer = try fs.instance.readFileAnyAlloc(path);
-    _ = buffer;
+    const buffer = try fs.instance.readFileAnyAlloc(path, allocator);
+    defer allocator.free(buffer);
 
     return std.mem.zeroes(LoadImageResult);
 }
 
-pub fn parse(lexer: *Lexer) ParseImageProgramError![]const u8 {
+pub fn parse(lexer: *Lexer, allocator: Allocator) ParseImageProgramError![]const u8 {
     parse_buffer.len = 0;
-    try parseRecursive(lexer);
+    try parseRecursive(lexer, allocator);
     return parse_buffer.constSlice();
 }
 
@@ -572,8 +571,8 @@ pub fn parseAndGetCubeFileTimestamp(
     program_text: []const u8,
     cube_files: image.CubeFiles,
     cube_map_size: u32,
-    allocator: std.mem.Allocator,
-) std.mem.Allocator.Error!idlib.ID_TIME_T {
+    allocator: Allocator,
+) Allocator.Error!idlib.Time {
     const quake_sides = &.{
         "_ft.tga",
         "_bk.tga",
@@ -608,7 +607,7 @@ pub fn parseAndGetCubeFileTimestamp(
     else
         axis_sides;
 
-    var timestamp = fs.FILE_NOT_FOUND_TIMESTAMP;
+    var timestamp = fs.not_found_time;
     if (cube_files == .single and cube_map_size != 0) {
         timestamp = try parseAndGetFileTimestamp(program_text, allocator);
     } else {
@@ -620,10 +619,10 @@ pub fn parseAndGetCubeFileTimestamp(
                 .{ program_text, sides[side_index] },
             ) catch unreachable;
 
-            var side_timestamp = fs.FILE_NOT_FOUND_TIMESTAMP;
+            var side_timestamp = fs.not_found_time;
             side_timestamp = try parseAndGetFileTimestamp(full_name, allocator);
 
-            if (side_timestamp == fs.FILE_NOT_FOUND_TIMESTAMP) break;
+            if (side_timestamp == fs.not_found_time) break;
 
             if (side_timestamp > timestamp) {
                 timestamp = side_timestamp;
@@ -636,8 +635,8 @@ pub fn parseAndGetCubeFileTimestamp(
 
 pub fn parseAndGetFileTimestamp(
     program_text: []const u8,
-    allocator: std.mem.Allocator,
-) std.mem.Allocator.Error!idlib.ID_TIME_T {
+    allocator: Allocator,
+) Allocator.Error!idlib.Time {
     parse_buffer.len = 0;
 
     var lexer = Lexer{
@@ -648,7 +647,6 @@ pub fn parseAndGetFileTimestamp(
             .allow_path_names = true,
         },
     };
-    lexer.initEmpty();
     defer lexer.deinit(allocator);
 
     lexer.loadMemory(
@@ -661,15 +659,19 @@ pub fn parseAndGetFileTimestamp(
         else => unreachable,
     };
 
-    var timestamp = fs.FILE_NOT_FOUND_TIMESTAMP;
-    parseRecursiveAndGetLatestTimestamp(&lexer, &timestamp) catch return timestamp;
+    var timestamp = fs.not_found_time;
+    parseRecursiveAndGetLatestTimestamp(
+        &lexer,
+        &timestamp,
+        allocator,
+    ) catch return timestamp;
 
     return timestamp;
 }
 
 pub fn parseAndLoad(
     program_text: []const u8,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
 ) ParseAndLoadError!LoadImageResult {
     parse_buffer.len = 0;
 
@@ -681,7 +683,6 @@ pub fn parseAndLoad(
             .allow_path_names = true,
         },
     };
-    lexer.initEmpty();
     defer lexer.deinit(allocator);
 
     lexer.loadMemory(

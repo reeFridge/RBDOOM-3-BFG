@@ -2,6 +2,7 @@ const std = @import("std");
 const idlib = @import("../idlib.zig");
 const fs = @import("file_system.zig");
 const global = @import("../global.zig");
+const Allocator = std.mem.Allocator;
 
 fn FixedBufferString(size: comptime_int) type {
     return struct {
@@ -44,10 +45,10 @@ table_offset: u32 = 0,
 table_len: u32 = 0,
 magic: u32 = 0,
 num_files: u32 = 0,
-cache_table: idlib.idList(CacheEntry) = .{},
-cache_hash: idlib.idHashIndex = .{},
+cache_table: idlib.List(CacheEntry) = .{},
+cache_hash: idlib.HashIndex = .{},
 
-pub fn init(rc: *ResourceContainer, filename: []const u8) bool {
+pub fn init(rc: *ResourceContainer, filename: []const u8, allocator: Allocator) bool {
     const file = fs.instance.openFileRead(filename) catch return false;
 
     rc.resource_file = file;
@@ -72,11 +73,11 @@ pub fn init(rc: *ResourceContainer, filename: []const u8) bool {
         @panic("[FATAL] Fail to seek");
     };
 
-    var allocator = global.gpa.allocator();
-    const buf = allocator.alloc(u8, rc.table_len) catch {
+    var temp_allocator = global.gpa.allocator();
+    const buf = temp_allocator.alloc(u8, rc.table_len) catch {
         @panic("[FATAL] Fail to alloc buf for header");
     };
-    defer allocator.free(buf);
+    defer temp_allocator.free(buf);
 
     _ = file_reader.read(buf) catch readFail("resource_header");
 
@@ -86,7 +87,7 @@ pub fn init(rc: *ResourceContainer, filename: []const u8) bool {
     rc.num_files = header_reader.readInt(@TypeOf(rc.num_files), .big) catch
         readFail("num_files");
 
-    rc.cache_table.setNum(rc.num_files) catch {
+    rc.cache_table.setNum(rc.num_files, allocator) catch {
         @panic("[FATAL] Fail to allocate cache_table");
     };
 
@@ -108,7 +109,11 @@ pub fn init(rc: *ResourceContainer, filename: []const u8) bool {
         entry.owner = rc;
 
         const key = rc.cache_hash.generateKey(entry.filename.constSlice(), false);
-        rc.cache_hash.add(key, @intCast(i)) catch @panic("[FATAL] Fail to add a key to the hash");
+        rc.cache_hash.add(
+            key,
+            @intCast(i),
+            allocator,
+        ) catch @panic("[FATAL] Fail to add a key to the hash");
     }
 
     return true;

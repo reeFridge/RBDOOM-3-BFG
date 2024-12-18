@@ -52,7 +52,7 @@ pub const Cinematic = extern struct {
     is_roq: bool,
     mcomp: [256]usize,
     q_status: ?*?*[2]u8,
-    filename: idlib.idStr,
+    filename: idlib.Str,
     cin_width: u32,
     cin_height: u32,
     file: ?*anyopaque,

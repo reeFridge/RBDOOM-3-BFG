@@ -14,6 +14,7 @@ const Common = @import("../framework/common.zig");
 const image_manager = @import("image_manager.zig");
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 const vulkan = @import("vulkan");
+const Allocator = std.mem.Allocator;
 
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
@@ -89,7 +90,7 @@ const TileMap = extern struct {
     numLevels: c_uint,
     numNodes: c_uint,
     nodeIndex: c_uint,
-    tileNodeList: idlib.idList(TileNode),
+    tileNodeList: idlib.List(TileNode),
     foundNode: ?*TileNode,
 
     extern fn c_tileMap_init(*TileMap, c_uint, c_uint, c_uint) callconv(.C) void;
@@ -106,15 +107,15 @@ const TileMap = extern struct {
 
 const BindingCache = extern struct {
     device: ?*nvrhi.IDevice,
-    bindingSets: idlib.idList(nvrhi.BindingSetHandle),
-    bindingHash: idlib.idHashIndex,
-    mutex: idlib.idSysMutex,
+    bindingSets: idlib.List(nvrhi.BindingSetHandle),
+    bindingHash: idlib.HashIndex,
+    mutex: idlib.SysMutex,
 
     fn init(binding_cache: *BindingCache, device: *nvrhi.IDevice) void {
         binding_cache.device = device;
     }
 
-    fn clear(binding_cache: *BindingCache) void {
+    fn clear(binding_cache: *BindingCache, allocator: Allocator) void {
         _ = binding_cache.mutex.lockBlocking();
         defer binding_cache.mutex.unlock();
 
@@ -122,26 +123,26 @@ const BindingCache = extern struct {
             _ = binding_set.reset();
         }
 
-        binding_cache.bindingSets.clear();
+        binding_cache.bindingSets.clear(allocator);
         binding_cache.bindingHash.clear();
     }
 };
 
 const SamplerCache = extern struct {
     device: ?*nvrhi.IDevice,
-    samplers: idlib.idList(nvrhi.SamplerHandle),
-    samplerHash: idlib.idHashIndex,
-    mutex: idlib.idSysMutex,
+    samplers: idlib.List(nvrhi.SamplerHandle),
+    samplerHash: idlib.HashIndex,
+    mutex: idlib.SysMutex,
 
     fn init(sampler_cache: *SamplerCache, device: *nvrhi.IDevice) void {
         sampler_cache.device = device;
     }
 
-    fn clear(sampler_cache: *SamplerCache) void {
+    fn clear(sampler_cache: *SamplerCache, allocator: Allocator) void {
         _ = sampler_cache.mutex.lockBlocking();
         defer sampler_cache.mutex.unlock();
 
-        sampler_cache.samplers.clear();
+        sampler_cache.samplers.clear(allocator);
         sampler_cache.samplerHash.clear();
     }
 };
@@ -163,10 +164,8 @@ const PipelineCache = extern struct {
     };
 
     device: nvrhi.DeviceHandle,
-    pipelineHash: idlib.idHashIndex,
-    pipelines: idlib.idList(CppStdPair(PipelineKey, nvrhi.GraphicsPipelineHandle)),
-
-    extern fn c_pipelineCache_clear(*PipelineCache) callconv(.C) void;
+    pipelineHash: idlib.HashIndex,
+    pipelines: idlib.List(CppStdPair(PipelineKey, nvrhi.GraphicsPipelineHandle)),
 
     fn init(pipeline_cache: *PipelineCache, device: *nvrhi.IDevice) void {
         pipeline_cache.device = nvrhi.DeviceHandle.init(device);
@@ -176,8 +175,9 @@ const PipelineCache = extern struct {
         pipeline_cache.device.deinit();
     }
 
-    fn clear(pipeline_cache: *PipelineCache) void {
-        c_pipelineCache_clear(pipeline_cache);
+    fn clear(pipeline_cache: *PipelineCache, allocator: Allocator) void {
+        pipeline_cache.pipelineHash.clear();
+        pipeline_cache.pipelines.clear(allocator);
     }
 };
 
@@ -257,9 +257,9 @@ pub const RenderBackend = extern struct {
     currentJointBuffer: ?*nvrhi.IBuffer,
     currentJointOffset: c_uint,
     currentPipeline: nvrhi.GraphicsPipelineHandle,
-    currentBindingSets: idlib.idStaticList(nvrhi.BindingSetHandle, nvrhi.c_MaxBindingLayouts),
-    pendingBindingSetDescs: idlib.idStaticList(
-        idlib.idStaticList(nvrhi.BindingSetDesc, nvrhi.c_MaxBindingLayouts),
+    currentBindingSets: idlib.StaticList(nvrhi.BindingSetHandle, nvrhi.c_MaxBindingLayouts),
+    pendingBindingSetDescs: idlib.StaticList(
+        idlib.StaticList(nvrhi.BindingSetDesc, nvrhi.c_MaxBindingLayouts),
         BindingLayoutType.NUM_BINDING_LAYOUTS,
     ),
     currentFramebuffer: *Framebuffer,
@@ -300,8 +300,8 @@ pub const RenderBackend = extern struct {
             Vec2(f32){};
     }
 
-    pub fn shutdown(backend: *RenderBackend) void {
-        backend.clearCaches();
+    pub fn shutdown(backend: *RenderBackend, allocator: Allocator) void {
+        backend.clearCaches(allocator);
         backend.pipelineCache.shutdown();
         backend.commonPasses.shutdown();
 
@@ -318,10 +318,10 @@ pub const RenderBackend = extern struct {
         device_manager.deinit();
     }
 
-    pub fn clearCaches(backend: *RenderBackend) void {
-        backend.pipelineCache.clear();
-        backend.bindingCache.clear();
-        backend.samplerCache.clear();
+    pub fn clearCaches(backend: *RenderBackend, allocator: Allocator) void {
+        backend.pipelineCache.clear(allocator);
+        backend.bindingCache.clear(allocator);
+        backend.samplerCache.clear(allocator);
 
         if (backend.hiZGenPass) |hiZGenPass| {
             hiZGenPass.destroy();
@@ -352,12 +352,12 @@ pub const RenderBackend = extern struct {
         backend.currentPipeline.deinit();
     }
 
-    pub const InitError = error{OutOfMemory} ||
+    pub const InitError = Allocator.Error ||
         RenderProgManager.LoadShaderError ||
         device_manager.DeviceManagerVulkan.CreateError;
     pub fn init(
         backend: *RenderBackend,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) InitError!void {
         if (RenderSystem.instance.backend_initialized)
             @panic("RenderBackend already initialized");
@@ -369,14 +369,14 @@ pub const RenderBackend = extern struct {
 
         try device_manager.init(api);
         vulkan_impl.beforeInit();
-        try RenderSystem.updateDisplayMode(true);
+        try RenderSystem.updateDisplayMode(true, allocator);
         Sys_InitInput();
 
         c_renderBackend_clearContext();
 
         const device_manager_instance = device_manager.instance();
         const device = device_manager_instance.getDevice();
-        try render_prog_manager.instance.init(device);
+        try render_prog_manager.instance.init(device, allocator);
         render_log.instance.init(device);
 
         const MAX_TILE_RES: usize = 1024; // shadowMapResolutions[0]
@@ -387,7 +387,7 @@ pub const RenderBackend = extern struct {
         backend.bindingCache.init(device);
         backend.samplerCache.init(device);
         backend.pipelineCache.init(device);
-        backend.commonPasses.init(device);
+        try backend.commonPasses.init(device, render_prog_manager.instance, allocator);
         backend.hiZGenPass = null;
         backend.ssaoPass = null;
         backend.toneMapPass = null;

@@ -2,6 +2,7 @@ const fs = @import("../framework/file_system.zig");
 const std = @import("std");
 const image = @import("image.zig");
 const idlib = @import("../idlib.zig");
+const Allocator = std.mem.Allocator;
 
 pub const bimage_version: u32 = 10;
 pub const bimage_magic: u32 =
@@ -12,7 +13,7 @@ pub const bimage_magic: u32 =
 
 pub const BinaryImage = struct {
     const FileHeader = extern struct {
-        source_file_time: idlib.ID_TIME_T,
+        source_file_time: idlib.Time,
         header_magic: u32,
         texture_type: image.TextureType,
         format: image.TextureFormat,
@@ -38,31 +39,34 @@ pub const BinaryImage = struct {
         data: ?[]u8 = null,
     };
 
-    name: idlib.idStr = .{},
+    name: idlib.Str = .{},
     header: FileHeader = std.mem.zeroes(FileHeader),
-    images: idlib.idList(Image) = .{},
+    images: idlib.List(Image) = .{},
 
-    pub fn init(bin_image: *BinaryImage, name: []const u8) std.mem.Allocator.Error!void {
-        bin_image.name.initEmptyBuffer();
-        try bin_image.name.assignSlice(name);
+    pub fn init(
+        bin_image: *BinaryImage,
+        name: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        try bin_image.name.assignSlice(name, allocator);
     }
 
-    pub fn deinit(bin_image: *BinaryImage, allocator: std.mem.Allocator) void {
-        bin_image.name.deinit();
+    pub fn deinit(bin_image: *BinaryImage, allocator: Allocator) void {
+        bin_image.name.deinit(allocator);
         for (bin_image.images.slice()) |*level_image| {
             if (level_image.data) |data| {
                 allocator.free(data);
             }
         }
 
-        bin_image.images.clear();
+        bin_image.images.clear(allocator);
     }
 
     pub fn loadFromGenerated(
         bin_image: *BinaryImage,
-        source_file_time: idlib.ID_TIME_T,
-        allocator: std.mem.Allocator,
-    ) idlib.ID_TIME_T {
+        source_file_time: idlib.Time,
+        allocator: Allocator,
+    ) idlib.Time {
         var buffer: [fs.max_os_path]u8 = undefined;
         const binary_filename = formatGeneratedName(
             &buffer,
@@ -70,11 +74,11 @@ pub const BinaryImage = struct {
         );
 
         const file = fs.instance.openFileRead(binary_filename) catch
-            return fs.FILE_NOT_FOUND_TIMESTAMP;
+            return fs.not_found_time;
         defer file.close();
 
         bin_image.loadFromGeneratedFile(file, source_file_time, allocator) catch
-            return fs.FILE_NOT_FOUND_TIMESTAMP;
+            return fs.not_found_time;
 
         const file_stat = file.stat() catch unreachable;
 
@@ -84,8 +88,8 @@ pub const BinaryImage = struct {
     fn loadFromGeneratedFile(
         bin_image: *BinaryImage,
         file: std.fs.File,
-        source_file_time: idlib.ID_TIME_T,
-        allocator: std.mem.Allocator,
+        source_file_time: idlib.Time,
+        allocator: Allocator,
     ) !void {
         const reader = file.reader();
         const bimage_header = try reader.readStructEndian(FileHeader, .big);
@@ -95,7 +99,7 @@ pub const BinaryImage = struct {
         bin_image.header = bimage_header;
 
         if (!fs.instance.inProductionMode() and
-            source_file_time != fs.FILE_NOT_FOUND_TIMESTAMP and
+            source_file_time != fs.not_found_time and
             source_file_time != 0 and
             source_file_time != bimage_header.source_file_time)
             return error.TimestampNotMatch;
@@ -105,7 +109,7 @@ pub const BinaryImage = struct {
         else
             bimage_header.num_levels;
 
-        try bin_image.images.setNum(num_images);
+        try bin_image.images.setNum(num_images, allocator);
 
         for (bin_image.images.slice()) |*level_image| {
             const header = try reader.readStructEndian(Image.Header, .big);

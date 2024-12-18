@@ -9,6 +9,8 @@ const CVec4 = @import("../math/vector.zig").CVec4;
 const bit = @import("../math/math.zig").bit;
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 const shader_blob = @import("shader_blob.zig");
+const global = @import("../global.zig");
+const Allocator = std.mem.Allocator;
 
 const BuiltinShader = enum(c_int) {
     GUI,
@@ -233,7 +235,7 @@ const RenderParam = enum(c_int) {
 };
 
 const RenderProg = extern struct {
-    name: idlib.idStr = .{},
+    name: idlib.Str = .{},
     vertexShaderIndex: c_int = -1,
     fragmentShaderIndex: c_int = -1,
     computeShaderIndex: c_int = -1,
@@ -242,35 +244,25 @@ const RenderProg = extern struct {
     vertexLayout: common.VertexLayoutType = .UNKNOWN,
     bindingLayoutType: common.BindingLayoutType = .DEFAULT,
     inputLayout: nvrhi.InputLayoutHandle = .{},
-    bindingLayouts: idlib.idStaticList(
+    bindingLayouts: idlib.StaticList(
         nvrhi.BindingLayoutHandle,
         nvrhi.c_MaxBindingLayouts,
     ) = .{},
 
-    pub fn move(src: *RenderProg, dst: *RenderProg) void {
-        dst.* = src.*;
-        src.name.move(&dst.name);
-    }
-
-    pub fn deinit(prog: *RenderProg) void {
-        prog.name.deinit();
+    pub fn deinit(prog: *RenderProg, allocator: Allocator) void {
+        prog.name.deinit(allocator);
         for (prog.bindingLayouts.slice()) |*bind| bind.deinit();
         prog.inputLayout.deinit();
     }
 };
 
 const ShaderMacro = extern struct {
-    name: idlib.idStr,
-    definition: idlib.idStr,
+    name: idlib.Str = .{},
+    definition: idlib.Str = .{},
 
-    pub fn move(src: *ShaderMacro, dst: *ShaderMacro) void {
-        src.name.move(&dst.name);
-        src.definition.move(&dst.definition);
-    }
-
-    pub fn deinit(macro: *ShaderMacro) void {
-        macro.name.deinit();
-        macro.definition.deinit();
+    pub fn deinit(macro: *ShaderMacro, allocator: Allocator) void {
+        macro.name.deinit(allocator);
+        macro.definition.deinit(allocator);
     }
 };
 
@@ -283,39 +275,28 @@ pub const Shader = extern struct {
         pub const default: StageType = vertex | fragment;
     };
 
-    name: idlib.idStr = .{},
-    nameOutSuffix: idlib.idStr = .{},
+    name: idlib.Str = .{},
+    nameOutSuffix: idlib.Str = .{},
     shaderFeatures: u32,
     builtin: bool,
-    macros: idlib.idList(ShaderMacro) = .{},
+    macros: idlib.List(ShaderMacro) = .{},
     handle: nvrhi.ShaderHandle = .{},
     stage: StageType,
 
-    pub fn move(src: *Shader, dst: *Shader) void {
-        dst.* = src.*;
+    pub fn deinit(shader: *Shader, allocator: Allocator) void {
+        shader.name.deinit(allocator);
+        shader.nameOutSuffix.deinit(allocator);
 
-        for (src.macros.slice(), dst.macros.slice()) |*src_macro, *dst_macro| {
-            src_macro.move(dst_macro);
-        }
-
-        src.name.move(&dst.name);
-        src.nameOutSuffix.move(&dst.nameOutSuffix);
-    }
-
-    pub fn deinit(shader: *Shader) void {
-        shader.name.deinit();
-        shader.nameOutSuffix.deinit();
-
-        for (shader.macros.slice()) |*macro| macro.deinit();
-        shader.macros.deinit();
+        for (shader.macros.slice()) |*macro| macro.deinit(allocator);
+        shader.macros.deinit(allocator);
 
         shader.handle.deinit();
     }
 };
 
 pub const RenderProgManager = extern struct {
-    const VertexAttribDescList = idlib.idList(nvrhi.VertexAttributeDesc);
-    const BindingLayoutList = idlib.idStaticList(nvrhi.BindingLayoutHandle, nvrhi.c_MaxBindingLayouts);
+    const VertexAttribDescList = idlib.List(nvrhi.VertexAttributeDesc);
+    const BindingLayoutList = idlib.StaticList(nvrhi.BindingLayoutHandle, nvrhi.c_MaxBindingLayouts);
     const NUM_VERTEX_LAYOUTS: usize = @intCast(@intFromEnum(common.VertexLayoutType.NUM_VERTEX_LAYOUTS));
     const NUM_BINDING_LAYOUTS: usize = @intCast(@intFromEnum(common.BindingLayoutType.NUM_BINDING_LAYOUTS));
     const MAX_BUILTINS: usize = @intCast(@intFromEnum(BuiltinShader.MAX_BUILTINS));
@@ -327,16 +308,16 @@ pub const RenderProgManager = extern struct {
     mappedRenderParms: [NUM_BINDING_LAYOUTS]?*CVec4,
     builtinShaders: [MAX_BUILTINS]c_int,
     currentIndex: c_int,
-    renderProgs: idlib.idList(RenderProg),
-    shaders: idlib.idList(Shader),
-    uniforms: idlib.idStaticList(CVec4, MAX_UNIFORMS),
+    renderProgs: idlib.List(RenderProg),
+    shaders: idlib.List(Shader),
+    uniforms: idlib.StaticList(CVec4, MAX_UNIFORMS),
     uniformsChanged: bool,
     device: *nvrhi.IDevice,
-    vertexLayoutDescs: idlib.idStaticList(
+    vertexLayoutDescs: idlib.StaticList(
         VertexAttribDescList,
         NUM_VERTEX_LAYOUTS,
     ),
-    bindingLayouts: idlib.idStaticList(
+    bindingLayouts: idlib.StaticList(
         BindingLayoutList,
         NUM_BINDING_LAYOUTS,
     ),
@@ -350,7 +331,11 @@ pub const RenderProgManager = extern struct {
         c_renderProgManager_unbind(prog_manager);
     }
 
-    pub fn init(prog_manager: *RenderProgManager, device: *nvrhi.IDevice) LoadShaderError!void {
+    pub fn init(
+        prog_manager: *RenderProgManager,
+        device: *nvrhi.IDevice,
+        allocator: Allocator,
+    ) LoadShaderError!void {
         for (&prog_manager.builtinShaders) |*builtin| {
             builtin.* = -1;
         }
@@ -380,7 +365,7 @@ pub const RenderProgManager = extern struct {
                 .format = .RGB32_FLOAT,
                 .offset = @offsetOf(DrawVertex, "xyz"),
                 .elementStride = @sizeOf(DrawVertex),
-            });
+            }, allocator);
             descs.slice()[index].setName("POSITION");
         }
 
@@ -389,7 +374,7 @@ pub const RenderProgManager = extern struct {
                 .format = .RG16_FLOAT,
                 .offset = @offsetOf(DrawVertex, "st"),
                 .elementStride = @sizeOf(DrawVertex),
-            });
+            }, allocator);
             descs.slice()[index].setName("TEXCOORD");
         }
 
@@ -398,7 +383,7 @@ pub const RenderProgManager = extern struct {
                 .format = .RGBA8_UNORM,
                 .offset = @offsetOf(DrawVertex, "normal"),
                 .elementStride = @sizeOf(DrawVertex),
-            });
+            }, allocator);
             descs.slice()[index].setName("NORMAL");
         }
 
@@ -407,7 +392,7 @@ pub const RenderProgManager = extern struct {
                 .format = .RGBA8_UNORM,
                 .offset = @offsetOf(DrawVertex, "tangent"),
                 .elementStride = @sizeOf(DrawVertex),
-            });
+            }, allocator);
             descs.slice()[index].setName("TANGENT");
         }
 
@@ -417,7 +402,7 @@ pub const RenderProgManager = extern struct {
                 .format = .RGBA8_UNORM,
                 .offset = @offsetOf(DrawVertex, "color"),
                 .elementStride = @sizeOf(DrawVertex),
-            });
+            }, allocator);
 
             descs.slice()[index].setName("COLOR");
         }
@@ -920,14 +905,13 @@ pub const RenderProgManager = extern struct {
             .{ .EXPOSURE_CS, "builtin/post/exposure", "", &.{&.{ "HISTOGRAM_BINS", "256" }}, false, Shader.Stage.compute, .UNKNOWN, .EXPOSURE },
         };
 
-        try prog_manager.renderProgs.setNum(builtins.len);
+        try prog_manager.renderProgs.setNum(builtins.len, allocator);
 
         for (prog_manager.renderProgs.slice(), &builtins, 0..) |*prog, *builtin, i| {
             const builtin_shader, const name, const suffix, const macros, const gpu_skinning, const stage, const vertex_layout, const binding_layout = builtin.*;
 
-            prog.name = idlib.idStr{};
-            prog.name.initEmptyBuffer();
-            try prog.name.assignSlice(name);
+            prog.name = idlib.Str{};
+            try prog.name.assignSlice(name, allocator);
             prog.builtin = true;
             prog.usesJoints = gpu_skinning;
             prog.vertexLayout = vertex_layout;
@@ -941,6 +925,7 @@ pub const RenderProgManager = extern struct {
                     suffix,
                     macros,
                     true,
+                    allocator,
                 ) catch null
             else
                 null;
@@ -952,6 +937,7 @@ pub const RenderProgManager = extern struct {
                     suffix,
                     macros,
                     true,
+                    allocator,
                 ) catch null
             else
                 null;
@@ -963,6 +949,7 @@ pub const RenderProgManager = extern struct {
                     suffix,
                     macros,
                     true,
+                    allocator,
                 ) catch null
             else
                 null;
@@ -994,7 +981,8 @@ pub const RenderProgManager = extern struct {
         vertex_index: usize,
         fragment_index: usize,
         binding_type: common.BindingLayoutType,
-    ) error{OutOfMemory}!usize {
+        allocator: Allocator,
+    ) Allocator.Error!usize {
         for (prog_manager.renderProgs.constSlice(), 0..) |prog, i| {
             if (prog.vertexShaderIndex == vertex_index and
                 prog.fragmentShaderIndex == fragment_index)
@@ -1006,11 +994,10 @@ pub const RenderProgManager = extern struct {
         const index = try prog_manager.renderProgs.append(.{
             .vertexLayout = .DRAW_VERT,
             .bindingLayoutType = binding_type,
-        });
+        }, allocator);
 
         const program = &prog_manager.renderProgs.slice()[index];
-        program.name.initEmptyBuffer();
-        try program.name.assignSlice(name);
+        try program.name.assignSlice(name, allocator);
 
         prog_manager.loadProgram(program, vertex_index, fragment_index);
 
@@ -1062,6 +1049,7 @@ pub const RenderProgManager = extern struct {
         suffix: []const u8,
         macros: []const []const []const u8,
         builtin: bool,
+        allocator: Allocator,
     ) LoadShaderError!usize {
         const shader_name = fs.stripExtension(path);
 
@@ -1079,23 +1067,20 @@ pub const RenderProgManager = extern struct {
             .shaderFeatures = 0,
             .builtin = builtin,
             .stage = stage,
-        });
+        }, allocator);
         const shader = &prog_manager.shaders.slice()[index];
-        shader.name.initEmptyBuffer();
-        try shader.name.assignSlice(shader_name);
-        shader.nameOutSuffix.initEmptyBuffer();
-        try shader.nameOutSuffix.assignSlice(suffix);
+        try shader.name.assignSlice(shader_name, allocator);
+        try shader.nameOutSuffix.assignSlice(suffix, allocator);
 
-        try shader.macros.setNum(macros.len);
+        try shader.macros.setNum(macros.len, allocator);
 
         for (shader.macros.slice(), macros) |*macro, in_macro| {
+            macro.* = .{};
             const macro_name = in_macro[0];
             const macro_def = in_macro[1];
 
-            macro.name.initEmptyBuffer();
-            try macro.name.assignSlice(macro_name);
-            macro.definition.initEmptyBuffer();
-            try macro.definition.assignSlice(macro_def);
+            try macro.name.assignSlice(macro_name, allocator);
+            try macro.definition.assignSlice(macro_def, allocator);
         }
 
         try prog_manager.assureShaderLoaded(shader);
@@ -1134,8 +1119,9 @@ pub const RenderProgManager = extern struct {
             else => @panic("[RENDER PROG] Unsupported graphics api"),
         };
 
-        const blob = try fs.instance.readFileAnyAlloc(adjusted_name);
-        defer fs.instance.freeFileBuffer(blob);
+        const allocator = global.gpa.allocator();
+        const blob = try fs.instance.readFileAnyAlloc(adjusted_name, allocator);
+        defer allocator.free(blob);
 
         var constants = std.BoundedArray(shader_blob.ShaderConstant, 32)
             .init(0) catch unreachable;

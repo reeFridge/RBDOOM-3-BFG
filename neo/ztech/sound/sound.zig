@@ -27,7 +27,7 @@ pub const SoundShader = extern struct {
     altSound: ?*const SoundShader = null,
     leadin: bool = false,
     leadinVolume: f32 = 0,
-    entries: idlib.idList(*SoundSample) = .{},
+    entries: idlib.List(*SoundSample) = .{},
 
     pub fn init(self: *SoundShader) void {
         self.* = .{};

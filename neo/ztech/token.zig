@@ -32,7 +32,9 @@ pub const Subtype = packed struct(u32) {
 };
 
 pub const Token = extern struct {
-    base: idlib.idStr = .{},
+    const Allocator = std.mem.Allocator;
+
+    str: idlib.Str = .{},
     type: Type = .unknown,
     subtype: Subtype = .{},
     line: u32 = 0,
@@ -46,39 +48,43 @@ pub const Token = extern struct {
 
     extern fn c_token_calculateNumberValue(*Token) void;
 
-    pub fn initEmpty(token: *Token) void {
-        token.base.initEmptyBuffer();
+    pub fn deinit(token: *Token, allocator: Allocator) void {
+        token.str.deinit(allocator);
     }
 
-    pub fn deinit(token: *Token) void {
-        token.base.deinit();
-    }
-
-    pub fn slice(token: *const Token) [:0]const u8 {
-        return token.base.constSlice();
+    pub fn slice(token: *const Token) []const u8 {
+        return token.str.constSlice();
     }
 
     pub inline fn ieql(token: *const Token, s: []const u8) bool {
-        return std.ascii.eqlIgnoreCase(token.base.constSlice(), s);
+        return std.ascii.eqlIgnoreCase(token.str.constSlice(), s);
     }
 
     pub inline fn eql(token: *const Token, s: []const u8) bool {
-        return std.mem.eql(u8, token.base.constSlice(), s);
+        return std.mem.eql(u8, token.str.constSlice(), s);
     }
 
-    pub fn appendDirty(token: *Token, char: u8) error{OutOfMemory}!void {
-        try token.base.ensureAlloced(token.base.len + 2, true);
-        token.base.data.?[token.base.len] = char;
-        token.base.len += 1;
+    pub fn append(
+        token: *Token,
+        char: u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        try token.str.ensureAlloced(token.str.len + 1, true, allocator);
+        token.str.buffer()[token.str.len] = char;
+        token.str.len += 1;
     }
 
-    pub fn assignToken(token: *Token, tok: *const Token) error{OutOfMemory}!void {
-        token.base.deinit();
+    pub fn assignToken(
+        token: *Token,
+        from_token: *const Token,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        token.str.deinit(allocator);
 
-        token.* = tok.*;
-        token.base.initEmptyBuffer();
+        token.* = from_token.*;
+        token.str = .{};
 
-        try token.base.assignSlice(tok.slice());
+        try token.str.assignSlice(from_token.slice(), allocator);
     }
 
     pub fn getUintValue(token: *Token) u32 {

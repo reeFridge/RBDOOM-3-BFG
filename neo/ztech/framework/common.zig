@@ -27,17 +27,17 @@ pub const Common = opaque {
     }
 
     pub fn init(_: *Common, allocator: std.mem.Allocator) !void {
-        try cmd.instance.init();
-        cvar.instance.init();
+        try cmd.instance.init(allocator);
+        try cvar.instance.init(allocator);
         try key_input.init(allocator);
         console.instance.init();
         // TODO try system.init(); // WINDOWS ONLY!
         try network.init();
         // TODO try common.initSIMD(); // wait for SIMD support
-        try fs.instance.init();
-        try localization.setDefaultLang();
+        try fs.instance.init(allocator);
+        try localization.setDefaultLang(allocator);
         try decl_manager.instance.init(allocator);
-        try event_loop.instance.init();
+        try event_loop.instance.init(allocator);
         try parallel_job_manager.instance.init();
         try cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec default.cfg\n");
         try cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec autoexec.cfg\n");
@@ -73,7 +73,7 @@ pub const Common = opaque {
 
         // COMPLETE!
 
-        try cvar.setCVarsFromArgs(null);
+        try cvar.setCVarsFromArgs(null, allocator);
         //c_common_init(common, 0, null);
     }
 

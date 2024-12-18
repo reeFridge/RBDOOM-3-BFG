@@ -71,6 +71,22 @@ void c_nvrhi_device_createFramebuffer(
 	*handle = device->createFramebuffer(*desc);
 }
 
+void c_nvrhi_device_createSampler(
+		nvrhi::IDevice* device,
+		nvrhi::SamplerHandle* handle,
+		const nvrhi::SamplerDesc* desc)
+{
+	*handle = device->createSampler(*desc);
+}
+
+void c_nvrhi_device_createTexture(
+		nvrhi::IDevice* device,
+		nvrhi::TextureHandle* handle,
+		const nvrhi::TextureDesc* desc)
+{
+	*handle = device->createTexture(*desc);
+}
+
 void c_nvrhi_device_createBindingLayout(
 		nvrhi::IDevice* device,
 		nvrhi::BindingLayoutHandle* handle,

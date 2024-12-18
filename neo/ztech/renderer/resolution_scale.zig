@@ -4,7 +4,7 @@ pub const ResolutionScale = extern struct {
     extern fn c_resolutionScale_initForMap(*ResolutionScale) callconv(.C) void;
     extern fn c_resolutionScale_getCurrentResolutionScale(*ResolutionScale, *f32, *f32) callconv(.C) void;
     extern fn c_resolutionScale_setCurrentGPUFrameTime(*ResolutionScale, c_int) callconv(.C) void;
-    extern fn c_resolutionScale_getConsoleText(*ResolutionScale, *idlib.idStr) void;
+    extern fn c_resolutionScale_getConsoleText(*ResolutionScale, *idlib.Str) void;
 
     dropMilliseconds: f32 = 15,
     raiseMilliseconds: f32 = 13,

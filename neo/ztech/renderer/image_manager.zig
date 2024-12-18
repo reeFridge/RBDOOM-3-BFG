@@ -8,6 +8,9 @@ const Image = image_.Image;
 const RenderSystem = @import("render_system.zig");
 const framebuffer = @import("framebuffer.zig");
 const material = @import("material.zig");
+const Allocator = std.mem.Allocator;
+
+pub var garbage_gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 pub const ImageManager = extern struct {
     defaultImage: ?*Image,
@@ -68,15 +71,12 @@ pub const ImageManager = extern struct {
     guiEdit: ?*Image,
     guiEditDepthStencilImage: ?*Image,
 
-    images: idlib.idList(*Image),
-    image_hash: idlib.idHashIndex,
-    images_to_load: idlib.idList(*Image),
+    images: idlib.List(*Image),
+    image_hash: idlib.HashIndex,
+    images_to_load: idlib.List(*Image),
     inside_level_load: bool = false,
     preloading_map_images: bool = false,
     command_list: nvrhi.CommandListHandle = .{},
-
-    extern fn c_imageManager_shutdown(*ImageManager) void;
-    extern fn c_imageManager_purgeAllImages(*ImageManager) void;
 
     pub fn imageFromFile(
         image_manager: *ImageManager,
@@ -86,7 +86,7 @@ pub const ImageManager = extern struct {
         arg_usage: image_.TextureUsage,
         cube_map: image_.CubeFiles,
         cube_map_size: u32,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) Image.ActuallyLoadImageError!*Image {
         if (std.ascii.eqlIgnoreCase(arg_name, "default") or
             std.ascii.eqlIgnoreCase(arg_name, "_default"))
@@ -108,7 +108,7 @@ pub const ImageManager = extern struct {
         else
             arg_name[0..];
 
-        const hash = idlib.idStr.fileNameHash(name);
+        const hash = idlib.Str.fileNameHash(name);
         var i = image_manager.image_hash.first(hash);
         const images = image_manager.images.constSlice();
         while (i != -1) : (i = image_manager.image_hash.next(@intCast(i))) {
@@ -151,7 +151,7 @@ pub const ImageManager = extern struct {
             }
         }
 
-        const image = try image_manager.allocImage(name);
+        const image = try image_manager.allocImage(name, allocator);
         image.cube_files = cube_map;
         image.cube_map_size = cube_map_size;
         image.usage = usage;
@@ -174,10 +174,10 @@ pub const ImageManager = extern struct {
         image_manager: *ImageManager,
         all: bool,
         command_list: *nvrhi.ICommandList,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) Image.ActuallyLoadImageError!void {
         for (image_manager.images.constSlice()) |image| {
-            try image.reload(all, command_list);
+            try image.reload(all, command_list, allocator);
         }
 
         try image_manager.loadDeferredImages(command_list, allocator);
@@ -186,7 +186,7 @@ pub const ImageManager = extern struct {
     fn loadDeferredImages(
         image_manager: *ImageManager,
         command_list: *nvrhi.ICommandList,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) Image.ActuallyLoadImageError!void {
         if (image_manager.inside_level_load) return;
 
@@ -194,143 +194,175 @@ pub const ImageManager = extern struct {
             try image.actuallyLoadImageOrDefault(command_list, allocator);
         }
 
-        image_manager.images_to_load.clear();
+        image_manager.images_to_load.clear(allocator);
     }
 
-    pub fn init(image_manager: *ImageManager) error{OutOfMemory}!void {
-        try image_manager.images.resizeWithGranularity(1024, 1024);
+    pub fn init(image_manager: *ImageManager, allocator: Allocator) Allocator.Error!void {
+        try image_manager.images.resizeWithGranularity(1024, 1024, allocator);
         image_manager.image_hash = .{};
-        try image_manager.image_hash.resizeIndex(1024);
+        try image_manager.image_hash.resizeIndex(1024, allocator);
 
-        try image_manager.createIntrinsicImages();
+        try image_manager.createIntrinsicImages(allocator);
         // TODO: addCommand reloadImages
         // TODO: addCommand listImages
         // TODO: addCommand combineCubeImages
         // TODO: image_manager.loadDeferredImages
     }
 
-    pub fn shutdown(image_manager: *ImageManager) void {
-        c_imageManager_shutdown(image_manager);
+    pub fn shutdown(image_manager: *ImageManager, allocator: Allocator) void {
+        for (image_manager.images.constSlice()) |image_ptr| image_ptr.deinit(allocator);
+        image_manager.image_hash.clear();
+        image_manager.command_list.deinit();
+
+        if (garbage_gpa.deinit() == std.heap.Check.leak)
+            @panic("[IMAGE] garbage allocator leak!");
     }
 
     pub fn purgeAllImages(image_manager: *ImageManager) void {
-        c_imageManager_purgeAllImages(image_manager);
+        for (image_manager.images.constSlice()) |image_ptr|
+            image_ptr.purgeImage();
     }
 
-    fn createIntrinsicImages(image_manager: *ImageManager) error{OutOfMemory}!void {
+    fn createIntrinsicImages(
+        image_manager: *ImageManager,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         image_manager.defaultImage = try image_manager.imageFromFunction(
             "_default",
             image_gen.defaultImage,
+            allocator,
         );
 
         image_manager.ldrImage = try image_manager.imageFromFunction(
             "_currentRenderLDR",
             image_gen.ldrNativeImage,
+            allocator,
         );
 
         image_manager.currentRenderImage = try image_manager.imageFromFunction(
             "_currentRender",
             image_gen.hdrRGBA16FImageResNative,
+            allocator,
         );
 
         image_manager.currentDepthImage = try image_manager.imageFromFunction(
             "_currentDepth",
             image_gen.depthImage,
+            allocator,
         );
 
         image_manager.currentRenderHDRImage = try image_manager.imageFromFunction(
             "_currentRenderHDR",
             image_gen.hdrRGBA16FImageResNativeMSAAOpt,
+            allocator,
         );
 
         image_manager.ambientOcclusionImage[0] = try image_manager.imageFromFunction(
             "_ao0",
             image_gen.ambientOcclusionImageResNative,
+            allocator,
         );
 
         image_manager.ambientOcclusionImage[1] = try image_manager.imageFromFunction(
             "_ao1",
             image_gen.ambientOcclusionImageResNative,
+            allocator,
         );
 
         image_manager.hierarchicalZBufferImage = try image_manager.imageFromFunction(
             "_cszBuffer",
             image_gen.hierarchicalZBufferImageResNative,
+            allocator,
         );
 
         image_manager.gbufferNormalsRoughnessImage = try image_manager.imageFromFunction(
             "_currentNormals",
             image_gen.geometryBufferImageResNative,
+            allocator,
         );
 
         image_manager.taaMotionVectorsImage = try image_manager.imageFromFunction(
             "_taaMotionVectors",
             image_gen.hdrRG16FImageResNative,
+            allocator,
         );
 
         image_manager.taaResolvedImage = try image_manager.imageFromFunction(
             "_taaResolved",
             image_gen.hdrRGBA16FImageResNativeUav,
+            allocator,
         );
 
         image_manager.taaFeedback1Image = try image_manager.imageFromFunction(
             "_taaFeedback1",
             image_gen.hdrRGBA16SImageResNativeUav,
+            allocator,
         );
 
         image_manager.taaFeedback2Image = try image_manager.imageFromFunction(
             "_taaFeedback2",
             image_gen.hdrRGBA16SImageResNativeUav,
+            allocator,
         );
 
         image_manager.envprobeHDRImage = try image_manager.imageFromFunction(
             "_envprobeHDR",
             image_gen.envprobeImageHdr,
+            allocator,
         );
 
         image_manager.envprobeDepthImage = try image_manager.imageFromFunction(
             "_envprobeDepth",
             image_gen.envprobeImageDepth,
+            allocator,
         );
 
         image_manager.smaaEdgesImage = try image_manager.imageFromFunction(
             "_smaaEdges",
             image_gen.smaaImageResNative,
+            allocator,
         );
 
         image_manager.smaaBlendImage = try image_manager.imageFromFunction(
             "_smaaBlend",
             image_gen.smaaImageResNative,
+            allocator,
         );
 
         image_manager.shadowAtlasImage = try image_manager.imageFromFunction(
             "_shadowMapAtlas",
             image_gen.createShadowMapImageAtlas,
+            allocator,
         );
 
         image_manager.bloomRenderImage[0] = try image_manager.imageFromFunction(
             "_bloomRender0",
             image_gen.hdrRGBA16FImageResQuarterLinear,
+            allocator,
         );
 
         image_manager.bloomRenderImage[1] = try image_manager.imageFromFunction(
             "_bloomRender1",
             image_gen.hdrRGBA16FImageResQuarterLinear,
+            allocator,
         );
 
         image_manager.guiEdit = try image_manager.imageFromFunction(
             "_guiEdit",
             image_gen.guiEditFunction,
+            allocator,
         );
 
         image_manager.guiEditDepthStencilImage = try image_manager.imageFromFunction(
             "_guiEditDepthStencil",
             image_gen.guiEditDepthStencilFunction,
+            allocator,
         );
 
         image_manager.accumImage = try image_manager.imageFromFunction(
             "_accum",
             image_gen.RGBA8ImageRT,
+            allocator,
         );
 
         var string_buffer: [256]u8 = undefined;
@@ -342,6 +374,7 @@ pub const ImageManager = extern struct {
                 .{framebuffer.shadow_map_resolutions[0]},
             ) catch unreachable,
             image_gen.createShadowMapImageRes0,
+            allocator,
         );
 
         image_manager.shadowImage[1] = try image_manager.imageFromFunction(
@@ -351,6 +384,7 @@ pub const ImageManager = extern struct {
                 .{framebuffer.shadow_map_resolutions[1]},
             ) catch unreachable,
             image_gen.createShadowMapImageRes1,
+            allocator,
         );
 
         image_manager.shadowImage[2] = try image_manager.imageFromFunction(
@@ -360,6 +394,7 @@ pub const ImageManager = extern struct {
                 .{framebuffer.shadow_map_resolutions[2]},
             ) catch unreachable,
             image_gen.createShadowMapImageRes2,
+            allocator,
         );
 
         image_manager.shadowImage[3] = try image_manager.imageFromFunction(
@@ -369,6 +404,7 @@ pub const ImageManager = extern struct {
                 .{framebuffer.shadow_map_resolutions[3]},
             ) catch unreachable,
             image_gen.createShadowMapImageRes3,
+            allocator,
         );
 
         image_manager.shadowImage[4] = try image_manager.imageFromFunction(
@@ -378,6 +414,7 @@ pub const ImageManager = extern struct {
                 .{framebuffer.shadow_map_resolutions[4]},
             ) catch unreachable,
             image_gen.createShadowMapImageRes4,
+            allocator,
         );
     }
 
@@ -385,14 +422,15 @@ pub const ImageManager = extern struct {
         image_manager: *ImageManager,
         name: []const u8,
         image_gen_fn: *const image_.ImageGeneratorFunction,
-    ) error{OutOfMemory}!*Image {
+        allocator: Allocator,
+    ) Allocator.Error!*Image {
         const ext = std.fs.path.extension(name);
         const adjusted_name = if (std.mem.eql(u8, ".tga", ext))
             name[0 .. name.len - ext.len]
         else
             name[0..];
 
-        const hash = idlib.idStr.fileNameHash(adjusted_name);
+        const hash = idlib.Str.fileNameHash(adjusted_name);
 
         var i = image_manager.image_hash.first(hash);
         const images = image_manager.images.constSlice();
@@ -401,35 +439,42 @@ pub const ImageManager = extern struct {
             const image = images[index];
             if (std.mem.eql(u8, adjusted_name, image.name.constSlice())) {
                 if (image.generator_function != image_gen_fn) {
-                    std.debug.print("[IMAGE][WARN] reused image {s} with mixed generators\n", .{adjusted_name});
+                    std.debug.print(
+                        "[IMAGE][WARN] reused image {s} with mixed generators\n",
+                        .{adjusted_name},
+                    );
                 }
 
                 return image;
             }
         }
 
-        const image = try image_manager.allocImage(adjusted_name);
+        const image = try image_manager.allocImage(adjusted_name, allocator);
         image.generator_function = image_gen_fn;
         image.referenced_outside_level_load = true;
         return image;
     }
 
-    fn allocImage(image_manager: *ImageManager, name: []const u8) error{OutOfMemory}!*Image {
+    fn allocImage(
+        image_manager: *ImageManager,
+        name: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!*Image {
         if (name.len >= image_.max_image_name) {
             std.debug.print("[IMAGE][ERR] '{s}' is too long", .{name});
             @panic("too long image name");
         }
 
-        const hash = idlib.idStr.fileNameHash(name);
-        var allocator = global.gpa.allocator();
+        const hash = idlib.Str.fileNameHash(name);
         const image = try allocator.create(Image);
         errdefer allocator.destroy(image);
 
         image.* = .{};
-        try image.init(name);
+        try image.init(name, allocator);
 
-        const image_index = try image_manager.images.append(image);
-        try image_manager.image_hash.add(hash, @intCast(image_index));
+        const image_index = try image_manager.images.append(image, allocator);
+        try image_manager.image_hash.add(hash, @intCast(image_index), allocator);
+
         return image;
     }
 };

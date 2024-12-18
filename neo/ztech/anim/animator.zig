@@ -406,11 +406,11 @@ const Anim = opaque {};
 const DeclModelDef = extern struct {
     base: decl_manager.Decl,
     offset: CVec3,
-    joints: idlib.idList(JointInfo),
-    joint_parents: idlib.idList(c_int),
-    channel_joints: [num_anim_channels]idlib.idList(c_int),
+    joints: idlib.List(JointInfo),
+    joint_parents: idlib.List(c_int),
+    channel_joints: [num_anim_channels]idlib.List(c_int),
     model_handle: ?*RenderModel,
-    anims: idlib.idList(*Anim),
+    anims: idlib.List(*Anim),
     skin: ?*const DeclSkin,
 
     pub const default_definition = "{ }";

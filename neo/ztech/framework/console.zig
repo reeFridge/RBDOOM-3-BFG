@@ -16,7 +16,7 @@ const Justify = enum(c_int) {
 };
 
 const OverlayText = extern struct {
-    text: idlib.idStr,
+    text: idlib.Str,
     justify: Justify,
     time: c_int,
 };
@@ -52,8 +52,8 @@ pub const Console = extern struct {
     historyLine: c_int, // the line being displayed from history buffer
     consoleField: EditField,
 
-    overlayText: idlib.idList(OverlayText),
-    debugGraphs: idlib.idList(*DebugGraph),
+    overlayText: idlib.List(OverlayText),
+    debugGraphs: idlib.List(*DebugGraph),
 
     lastVirtualScreenWidth: c_int,
     lastVirtualScreenHeight: c_int,

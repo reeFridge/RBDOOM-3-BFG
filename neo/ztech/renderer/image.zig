@@ -9,6 +9,7 @@ const idlib = @import("../idlib.zig");
 const material = @import("material.zig");
 const frame_data = @import("frame_data.zig");
 const BinaryImage = @import("binary_image.zig").BinaryImage;
+const Allocator = std.mem.Allocator;
 
 pub const ImageGeneratorFunction = fn (*Image, ?*nvrhi.ICommandList) callconv(.C) void;
 
@@ -116,10 +117,10 @@ const c = @import("../sys/c_import.zig").c;
 
 pub const Image = extern struct {
     var garbage_index: usize = 0;
-    var image_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(vulkan.Image) = undefined;
-    var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.idList(c.VmaAllocation) = undefined;
+    var image_garbage: [frame_data.NUM_FRAME_DATA]idlib.List(vulkan.Image) = undefined;
+    var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.List(c.VmaAllocation) = undefined;
 
-    name: idlib.idStr = .{},
+    name: idlib.Str = .{},
     cube_files: CubeFiles = .@"2d",
     cube_map_size: u32 = 0,
     generator_function: ?*const ImageGeneratorFunction = null,
@@ -131,8 +132,8 @@ pub const Image = extern struct {
     referenced_outside_level_load: bool = false,
     level_load_referenced: bool = false,
     defaulted: bool = false,
-    source_file_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
-    binary_file_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP,
+    source_file_time: idlib.Time = fs.not_found_time,
+    binary_file_time: idlib.Time = fs.not_found_time,
     ref_count: u32 = 0,
     texture: nvrhi.TextureHandle = .{},
     sampler: nvrhi.SamplerHandle = .{},
@@ -144,14 +145,15 @@ pub const Image = extern struct {
         image: *Image,
         force: bool,
         command_list: *nvrhi.ICommandList,
-    ) error{OutOfMemory}!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         if (image.generator_function) |gen_fn| {
             gen_fn(image, command_list);
             return;
         }
 
         if (!force) {
-            const current_time: idlib.ID_TIME_T = fs.FILE_NOT_FOUND_TIMESTAMP;
+            const current_time: idlib.Time = fs.not_found_time;
             if (image.cube_files == .native or
                 image.cube_files == .camera or
                 image.cube_files == .quake1 or
@@ -166,27 +168,37 @@ pub const Image = extern struct {
         }
 
         image.purgeImage();
-        try image.addToDeferredLoad();
+        try image.addToDeferredLoad(allocator);
     }
 
-    pub fn init(image: *Image, name: []const u8) error{OutOfMemory}!void {
-        image.name.initEmptyBuffer();
-        try image.name.assignSlice(name);
+    pub fn init(
+        image: *Image,
+        name: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        try image.name.assignSlice(name, allocator);
 
         _ = image.sampler.reset();
         _ = image.texture.reset();
 
-        try image.addToDeferredLoad();
+        try image.addToDeferredLoad(allocator);
+    }
+
+    pub fn deinit(image: *Image, allocator: Allocator) void {
+        image.name.deinit(allocator);
+        image.sampler.deinit();
+        image.texture.deinit();
     }
 
     pub fn purgeImage(image: *Image) void {
         _ = image.texture.reset();
 
         if (device_manager.vma_allocator != null and image.image != .null_handle) {
+            const garbage_allocator = image_manager.garbage_gpa.allocator();
             _ = Image.image_garbage[Image.garbage_index]
-                .append(image.image) catch unreachable;
+                .append(image.image, garbage_allocator) catch unreachable;
             _ = Image.allocation_garbage[Image.garbage_index]
-                .append(image.allocation) catch unreachable;
+                .append(image.allocation, garbage_allocator) catch unreachable;
 
             image.image = .null_handle;
             image.allocation = null;
@@ -200,8 +212,8 @@ pub const Image = extern struct {
     pub fn makeDefault(
         image: *Image,
         opt_command_list: ?*nvrhi.ICommandList,
-        allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         const size = 16;
         var data: [size][size][4]u8 = undefined;
 
@@ -345,8 +357,8 @@ pub const Image = extern struct {
         is_uav: bool,
         sample_count: u32,
         cube_files: CubeFiles,
-        allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         image.purgeImage();
 
         image.filter = filter;
@@ -373,7 +385,7 @@ pub const Image = extern struct {
             image.is_loaded = true;
         } else {
             var im = BinaryImage{};
-            try im.init(image.name.constSlice());
+            try im.init(image.name.constSlice(), allocator);
             defer im.deinit(allocator);
 
             if (image.cube_files == .@"2d_packed_mipchain") {
@@ -805,8 +817,8 @@ pub const Image = extern struct {
         }
     }
 
-    fn addToDeferredLoad(image: *Image) error{OutOfMemory}!void {
-        _ = try image_manager.instance.images_to_load.addUnique(&image);
+    fn addToDeferredLoad(image: *Image, allocator: Allocator) Allocator.Error!void {
+        _ = try image_manager.instance.images_to_load.addUnique(&image, allocator);
     }
 
     fn removeFromDeferredLoad(image: *Image) void {
@@ -825,11 +837,11 @@ pub const Image = extern struct {
         return @ptrCast(image.texture.ptr_);
     }
 
-    pub const ActuallyLoadImageError = std.mem.Allocator.Error;
+    pub const ActuallyLoadImageError = Allocator.Error;
     pub fn actuallyLoadImageOrDefault(
         image: *Image,
         opt_command_list: ?*nvrhi.ICommandList,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) ActuallyLoadImageError!void {
         if (image.is_loaded) return;
 
@@ -840,7 +852,7 @@ pub const Image = extern struct {
 
         const production_mode = false;
         if (production_mode) {
-            image.source_file_time = fs.FILE_NOT_FOUND_TIMESTAMP;
+            image.source_file_time = fs.not_found_time;
             if (image.cube_files != .@"2d") {
                 image.opts.texture_type = .cubic;
                 image.repeat = .clamp;
@@ -876,8 +888,8 @@ pub const Image = extern struct {
             basename = basename[0 .. basename.len - ext.len];
             const find_str = "_s";
             if (std.mem.eql(u8, basename[basename.len - find_str.len ..], find_str)) {
-                try image.name.assignSlice(basename);
-                try image.name.appendSlice(find_str);
+                try image.name.assignSlice(basename, allocator);
+                try image.name.appendSlice(find_str, allocator);
             }
         }
 
@@ -892,20 +904,20 @@ pub const Image = extern struct {
         );
 
         var im = BinaryImage{};
-        try im.init(generated_name);
+        try im.init(generated_name, allocator);
         defer im.deinit(allocator);
 
         const binary_file_time = im.loadFromGenerated(image.source_file_time, allocator);
 
-        if (binary_file_time == fs.FILE_NOT_FOUND_TIMESTAMP and
+        if (binary_file_time == fs.not_found_time and
             fs.instance.usingResourceFiles())
         {
             @panic("not implemented");
         }
 
         if ((fs.instance.inProductionMode() and
-            binary_file_time != fs.FILE_NOT_FOUND_TIMESTAMP) or
-            (binary_file_time != fs.FILE_NOT_FOUND_TIMESTAMP and
+            binary_file_time != fs.not_found_time) or
+            (binary_file_time != fs.not_found_time and
             im.header.color_format == image.opts.color_format and
             (im.header.format == image.opts.format or
             (im.header.format == .rgb565 and image.opts.format == .rgba8)) and

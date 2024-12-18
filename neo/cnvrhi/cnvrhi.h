@@ -44,6 +44,14 @@ void c_nvrhi_device_createFramebuffer(
 		nvrhi::IDevice* device,
 		nvrhi::FramebufferHandle* handle,
 		const nvrhi::FramebufferDesc* desc);
+void c_nvrhi_device_createSampler(
+		nvrhi::IDevice* device,
+		nvrhi::SamplerHandle* handle,
+		const nvrhi::SamplerDesc* desc);
+void c_nvrhi_device_createTexture(
+		nvrhi::IDevice* device,
+		nvrhi::TextureHandle* handle,
+		const nvrhi::TextureDesc* desc);
 void c_nvrhi_device_createShader(
 		nvrhi::IDevice* device,
 		nvrhi::ShaderHandle* handle,

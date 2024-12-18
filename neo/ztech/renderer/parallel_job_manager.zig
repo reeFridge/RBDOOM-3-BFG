@@ -37,7 +37,7 @@ pub const ParallelJobManager = extern struct {
     numPhysicalCpuCores: c_int,
     numLogicalCpuCores: c_int,
     numCpuPackages: c_int,
-    jobLists: idlib.idStaticList(*ParallelJobList, job_list.MAX_JOBLISTS),
+    jobLists: idlib.StaticList(*ParallelJobList, job_list.MAX_JOBLISTS),
 
     extern fn c_parallelJobManager_allocJobList(
         *ParallelJobManager,

@@ -7,13 +7,11 @@ const SoundShader = @import("../sound/sound.zig").SoundShader;
 pub const DeclAudio = extern struct {
     base: Decl = .{},
     audio: ?*const SoundShader = null,
-    audioName: idlib.idStr = .{},
-    info: idlib.idStr = .{},
+    audioName: idlib.Str = .{},
+    info: idlib.Str = .{},
 
     pub fn init(self: *DeclAudio) void {
         self.* = .{};
-        self.audioName.initEmptyBuffer();
-        self.info.initEmptyBuffer();
     }
 };
 
@@ -21,58 +19,44 @@ pub const DeclVideo = extern struct {
     base: Decl = .{},
     preview: ?*const Material = null,
     video: ?*const Material = null,
-    videoName: idlib.idStr = .{},
-    info: idlib.idStr = .{},
+    videoName: idlib.Str = .{},
+    info: idlib.Str = .{},
     audio: ?*const SoundShader = null,
 
     pub fn init(self: *DeclVideo) void {
         self.* = .{};
-        self.videoName.initEmptyBuffer();
-        self.info.initEmptyBuffer();
     }
 };
 
 pub const DeclEmail = extern struct {
     base: Decl = .{},
-    text: idlib.idStr = .{},
-    subject: idlib.idStr = .{},
-    date: idlib.idStr = .{},
-    to: idlib.idStr = .{},
-    from: idlib.idStr = .{},
+    text: idlib.Str = .{},
+    subject: idlib.Str = .{},
+    date: idlib.Str = .{},
+    to: idlib.Str = .{},
+    from: idlib.Str = .{},
 
     pub fn init(self: *DeclEmail) void {
         self.* = .{};
-        self.text.initEmptyBuffer();
-        self.subject.initEmptyBuffer();
-        self.date.initEmptyBuffer();
-        self.to.initEmptyBuffer();
-        self.from.initEmptyBuffer();
     }
 };
 
 pub const DeclPDA = extern struct {
     base: Decl = .{},
-    videos: idlib.idList(*const DeclVideo) = .{},
-    audios: idlib.idList(*const DeclAudio) = .{},
-    emails: idlib.idList(*const DeclEmail) = .{},
-    pdaName: idlib.idStr = .{},
-    fullName: idlib.idStr = .{},
-    icon: idlib.idStr = .{},
-    id: idlib.idStr = .{},
-    post: idlib.idStr = .{},
-    title: idlib.idStr = .{},
-    security: idlib.idStr = .{},
+    videos: idlib.List(*const DeclVideo) = .{},
+    audios: idlib.List(*const DeclAudio) = .{},
+    emails: idlib.List(*const DeclEmail) = .{},
+    pdaName: idlib.Str = .{},
+    fullName: idlib.Str = .{},
+    icon: idlib.Str = .{},
+    id: idlib.Str = .{},
+    post: idlib.Str = .{},
+    title: idlib.Str = .{},
+    security: idlib.Str = .{},
     originalEmails: u32 = 0,
     originalVideos: u32 = 0,
 
     pub fn init(self: *DeclPDA) void {
         self.* = .{};
-        self.pdaName.initEmptyBuffer();
-        self.fullName.initEmptyBuffer();
-        self.icon.initEmptyBuffer();
-        self.id.initEmptyBuffer();
-        self.post.initEmptyBuffer();
-        self.title.initEmptyBuffer();
-        self.security.initEmptyBuffer();
     }
 };

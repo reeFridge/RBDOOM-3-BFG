@@ -12,6 +12,7 @@ const decl_manager = @import("../framework/decl_manager.zig");
 const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 const Image = @import("image.zig").Image;
+const Allocator = std.mem.Allocator;
 
 pub const SMALLCHAR_WIDTH: c_int = 8;
 pub const SMALLCHAR_HEIGHT: c_int = 16;
@@ -559,7 +560,7 @@ pub fn init(
     gui_model.clear();
     render_system.gui_model = gui_model;
 
-    try image_manager.instance.init();
+    try image_manager.instance.init(allocator);
     try framebuffer.init(
         &backend_,
         device_manager.instance(),
@@ -664,8 +665,8 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
 
     image_manager.instance.purgeAllImages();
     render_model_manager.instance.shutdown(allocator);
-    image_manager.instance.shutdown();
-    framebuffer.shutdown();
+    image_manager.instance.shutdown(allocator);
+    framebuffer.shutdown(allocator);
     render_system.gui_model.heapDestroy();
     frame_data.shutdown(allocator);
 
@@ -679,7 +680,7 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
 
     render_system.command_list.deinit();
 
-    backend_.shutdown();
+    backend_.shutdown(allocator);
 
     render_system.* = RenderSystem{};
 }
@@ -1131,17 +1132,20 @@ pub const VideoMode = extern struct {
     display_hz: u32 = 60,
 };
 
-fn getModesForDisplay(allocator: std.mem.Allocator, _: u32) error{OutOfMemory}![]VideoMode {
+fn getModesForDisplay(allocator: Allocator, _: u32) Allocator.Error![]VideoMode {
     const modes = try allocator.alloc(VideoMode, 1);
     modes[0] = .{};
 
     return modes;
 }
 
-pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
-    var arena = std.heap.ArenaAllocator.init(global.gpa.allocator());
+pub fn updateDisplayMode(
+    full_init: bool,
+    allocator: Allocator,
+) Allocator.Error!void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    const temp_allocator = arena.allocator();
 
     const stereo = 0;
     const no_stereo = 1;
@@ -1159,18 +1163,18 @@ pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
             params.fullscreen_mode = r_fullscreen.integer_value;
         } else { // fullscreen
             var current_display: u32 = @intCast(r_fullscreen.integer_value);
-            const modes = getModesForDisplay(allocator, current_display - 1) catch modes: {
+            const modes = getModesForDisplay(temp_allocator, current_display - 1) catch modes: {
                 current_display = 1;
-                try r_fullscreen.setInteger(@intCast(current_display));
+                try r_fullscreen.setInteger(@intCast(current_display), allocator);
 
-                break :modes try getModesForDisplay(allocator, current_display - 1);
+                break :modes try getModesForDisplay(temp_allocator, current_display - 1);
             };
 
             if (modes.len == 0) {
-                try r_video_mode.setInteger(0);
-                try r_fullscreen.setInteger(1);
-                try r_display_refresh.setInteger(0);
-                try r_anti_aliasing.setInteger(0);
+                try r_video_mode.setInteger(0, allocator);
+                try r_fullscreen.setInteger(1, allocator);
+                try r_display_refresh.setInteger(0, allocator);
+                try r_anti_aliasing.setInteger(0, allocator);
                 continue;
             }
 
@@ -1182,7 +1186,7 @@ pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
                 params.display_hz = @intCast(r_display_refresh.integer_value);
             } else {
                 if (r_video_mode.integer_value >= modes.len) {
-                    try r_video_mode.setInteger(0);
+                    try r_video_mode.setInteger(0, allocator);
                 }
 
                 const video_mode: u32 = @intCast(r_video_mode.integer_value);
@@ -1208,7 +1212,7 @@ pub fn updateDisplayMode(full_init: bool) error{OutOfMemory}!void {
             try framebuffer.resizeFramebuffers(
                 &backend_,
                 device_manager.instance(),
-                global.gpa.allocator(),
+                allocator,
                 true,
             );
             // TODO: imgui_hook.notifyDisplaySizeChanged();

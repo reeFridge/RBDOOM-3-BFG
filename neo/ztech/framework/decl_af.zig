@@ -16,8 +16,8 @@ const AFVector = extern struct {
     };
 
     type: Type,
-    joint1: idlib.idStr,
-    joint2: idlib.idStr,
+    joint1: idlib.Str,
+    joint2: idlib.Str,
     vec: CVec3,
     negate: bool,
 };
@@ -29,8 +29,8 @@ const AFJointMod = enum(c_int) {
 };
 
 const Body = extern struct {
-    name: idlib.idStr,
-    jointName: idlib.idStr,
+    name: idlib.Str,
+    jointName: idlib.Str,
     jointMod: AFJointMod,
     modelType: c_int,
     v1: AFVector,
@@ -47,7 +47,7 @@ const Body = extern struct {
     linearFriction: f32,
     angularFriction: f32,
     contactFriction: f32,
-    containedJoints: idlib.idStr,
+    containedJoints: idlib.Str,
     frictionDirection: AFVector,
     contactMotorDirection: AFVector,
 };
@@ -69,9 +69,9 @@ const Constraint = extern struct {
         PYRAMID,
     };
 
-    name: idlib.idStr,
-    body1: idlib.idStr,
-    body2: idlib.idStr,
+    name: idlib.Str,
+    body1: idlib.Str,
+    body2: idlib.Str,
     type: Type,
     friction: f32,
     stretch: f32,
@@ -92,8 +92,8 @@ const Constraint = extern struct {
 pub const DeclAF = extern struct {
     base: Decl = .{},
     modified: bool = false,
-    model: idlib.idStr = .{},
-    skin: idlib.idStr = .{},
+    model: idlib.Str = .{},
+    skin: idlib.Str = .{},
     defaultLinearFriction: f32 = 0.01,
     defaultAngularFriction: f32 = 0.01,
     defaultContactFriction: f32 = 0.8,
@@ -109,12 +109,10 @@ pub const DeclAF = extern struct {
     contents: ContentFlags = .{ .corpse = true },
     clipMask: ContentFlags = .{ .solid = true },
     selfCollision: bool = true,
-    bodies: idlib.idList(*Body) = .{},
-    constraints: idlib.idList(*Constraint) = .{},
+    bodies: idlib.List(*Body) = .{},
+    constraints: idlib.List(*Constraint) = .{},
 
     pub fn init(self: *DeclAF) void {
         self.* = .{};
-        self.model.initEmptyBuffer();
-        self.skin.initEmptyBuffer();
     }
 };

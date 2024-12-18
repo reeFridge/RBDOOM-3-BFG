@@ -10,6 +10,7 @@ const TokenType = token_.Type;
 const Token = token_.Token;
 const cvar_system = @import("cvar_system.zig");
 const bit = @import("../math/math.zig").bit;
+const Allocator = std.mem.Allocator;
 
 pub const CmdDecl = struct {
     name: []const u8,
@@ -75,43 +76,39 @@ pub const CmdArgs = extern struct {
                 .allow_ip_addresses = true,
             },
         };
-        lexer.initEmpty();
         defer lexer.deinit(allocator);
 
         lexer.loadMemory(text_sentinel, "CmdArgs.fromText", 0, allocator) catch return;
 
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
         var number_token = Token{};
-        number_token.initEmpty();
-        defer number_token.deinit();
+        defer number_token.deinit(allocator);
 
         var total_len: usize = 0;
 
         while (true) {
             if (args.argc == CmdArgs.MAX_COMMAND_ARGS) break;
-            lexer.readToken(&token) catch break;
+            lexer.readToken(&token, allocator) catch break;
 
             if (std.mem.eql(u8, token.slice(), "-")) {
-                if (try lexer.checkTokenType(.number, .{}, &number_token)) {
-                    var m = idlib.idStr{};
-                    m.initEmptyBuffer();
-                    m.assignSlice("-") catch unreachable;
-                    defer m.deinit();
+                if (try lexer.checkTokenType(.number, .{}, &number_token, allocator)) {
+                    var m = idlib.Str{};
+                    m.assignSlice("-", allocator) catch unreachable;
+                    defer m.deinit(allocator);
 
-                    m.appendSlice(number_token.base.constSlice()) catch unreachable;
+                    m.appendSlice(number_token.str.constSlice(), allocator) catch unreachable;
 
-                    token.base.assignSlice(m.constSlice()) catch unreachable;
+                    token.str.assignSlice(m.constSlice(), allocator) catch unreachable;
                 }
             }
 
             if (std.mem.eql(u8, token.slice(), "$")) {
-                lexer.readToken(&token) catch break;
+                lexer.readToken(&token, allocator) catch break;
                 //const cvar = cvar_system.instance.getCVarString(token.slice());
-                //token.base.assignStr(cvar);
-                token.base.assignSlice("<unknown>") catch unreachable;
+                //token.str.assignStr(cvar);
+                token.str.assignSlice("<unknown>", allocator) catch unreachable;
             }
 
             const len = token.slice().len;
@@ -123,7 +120,7 @@ pub const CmdArgs = extern struct {
         }
     }
 
-    pub fn appendArg(cmd_args: *CmdArgs, text: [:0]const u8) void {
+    pub fn appendArg(cmd_args: *CmdArgs, text: []const u8) void {
         if (cmd_args.argc >= MAX_COMMAND_ARGS) return;
 
         const argc: usize = @intCast(cmd_args.argc);
@@ -135,7 +132,9 @@ pub const CmdArgs = extern struct {
             // point at the (end + \0) of previous arg
             cmd_args.argv[argc - 1] + std.mem.len(cmd_args.argv[argc - 1]) + 1;
 
-        std.mem.copyForwards(u8, cmd_args.argv[argc][0..text.len :0], text);
+        std.mem.copyForwards(u8, cmd_args.argv[argc][0..text.len], text);
+        const arg = cmd_args.argv[argc][0..text.len :0];
+        arg[text.len] = 0;
         cmd_args.argc += 1;
     }
 };
@@ -165,18 +164,19 @@ pub const CmdSystem = extern struct {
     wait: c_int,
     textLength: c_int,
     textBuf: [MAX_CMD_BUFFER]u8,
-    completionString: idlib.idStr,
-    completionParms: idlib.idStrList,
-    tokenizedCmds: idlib.idList(CmdArgs),
+    completionString: idlib.Str,
+    completionParms: idlib.List(idlib.Str),
+    tokenizedCmds: idlib.List(CmdArgs),
     postReload: CmdArgs,
 
-    pub fn init(cmd_system: *CmdSystem) error{OutOfMemory}!void {
+    pub fn init(cmd_system: *CmdSystem, allocator: Allocator) Allocator.Error!void {
         try cmd_system.addCommand(
             "listCmds",
             cmd_listAllCommands,
             CmdFlags.CMD_FL_SYSTEM,
             "list commands",
             null,
+            allocator,
         );
 
         try cmd_system.addCommand(
@@ -185,6 +185,7 @@ pub const CmdSystem = extern struct {
             CmdFlags.CMD_FL_SYSTEM,
             "executes a config file",
             null,
+            allocator,
         );
 
         const cmd_decls = comptime blk: {
@@ -220,10 +221,11 @@ pub const CmdSystem = extern struct {
                 cmd_decl.flags,
                 cmd_decl.description,
                 cmd_decl.arg_completion,
+                allocator,
             );
         }
 
-        try cmd_system.completionString.assignSlice("*");
+        try cmd_system.completionString.assignSlice("*", allocator);
         cmd_system.textLength = 0;
     }
 
@@ -248,8 +250,7 @@ pub const CmdSystem = extern struct {
         std.debug.print("[CMD] Unknown command '{s}'\n", .{name});
     }
 
-    pub fn shutdown(cmd_system: *CmdSystem) void {
-        const allocator = global.gpa.allocator();
+    pub fn shutdown(cmd_system: *CmdSystem, allocator: Allocator) void {
         var opt_cmd = cmd_system.commands;
         while (opt_cmd) |cmd| : (opt_cmd = cmd_system.commands) {
             cmd_system.commands = cmd.next;
@@ -269,7 +270,8 @@ pub const CmdSystem = extern struct {
         flags: c_int,
         description: []const u8,
         arg_completion: ?*const ArgCompletionFn,
-    ) error{OutOfMemory}!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         // check if the command with the same name already exists
         {
             var opt_cmd = cmd_system.commands;
@@ -282,8 +284,6 @@ pub const CmdSystem = extern struct {
                 }
             }
         }
-
-        const allocator = global.gpa.allocator();
 
         const cmd = try allocator.create(CommandDef);
         errdefer allocator.destroy(cmd);
@@ -457,14 +457,15 @@ pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
 
     const filename = std.mem.span(args.argv[1]);
 
-    const buffer = file_system.instance.readFileAnyAlloc(filename) catch |err| {
+    const allocator = global.gpa.allocator();
+    const buffer = file_system.instance.readFileAnyAlloc(filename, allocator) catch |err| {
         std.debug.print("[CMD][ERR:{s}] While reading file {s}\n", .{
             @errorName(err),
             filename,
         });
         return;
     };
-    defer file_system.instance.freeFileBuffer(buffer);
+    defer allocator.free(buffer);
 
     std.debug.print("[CMD] Execing file: {s}\n", .{filename});
 

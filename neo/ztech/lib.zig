@@ -28,7 +28,8 @@ export fn ztech_entities_deinit() void {
 }
 
 export fn ztech_deinit() callconv(.C) void {
-    if (global.gpa.deinit() == std.heap.Check.leak) @panic("[ztech] allocator leak!");
+    if (global.gpa.deinit() == std.heap.Check.leak)
+        @panic("[ztech] allocator leak!");
 
     std.debug.print("[ztech] deinit: OK\n", .{});
 }

@@ -619,6 +619,16 @@ pub const IDevice = opaque {
         *BindingLayoutHandle,
         *const BindingLayoutDesc,
     ) void;
+    extern fn c_nvrhi_device_createSampler(
+        *IDevice,
+        *SamplerHandle,
+        *const SamplerDesc,
+    ) void;
+    extern fn c_nvrhi_device_createTexture(
+        *IDevice,
+        *TextureHandle,
+        *const TextureDesc,
+    ) void;
     extern fn c_nvrhi_device_createInputLayout(
         *IDevice,
         *InputLayoutHandle,
@@ -649,6 +659,24 @@ pub const IDevice = opaque {
     pub fn createBuffer(device: *IDevice, desc: *const BufferDesc) BufferHandle {
         var handle = BufferHandle{};
         c_nvrhi_device_createBuffer(device, &handle, desc);
+
+        return handle;
+    }
+
+    /// increases ref count
+    /// should call handle.deinit on resource release
+    pub fn createSampler(device: *IDevice, desc: *const SamplerDesc) SamplerHandle {
+        var handle = SamplerHandle{};
+        c_nvrhi_device_createSampler(device, &handle, desc);
+
+        return handle;
+    }
+
+    /// increases ref count
+    /// should call handle.deinit on resource release
+    pub fn createTexture(device: *IDevice, desc: *const TextureDesc) TextureHandle {
+        var handle = TextureHandle{};
+        c_nvrhi_device_createTexture(device, &handle, desc);
 
         return handle;
     }

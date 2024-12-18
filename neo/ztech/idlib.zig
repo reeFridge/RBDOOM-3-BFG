@@ -2,192 +2,191 @@ const std = @import("std");
 const global = @import("global.zig");
 const fs = @import("framework/file_system.zig");
 
-pub const ID_TIME_T = i64;
+pub const Time = i64;
 
-pub const idStr = extern struct {
-    const FILE_HASH_SIZE: c_int = 1024;
-    const STR_ALLOC_BASE: usize = 20;
-    const STR_ALLOC_GRAN: u32 = 32;
+pub const Str = extern struct {
+    const Allocator = std.mem.Allocator;
+
+    const file_hash_size: u32 = 1024;
+    const static_buffer_len: u32 = 20;
+    const alloc_granularity: u32 = 32;
 
     const AllocedAndFlag = packed struct(u32) {
-        alloced: u31 = 0,
+        alloced: u31 = static_buffer_len,
         flag: bool = false,
     };
 
     len: u32 = 0,
-    data: ?[*]u8 = null,
-    allocedAndFlag: AllocedAndFlag = .{},
-    baseBuffer: [STR_ALLOC_BASE]u8 = std.mem.zeroes([STR_ALLOC_BASE]u8),
+    alloced_ptr: ?[*]u8 = null,
+    alloced_and_flag: AllocedAndFlag = .{},
+    static_buffer: [static_buffer_len]u8 = std.mem.zeroes([static_buffer_len]u8),
 
-    pub fn initEmptyBuffer(self: *idStr) void {
-        self.setStatic(false);
-        self.setAlloced(STR_ALLOC_BASE);
-        self.data = &self.baseBuffer;
+    pub inline fn buffer(self: *Str) []u8 {
+        return if (self.alloced_ptr) |data_ptr|
+            data_ptr[0..self.alloced()]
+        else
+            &self.static_buffer;
+    }
+
+    pub inline fn slice(self: *Str) []u8 {
+        return self.buffer()[0..self.len];
+    }
+
+    pub inline fn constSlice(self: *const Str) []const u8 {
+        return @as(*Str, @constCast(self)).slice();
+    }
+
+    pub inline fn constSliceZ(self: *const Str) [:0]const u8 {
+        return @as(*Str, @constCast(self)).buffer()[0..self.len :0];
+    }
+
+    pub fn empty(self: *Str) void {
         self.len = 0;
     }
 
-    pub fn move(src: *idStr, dst: *idStr) void {
-        dst.* = src.*;
-
-        const data = src.data orelse return;
-        if (&src.baseBuffer == data) {
-            dst.data = &dst.baseBuffer;
-        }
-    }
-
-    pub fn empty(self: *idStr) error{OutOfMemory}!void {
-        try self.ensureAlloced(1, true);
-        self.data.?[0] = 0;
-        self.len = 0;
-    }
-
-    pub fn assignSlice(self: *idStr, slice: []const u8) error{OutOfMemory}!void {
-        if (slice.len == 0) {
-            try self.ensureAlloced(1, false);
-            const data = self.data orelse unreachable;
-            data[0] = 0;
+    pub fn assignSlice(
+        self: *Str,
+        arg_slice: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        if (arg_slice.len == 0) {
             self.len = 0;
             return;
         }
 
-        if (self.data) |data| {
-            if (data == slice.ptr) return;
+        if (self.buffer().ptr == arg_slice.ptr) return;
 
-            const len: usize = @intCast(self.len);
-            if (@intFromPtr(slice.ptr) >= @intFromPtr(data) and
-                @intFromPtr(slice.ptr) <= @intFromPtr(data + len))
-            {
-                const diff = @intFromPtr(slice.ptr) - @intFromPtr(data);
-                std.debug.assert(slice.len < len);
-
-                for (slice, 0..) |char, i| {
-                    data[i] = char;
-                }
-
-                data[slice.len] = 0;
-                self.len -= @intCast(diff);
-                return;
-            }
-        }
-
-        try self.ensureAlloced(slice.len + 1, false);
-        const data = self.data orelse unreachable;
-        std.mem.copyForwards(u8, data[0..self.alloced()], slice);
-        self.len = @intCast(slice.len);
-        data[slice.len] = 0;
+        try self.ensureAlloced(arg_slice.len, false, allocator);
+        std.mem.copyForwards(u8, self.buffer(), arg_slice);
+        self.len = @intCast(arg_slice.len);
     }
 
-    pub fn appendSlice(self: *idStr, slice: []const u8) error{OutOfMemory}!void {
-        const new_len: usize = @as(usize, @intCast(self.len)) + slice.len;
-        try self.ensureAlloced(new_len + 1, true);
-        const data = self.data orelse unreachable;
+    pub fn assignSliceZ(
+        self: *Str,
+        arg_slice: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        if (arg_slice.len == 0) {
+            self.len = 0;
+            return;
+        }
 
-        const start: usize = @intCast(self.len);
-        for (slice, 0..) |char, i| {
+        std.debug.assert(self.buffer().ptr != arg_slice.ptr);
+
+        try self.ensureAlloced(arg_slice.len + 1, false, allocator);
+        self.buffer()[arg_slice.len] = 0;
+
+        std.mem.copyForwards(u8, self.buffer(), arg_slice);
+        self.len = @intCast(arg_slice.len);
+    }
+
+    pub fn appendSlice(
+        self: *Str,
+        arg_slice: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const new_len: usize = @as(usize, @intCast(self.len)) + arg_slice.len;
+
+        try self.ensureAlloced(new_len, true, allocator);
+        const data = self.buffer();
+
+        const start: u32 = self.len;
+        for (arg_slice, 0..) |char, i| {
             data[start + i] = char;
         }
 
         self.len = @intCast(new_len);
-        data[new_len] = 0;
     }
 
-    pub fn appendStr(self: *idStr, other: *const idStr) error{OutOfMemory}!void {
-        self.appendSlice(other.constSlice());
-    }
-
-    pub fn stripTrailingChar(self: *idStr, char: u8) void {
-        const data_ptr = self.data orelse return;
-
+    pub fn stripTrailingChar(self: *Str, char: u8) void {
+        const data = self.slice();
         var i: usize = @intCast(self.len);
-        while (i > 0 and data_ptr[i - 1] == char) : (i -= 1) {
-            data_ptr[i - 1] = 0;
+        while (i > 0 and data[i - 1] == char) : (i -= 1) {
+            data[i - 1] = 0;
             self.len -= 1;
         }
     }
 
-    fn clear(self: *idStr) void {
+    pub fn clear(self: *Str, allocator: Allocator) void {
         if (self.isStatic()) {
             self.len = 0;
-            self.data.?[0] = 0;
             return;
         }
 
-        self.freeData();
-        self.* = idStr{};
-        self.initEmptyBuffer();
+        self.deinit(allocator);
+        self.* = Str{};
     }
 
-    fn freeData(self: *idStr) void {
+    pub fn deinit(self: *Str, allocator: Allocator) void {
         if (self.isStatic()) return;
 
-        if (self.data) |data| {
-            if (data != &self.baseBuffer) {
-                const allocator = global.gpa.allocator();
-                const buffer = data[0..self.alloced()];
-
-                allocator.free(buffer);
-            }
+        if (self.alloced_ptr) |ptr| {
+            allocator.free(ptr[0..self.alloced()]);
         }
     }
 
-    pub fn ensureAlloced(self: *idStr, amount: usize, keep_old: bool) error{OutOfMemory}!void {
+    pub fn ensureAlloced(
+        self: *Str,
+        amount: usize,
+        keep_old: bool,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         if (self.isStatic()) return;
 
         if (amount > self.alloced()) {
-            try self.reallocate(amount, keep_old);
+            try self.reallocate(amount, keep_old, allocator);
         }
     }
 
-    fn reallocate(self: *idStr, amount: usize, keep_old: bool) error{OutOfMemory}!void {
+    fn reallocate(
+        self: *Str,
+        amount: usize,
+        keep_old: bool,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         std.debug.assert(amount > 0);
 
-        const mod = @mod(amount, STR_ALLOC_GRAN);
+        const mod = @mod(amount, alloc_granularity);
         const new_size = if (mod == 0)
             amount
         else
-            amount + STR_ALLOC_GRAN - mod;
+            amount + alloc_granularity - mod;
 
-        const old_buffer = if (self.data) |data| old_buffer: {
-            if (data == &self.baseBuffer) break :old_buffer null;
-
-            break :old_buffer data[0..self.alloced()];
-        } else null;
-        self.setAlloced(new_size);
-
-        const allocator = global.gpa.allocator();
-
-        const new_buffer = try allocator.alloc(u8, self.alloced());
+        const new_buffer = try allocator.alloc(u8, new_size);
         for (new_buffer) |*char| char.* = 0;
 
+        const old_alloced_buffer = if (self.alloced_ptr) |data|
+            data[0..self.alloced()]
+        else
+            null;
+
+        self.setAlloced(new_size);
+
         if (keep_old) {
-            if (self.data) |data| {
-                data[@intCast(self.len)] = 0;
-                const dataz: [*:0]u8 = @ptrCast(data);
-                std.mem.copyForwards(u8, new_buffer, std.mem.span(dataz));
-            }
+            std.mem.copyForwards(u8, new_buffer, self.slice());
         }
 
-        if (old_buffer) |buffer| {
-            allocator.free(buffer);
+        if (old_alloced_buffer) |old_buffer| {
+            allocator.free(old_buffer);
         }
 
-        self.data = new_buffer.ptr;
+        self.alloced_ptr = new_buffer.ptr;
     }
 
-    inline fn setAlloced(self: *idStr, size: usize) void {
-        self.allocedAndFlag.alloced = @intCast(size);
+    inline fn setAlloced(self: *Str, size: usize) void {
+        self.alloced_and_flag.alloced = @intCast(size);
     }
 
-    inline fn alloced(self: *const idStr) usize {
-        return self.allocedAndFlag.alloced;
+    inline fn alloced(self: *const Str) usize {
+        return self.alloced_and_flag.alloced;
     }
 
-    inline fn setStatic(self: *idStr, is_static: bool) void {
-        self.allocedAndFlag.flag = is_static;
+    inline fn setStatic(self: *Str, is_static: bool) void {
+        self.alloced_and_flag.flag = is_static;
     }
 
-    inline fn isStatic(self: *const idStr) bool {
-        return self.allocedAndFlag.flag;
+    inline fn isStatic(self: *const Str) bool {
+        return self.alloced_and_flag.flag;
     }
 
     pub fn fileNameHash(str: []const u8) u32 {
@@ -201,7 +200,7 @@ pub const idStr = extern struct {
             result += letter * @as(u32, @intCast(i + 119));
         }
 
-        result &= FILE_HASH_SIZE - 1;
+        result &= file_hash_size - 1;
 
         return result;
     }
@@ -223,42 +222,19 @@ pub const idStr = extern struct {
 
         return result;
     }
-
-    pub inline fn constSlice(self: *const idStr) [:0]const u8 {
-        return if (self.data) |data|
-            std.mem.span(@as([*:0]u8, @ptrCast(data)))
-        else
-            &.{};
-    }
-
-    pub fn deinit(self: *idStr) void {
-        self.freeData();
-    }
 };
 
-pub fn idStrStatic(size: usize) type {
+pub fn List(T: type) type {
     return extern struct {
+        const Allocator = std.mem.Allocator;
         const Self = @This();
-
-        base: idStr = .{},
-        buffer: [size]u8,
-
-        pub fn constSlice(self: *const Self) [:0]const u8 {
-            return std.mem.span(@as([*:0]const u8, @ptrCast(&self.buffer)));
-        }
-    };
-}
-
-pub fn idList(T: type) type {
-    return extern struct {
-        const Self = @This();
-        const DEFAULT_GRANULARITY = 16;
+        const default_granularity = 16;
 
         num: u32 = 0,
         size: u32 = 0,
-        granularity: u32 = DEFAULT_GRANULARITY,
+        granularity: u32 = default_granularity,
         list: ?[*]T = null,
-        memTag: u8 = 0,
+        mem_tag: u8 = 0,
 
         pub fn removeIndex(self: *Self, index: usize) void {
             std.debug.assert(self.list != null);
@@ -270,8 +246,12 @@ pub fn idList(T: type) type {
             }
         }
 
-        pub fn addUnique(self: *Self, obj: *const T) error{OutOfMemory}!usize {
-            return self.findIndex(obj) orelse try self.append(obj.*);
+        pub fn addUnique(
+            self: *Self,
+            obj: *const T,
+            allocator: Allocator,
+        ) Allocator.Error!usize {
+            return self.findIndex(obj) orelse try self.append(obj.*, allocator);
         }
 
         pub fn remove(self: *Self, obj: *const T) bool {
@@ -289,24 +269,28 @@ pub fn idList(T: type) type {
             } else null;
         }
 
-        pub fn allocOne(self: *Self) error{OutOfMemory}!*T {
+        pub fn allocOne(self: *Self, allocator: Allocator) Allocator.Error!*T {
             if (self.list == null) {
-                try self.resize(@intCast(self.granularity));
+                try self.resize(self.granularity, allocator);
             }
 
             if (self.num == self.size) {
-                try self.resize(@intCast(self.size + self.granularity));
+                try self.resize(self.size + self.granularity, allocator);
             }
 
-            const new_item = &self.list.?[@intCast(self.num)];
+            const new_item = &self.list.?[self.num];
             self.num += 1;
 
             return new_item;
         }
 
-        pub fn setNum(self: *Self, num: usize) error{OutOfMemory}!void {
+        pub fn setNum(
+            self: *Self,
+            num: usize,
+            allocator: Allocator,
+        ) Allocator.Error!void {
             if (num > self.size) {
-                try self.resize(num);
+                try self.resize(num, allocator);
             }
 
             self.num = @intCast(num);
@@ -316,23 +300,26 @@ pub fn idList(T: type) type {
             self: *Self,
             size: usize,
             granularity: usize,
-        ) error{OutOfMemory}!void {
+            allocator: Allocator,
+        ) Allocator.Error!void {
             self.granularity = @intCast(granularity);
-            try self.resize(size);
+            try self.resize(size, allocator);
         }
 
-        pub fn resize(self: *Self, size: usize) error{OutOfMemory}!void {
+        pub fn resize(
+            self: *Self,
+            size: usize,
+            allocator: Allocator,
+        ) Allocator.Error!void {
             if (size == 0) {
-                self.clear();
+                self.clear(allocator);
                 return;
             }
 
             if (size == @as(usize, @intCast(self.size))) return;
 
-            const allocator = global.gpa.allocator();
-
             const new_list = if (self.list) |_|
-                try self.realloc(allocator, size)
+                try self.realloc(size, allocator)
             else
                 try allocator.alloc(T, size);
 
@@ -344,9 +331,13 @@ pub fn idList(T: type) type {
             }
         }
 
-        pub fn realloc(self: *Self, allocator: std.mem.Allocator, size: usize) error{OutOfMemory}![]T {
+        pub fn realloc(
+            self: *Self,
+            size: usize,
+            allocator: Allocator,
+        ) Allocator.Error![]T {
             const list_ptr = self.list orelse @panic("uninitialzied");
-            const list = list_ptr[0..@intCast(self.size)];
+            const list = list_ptr[0..self.size];
             if (!std.meta.hasMethod(T, "move"))
                 return try allocator.realloc(list, size);
 
@@ -364,9 +355,9 @@ pub fn idList(T: type) type {
             return new_list;
         }
 
-        pub fn append(self: *Self, obj: T) error{OutOfMemory}!usize {
+        pub fn append(self: *Self, obj: T, allocator: Allocator) Allocator.Error!usize {
             if (self.list == null) {
-                try self.resize(@intCast(self.granularity));
+                try self.resize(self.granularity, allocator);
             }
 
             if (self.num == self.size) {
@@ -375,7 +366,7 @@ pub fn idList(T: type) type {
                 }
 
                 const size = self.size + self.granularity;
-                try self.resize(@intCast(size - @mod(size, self.granularity)));
+                try self.resize(size - @mod(size, self.granularity), allocator);
             }
 
             const index: usize = @intCast(self.num);
@@ -385,7 +376,11 @@ pub fn idList(T: type) type {
             return index;
         }
 
-        pub fn assureSizeUndef(self: *Self, size: usize) error{OutOfMemory}!void {
+        pub fn assureSizeUndef(
+            self: *Self,
+            size: usize,
+            allocator: Allocator,
+        ) Allocator.Error!void {
             var new_size = size;
             if (new_size > self.size) {
                 if (self.granularity == 0) self.granularity = 16;
@@ -393,12 +388,17 @@ pub fn idList(T: type) type {
 
             new_size += @intCast(self.granularity - 1);
             new_size -= new_size % @as(usize, @intCast(self.granularity));
-            try self.resize(new_size);
+            try self.resize(new_size, allocator);
 
             self.num = @intCast(size);
         }
 
-        pub fn assureSizeInit(self: *Self, size: usize, init_value: T) error{OutOfMemory}!void {
+        pub fn assureSizeInit(
+            self: *Self,
+            size: usize,
+            init_value: T,
+            allocator: Allocator,
+        ) Allocator.Error!void {
             var new_size = size;
             if (new_size > self.size) {
                 if (self.granularity == 0) self.granularity = 16;
@@ -406,7 +406,7 @@ pub fn idList(T: type) type {
 
             new_size += @intCast(self.granularity - 1);
             new_size -= new_size % @as(usize, @intCast(self.granularity));
-            try self.resize(new_size);
+            try self.resize(new_size, allocator);
 
             const len: usize = @intCast(self.num);
             for (len..new_size) |i| {
@@ -418,23 +418,21 @@ pub fn idList(T: type) type {
 
         pub inline fn constSlice(self: *const Self) []const T {
             return if (self.list) |list|
-                list[0..@intCast(self.num)]
+                list[0..self.num]
             else
                 &.{};
         }
 
         pub inline fn slice(self: *Self) []T {
             return if (self.list) |list|
-                list[0..@intCast(self.num)]
+                list[0..self.num]
             else
                 &.{};
         }
 
-        pub fn clear(self: *Self) void {
-            const allocator = global.gpa.allocator();
-
+        pub fn clear(self: *Self, allocator: Allocator) void {
             if (self.list) |list| {
-                allocator.free(list[0..@intCast(self.size)]);
+                allocator.free(list[0..self.size]);
             }
 
             self.list = null;
@@ -444,9 +442,9 @@ pub fn idList(T: type) type {
     };
 }
 
-pub fn idStaticList(T: type, size: usize) type {
+pub fn StaticList(T: type, size: usize) type {
     return extern struct {
-        num: c_int = 0,
+        num: u32 = 0,
         list: [size]T = undefined,
 
         const Self = @This();
@@ -475,11 +473,11 @@ pub fn idStaticList(T: type, size: usize) type {
         }
 
         pub inline fn slice(self: *Self) []T {
-            return self.list[0..@intCast(self.num)];
+            return self.list[0..self.num];
         }
 
         pub inline fn constSlice(self: *const Self) []const T {
-            return self.list[0..@intCast(self.num)];
+            return self.list[0..self.num];
         }
 
         pub fn setNum(self: *Self, new_num: usize) void {
@@ -498,7 +496,7 @@ pub fn idStaticList(T: type, size: usize) type {
 const pthread = @cImport(@cInclude("pthread.h"));
 pub const MutexHandle = pthread.pthread_mutex_t;
 
-pub const idSysMutex = extern struct {
+pub const SysMutex = extern struct {
     handle: MutexHandle,
 
     extern fn c_sysMutex_unlock(*MutexHandle) callconv(.C) void;
@@ -506,57 +504,64 @@ pub const idSysMutex = extern struct {
     extern fn c_sysMutex_create(*MutexHandle) callconv(.C) void;
     extern fn c_sysMutex_destroy(*MutexHandle) callconv(.C) void;
 
-    pub fn init() idSysMutex {
+    pub fn init() SysMutex {
         var handle = MutexHandle{ .data = undefined };
         c_sysMutex_create(&handle);
 
         return .{ .handle = handle };
     }
 
-    pub fn deinit(mutex: *idSysMutex) void {
+    pub fn deinit(mutex: *SysMutex) void {
         c_sysMutex_destroy(&mutex.handle);
     }
 
-    pub fn lockBlocking(mutex: *idSysMutex) bool {
+    pub fn lockBlocking(mutex: *SysMutex) bool {
         return c_sysMutex_lock(&mutex.handle, true);
     }
 
-    pub fn lock(mutex: *idSysMutex) bool {
+    pub fn lock(mutex: *SysMutex) bool {
         return c_sysMutex_lock(&mutex.handle, false);
     }
 
-    pub fn unlock(mutex: *idSysMutex) void {
+    pub fn unlock(mutex: *SysMutex) void {
         c_sysMutex_unlock(&mutex.handle);
     }
 };
 
-pub const idHashIndex = extern struct {
-    const NULL_INDEX: i32 = -1;
-    var INVALID_INDEX: [1]i32 = .{-1};
-    const DEFAULT_HASH_GRANULARITY = 1024;
-    const DEFAULT_HASH_SIZE = 1024;
+pub const HashIndex = extern struct {
+    const Allocator = std.mem.Allocator;
+    const null_index: i32 = -1;
+    var invalid_index: [1]i32 = .{-1};
+    const default_hash_granularity = 1024;
+    const default_hash_size = 1024;
 
-    hash_size: u32 = DEFAULT_HASH_SIZE,
-    hash: [*]i32 = &INVALID_INDEX,
-    index_size: u32 = DEFAULT_HASH_SIZE,
-    index_chain: [*]i32 = &INVALID_INDEX,
-    granularity: u32 = DEFAULT_HASH_GRANULARITY,
-    hash_mask: i32 = DEFAULT_HASH_SIZE - 1,
+    hash_size: u32 = default_hash_size,
+    hash: [*]i32 = &invalid_index,
+    index_size: u32 = default_hash_size,
+    index_chain: [*]i32 = &invalid_index,
+    granularity: u32 = default_hash_granularity,
+    hash_mask: i32 = default_hash_size - 1,
     lookup_mask: i32 = 0,
 
-    pub fn add(hash_index: *idHashIndex, key: u32, index: u32) error{OutOfMemory}!void {
+    pub fn add(
+        hash_index: *HashIndex,
+        key: u32,
+        index: u32,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         std.debug.assert(index >= 0);
 
-        if (hash_index.hash == &INVALID_INDEX) {
+        if (hash_index.hash == &invalid_index) {
             try hash_index.allocate(
                 hash_index.hash_size,
                 if (index >= hash_index.index_size)
                     index + 1
                 else
                     hash_index.index_size,
+                allocator,
             );
         } else if (index >= hash_index.index_size) {
-            try hash_index.resizeIndex(index + 1);
+            try hash_index.resizeIndex(index + 1, allocator);
         }
 
         const h: usize = @intCast(@as(i32, @intCast(key)) & hash_index.hash_mask);
@@ -564,23 +569,27 @@ pub const idHashIndex = extern struct {
         hash_index.hash[h] = @intCast(index);
     }
 
-    pub fn clear(hash_index: *idHashIndex) void {
-        if (hash_index.hash != &INVALID_INDEX) {
-            @memset(hash_index.hash[0..hash_index.hash_size], NULL_INDEX);
+    pub fn clear(hash_index: *HashIndex) void {
+        if (hash_index.hash != &invalid_index) {
+            @memset(hash_index.hash[0..hash_index.hash_size], null_index);
         }
     }
 
-    fn allocate(hash_index: *idHashIndex, hash_size: usize, index_size: usize) error{OutOfMemory}!void {
+    fn allocate(
+        hash_index: *HashIndex,
+        hash_size: usize,
+        index_size: usize,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         std.debug.assert(std.math.isPowerOfTwo(hash_size));
-        hash_index.free();
+        hash_index.free(allocator);
 
-        var allocator = global.gpa.allocator();
-        const hash = try allocator.alloc(c_int, hash_size);
+        const hash = try allocator.alloc(i32, hash_size);
         errdefer allocator.free(hash);
-        @memset(hash, NULL_INDEX);
+        @memset(hash, null_index);
 
-        const index_chain = try allocator.alloc(c_int, index_size);
-        @memset(index_chain, NULL_INDEX);
+        const index_chain = try allocator.alloc(i32, index_size);
+        @memset(index_chain, null_index);
 
         hash_index.hash = hash.ptr;
         hash_index.hash_size = @intCast(hash.len);
@@ -590,22 +599,25 @@ pub const idHashIndex = extern struct {
         hash_index.lookup_mask = -1;
     }
 
-    pub fn free(hash_index: *idHashIndex) void {
-        var allocator = global.gpa.allocator();
-        if (hash_index.hash != &INVALID_INDEX) {
+    pub fn free(hash_index: *HashIndex, allocator: Allocator) void {
+        if (hash_index.hash != &invalid_index) {
             allocator.free(hash_index.hash[0..hash_index.hash_size]);
-            hash_index.hash = &INVALID_INDEX;
+            hash_index.hash = &invalid_index;
         }
 
-        if (hash_index.index_chain != &INVALID_INDEX) {
+        if (hash_index.index_chain != &invalid_index) {
             allocator.free(hash_index.index_chain[0..hash_index.index_size]);
-            hash_index.index_chain = &INVALID_INDEX;
+            hash_index.index_chain = &invalid_index;
         }
 
         hash_index.lookup_mask = 0;
     }
 
-    pub fn resizeIndex(hash_index: *idHashIndex, index_size: usize) error{OutOfMemory}!void {
+    pub fn resizeIndex(
+        hash_index: *HashIndex,
+        index_size: usize,
+        allocator: Allocator,
+    ) Allocator.Error!void {
         if (index_size <= hash_index.index_size) return;
 
         const granularity = @as(usize, @intCast(hash_index.granularity));
@@ -616,33 +628,36 @@ pub const idHashIndex = extern struct {
         else
             index_size + granularity - mod;
 
-        if (hash_index.index_chain == &INVALID_INDEX) {
+        if (hash_index.index_chain == &invalid_index) {
             hash_index.index_size = @intCast(new_size);
             return;
         }
 
-        var allocator = global.gpa.allocator();
         const old_index_size: usize = @intCast(hash_index.index_size);
         const old_index_chain = hash_index.index_chain[0..old_index_size];
-        const index_chain = try allocator.alloc(c_int, new_size);
+        const index_chain = try allocator.alloc(i32, new_size);
         @memcpy(index_chain[0..old_index_size], old_index_chain);
-        @memset(index_chain[old_index_size..new_size], NULL_INDEX);
+        @memset(index_chain[old_index_size..new_size], null_index);
 
         allocator.free(old_index_chain);
         hash_index.index_chain = index_chain.ptr;
         hash_index.index_size = @intCast(new_size);
     }
 
-    pub fn generateKey(hash_index: *const idHashIndex, str: []const u8, case_sensetive: bool) u32 {
+    pub fn generateKey(
+        hash_index: *const HashIndex,
+        str: []const u8,
+        case_sensetive: bool,
+    ) u32 {
         const hash = if (case_sensetive)
-            idStr.hash(str)
+            Str.hash(str)
         else
-            idStr.caseInsensetiveHash(str);
+            Str.caseInsensetiveHash(str);
 
         return @intCast(@as(i32, @intCast(hash)) & hash_index.hash_mask);
     }
 
-    pub fn first(hash_index: *const idHashIndex, key: u32) c_int {
+    pub fn first(hash_index: *const HashIndex, key: u32) i32 {
         const index: usize = @intCast(
             @as(i32, @intCast(key)) & hash_index.hash_mask & hash_index.lookup_mask,
         );
@@ -650,7 +665,7 @@ pub const idHashIndex = extern struct {
         return hash_index.hash[index];
     }
 
-    pub fn next(hash_index: *const idHashIndex, index: u32) c_int {
+    pub fn next(hash_index: *const HashIndex, index: u32) i32 {
         const next_index: usize = @intCast(
             @as(i32, @intCast(index)) & hash_index.lookup_mask,
         );
@@ -659,82 +674,82 @@ pub const idHashIndex = extern struct {
     }
 };
 
-pub const idFile = opaque {};
+pub const File = opaque {};
 
-pub const idDict = extern struct {
+pub const Dict = extern struct {
     const KeyValue = extern struct {
         key: *const anyopaque,
         value: *const anyopaque,
     };
 
-    args: idList(KeyValue) = .{},
-    argsHash: idHashIndex = .{},
+    args: List(KeyValue) = .{},
+    args_hash: HashIndex = .{},
 };
 
-pub const idZipCacheEntry = extern struct {
-    const MAX_ZIPPED_FILE_NAME: usize = 2048;
-    const ZPOS64_T = u64;
+pub const ZipCacheEntry = extern struct {
+    const max_filename: usize = 2048 - 1;
 
-    filename: idStrStatic(MAX_ZIPPED_FILE_NAME),
-    offset: ZPOS64_T,
-    length: ZPOS64_T,
-    owner: *idZipContainer,
+    filename: [max_filename:0]u8,
+    offset: u64,
+    length: u64,
+    owner: *ZipContainer,
 };
 
-pub const idZipContainer = extern struct {
-    const unzFile = opaque {};
+pub const ZipContainer = extern struct {
+    const UnzFile = opaque {};
+    const max_filename = 256 - 1;
 
-    fileName: idStrStatic(256),
-    zipFileHandle: ?*unzFile,
-    checksum: c_int,
-    numFileResources: c_int,
-    cacheTable: idList(idZipCacheEntry),
-    cacheHash: idHashIndex,
+    filename: [max_filename:0]u8,
+    zip_file_handle: ?*UnzFile,
+    checksum: u32,
+    num_file_resources: u32,
+    cache_table: List(ZipCacheEntry),
+    cache_hash: HashIndex,
 };
 
-pub const idStrList = idList(idStr);
+pub const StrList = List(Str);
 
-pub const idPreloadManifest = extern struct {
+pub const PreloadManifest = extern struct {
     pub const PreloadType = enum(c_int) {
-        PRELOAD_IMAGE,
-        PRELOAD_MODEL,
-        PRELOAD_SAMPLE,
-        PRELOAD_ANIM,
-        PRELOAD_COLLISION,
-        PRELOAD_PARTICLE,
+        image,
+        model,
+        sample,
+        anim,
+        collision,
+        particle,
     };
 
     pub const ImagePreload = extern struct {
-        filter: c_int,
-        repeat: c_int,
-        usage: c_int,
-        cubeMap: c_int,
+        filter: u32,
+        repeat: u32,
+        usage: u32,
+        cube_map: u32,
     };
 
     pub const PreloadEntry = extern struct {
-        resType: PreloadType,
-        resourceName: idStr,
-        imgData: ImagePreload,
+        res_type: PreloadType,
+        resource_name: Str,
+        img_data: ImagePreload,
     };
 
-    entries: idList(PreloadEntry),
-    filename: idStr,
+    entries: List(PreloadEntry),
+    filename: Str,
 };
 
 const SignalHandle = @import("sys/threading.zig").SignalHandle;
-pub const idSysThread = extern struct {
-    const idSysSignal = extern struct {
+pub const SysThread = extern struct {
+    const SysSignal = extern struct {
         handle: SignalHandle,
     };
 
     vptr: *anyopaque,
-    name: idStr,
-    thradHandle: usize,
-    isWorker: bool,
-    isRunning: bool,
-    isTerminating: bool,
-    moreWorkToDo: bool,
-    signalWorkerDonw: idSysSignal,
-    signalMoreWorkToDo: idSysSignal,
-    signalMutex: idSysMutex,
+    name: Str,
+    thrad_handle: usize,
+    is_worker: bool,
+    is_running: bool,
+    is_terminating: bool,
+    more_work_to_do: bool,
+    signal_worker_down: SysSignal,
+    signal_more_work_to_do: SysSignal,
+    signal_mutex: SysMutex,
 };

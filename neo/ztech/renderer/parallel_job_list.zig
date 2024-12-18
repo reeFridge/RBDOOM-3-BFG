@@ -66,8 +66,8 @@ const ThreadJobList = extern struct {
         doneGuards: [NUM_DONE_GUARDS]SysInterlockedInteger,
         currentDoneGuard: c_int,
         version: SysInterlockedInteger,
-        jobList: idlib.idList(Job),
-        signalJobCount: idlib.idList(SysInterlockedInteger),
+        jobList: idlib.List(Job),
+        signalJobCount: idlib.List(SysInterlockedInteger),
         currentJob: SysInterlockedInteger,
         fetchLock: SysInterlockedInteger,
         numThreadsExecuting: SysInterlockedInteger,
@@ -80,11 +80,11 @@ const ThreadJobList = extern struct {
 };
 
 pub const JobThread = extern struct {
-    base: idlib.idSysThread,
+    base: idlib.SysThread,
     jobLists: [MAX_JOBLISTS]ThreadJobList,
     firstJobList: c_uint,
     lastJobList: c_uint,
-    addJobMutex: idlib.idSysMutex,
+    addJobMutex: idlib.SysMutex,
     threadNum: c_uint,
 
     pub fn start(_: *JobThread, _: job_manager.Core, _: usize) void {

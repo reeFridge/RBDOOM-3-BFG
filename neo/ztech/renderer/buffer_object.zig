@@ -48,7 +48,7 @@ pub fn BufferObject(buffer_object_type: BufferObjectType) type {
         input_layout: nvrhi.InputLayoutHandle = .{},
         buffer_handle: nvrhi.BufferHandle = .{},
         buffer: ?[*]u8 = null,
-        debug_name: idlib.idStr = .{},
+        debug_name: idlib.Str = .{},
         vk_buffer: vulkan.Buffer = .null_handle,
         allocation: c.VmaAllocation = null,
         allocation_info: c.VmaAllocationInfo = .{},

@@ -22,6 +22,7 @@ const Cinematic = @import("cinematic.zig").Cinematic;
 const image_program = @import("image_program.zig");
 const image_manager = @import("image_manager.zig");
 const render_entity = @import("render_entity.zig");
+const Allocator = std.mem.Allocator;
 
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
@@ -409,8 +410,8 @@ pub const Material = extern struct {
     ;
 
     base: decl.Decl = .{},
-    desc: idlib.idStr = .{},
-    render_bump: idlib.idStr = .{},
+    desc: idlib.Str = .{},
+    render_bump: idlib.Str = .{},
     light_falloff_image: ?*Image = null,
     fast_path_bump_image: ?*Image = null,
     fast_path_diffuse_image: ?*Image = null,
@@ -456,7 +457,7 @@ pub const Material = extern struct {
     stages: ?[*]ShaderStage = null,
     pd: ?*MtrParsingData = null,
     surface_area: f32 = 0,
-    editor_image_name: idlib.idStr = .{},
+    editor_image_name: idlib.Str = .{},
     editor_image: ?*Image = null,
     editor_alpha: f32 = 1,
     suppress_in_subview: bool = false,
@@ -467,9 +468,6 @@ pub const Material = extern struct {
 
     pub fn init(self: *Material) void {
         self.* = .{};
-        self.desc.initEmptyBuffer();
-        self.render_bump.initEmptyBuffer();
-        self.editor_image_name.initEmptyBuffer();
     }
 
     pub const ParseError =
@@ -487,7 +485,6 @@ pub const Material = extern struct {
         _ = allow_binary_version;
 
         var lexer = Lexer{ .flags = decl.decl_lexer_flags };
-        lexer.initEmpty();
         defer lexer.deinit(allocator);
 
         const decl_local = material.base.base.?;
@@ -499,7 +496,7 @@ pub const Material = extern struct {
             allocator,
         );
 
-        lexer.skipUntilString("{");
+        try lexer.skipUntilString("{", allocator);
 
         std.debug.print("[MATERIAL] parse: {s}\n", .{
             decl_local.name.constSlice(),
@@ -756,15 +753,14 @@ pub const Material = extern struct {
         allocator: std.mem.Allocator,
     ) ParseMaterialError!void {
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
         var trp_default: TextureRepeat = .repeat;
 
         while (true) {
             if (material.material_flags.defaulted) return;
 
-            lexer.readToken(&token) catch {
+            lexer.readToken(&token, allocator) catch {
                 material.material_flags.defaulted = true;
                 return;
             };
@@ -773,12 +769,12 @@ pub const Material = extern struct {
             if (token.eql("}")) {
                 break;
             } else if (token.ieql("qer_editorimage")) {
-                try lexer.readTokenOnLine(&token);
-                try material.editor_image_name.assignSlice(token.slice());
-                try lexer.skipRestOfLine();
+                try lexer.readTokenOnLine(&token, allocator);
+                try material.editor_image_name.assignSlice(token.slice(), allocator);
+                try lexer.skipRestOfLine(allocator);
             } else if (token.ieql("description")) {
-                try lexer.readTokenOnLine(&token);
-                try material.desc.assignSlice(token.slice());
+                try lexer.readTokenOnLine(&token, allocator);
+                try material.desc.assignSlice(token.slice(), allocator);
             } else if (checkSurfaceParam(&token)) |info| {
                 material.surface_flags = flags.Flags(SurfaceFlags)
                     .merge(material.surface_flags, info.surface_flags);
@@ -790,7 +786,7 @@ pub const Material = extern struct {
                 }
             } else if (token.ieql("polygonOffset")) {
                 material.material_flags.polygonoffset = true;
-                lexer.readTokenOnLine(&token) catch {
+                lexer.readTokenOnLine(&token, allocator) catch {
                     material.polygon_offset = 1;
                     continue;
                 };
@@ -846,7 +842,7 @@ pub const Material = extern struct {
             } else if (token.ieql("mikktspace")) {
                 material.mikktspace = true;
             } else if (token.ieql("lightFalloffImage")) {
-                const str = try image_program.parse(lexer);
+                const str = try image_program.parse(lexer, allocator);
                 material.light_falloff_image = try image_manager.instance.imageFromFile(
                     str,
                     .default,
@@ -857,7 +853,7 @@ pub const Material = extern struct {
                     allocator,
                 );
             } else if (token.ieql("guisurf")) {
-                try lexer.readTokenOnLine(&token);
+                try lexer.readTokenOnLine(&token, allocator);
 
                 if (token.ieql("entity")) {
                     material.entity_gui = 1;
@@ -876,7 +872,7 @@ pub const Material = extern struct {
             } else if (token.ieql("stereoeye")) {
                 try material.parseStereoEye(lexer);
             } else if (token.ieql("spectrum")) {
-                try lexer.readTokenOnLine(&token);
+                try lexer.readTokenOnLine(&token, allocator);
                 material.spectrum = std.fmt.parseInt(
                     c_int,
                     token.slice(),
@@ -887,7 +883,7 @@ pub const Material = extern struct {
             } else if (token.ieql("declInfo")) {
                 try material.parseDecalInfo(lexer);
             } else if (token.ieql("renderbump")) {
-                try lexer.parseRestOfLine(&material.render_bump);
+                try lexer.parseRestOfLine(&material.render_bump, allocator);
             } else if (token.ieql("diffusemap") or token.ieql("basecolormap")) {
                 @panic("not implemented");
             } else if (token.ieql("specularmap")) {
@@ -1262,15 +1258,14 @@ pub const Material = extern struct {
         material.clearStage(ss);
 
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
         var cube_map_size: u32 = 0;
 
         while (true) {
             if (material.material_flags.defaulted) return;
 
-            lexer.readToken(&token) catch {
+            lexer.readToken(&token, allocator) catch {
                 material.material_flags.defaulted = true;
                 return;
             };
@@ -1278,17 +1273,17 @@ pub const Material = extern struct {
             if (token.eql("}")) break;
 
             if (token.ieql("name")) {
-                try lexer.skipRestOfLine();
+                try lexer.skipRestOfLine(allocator);
                 continue;
             }
 
             if (token.ieql("blend")) {
-                material.parseBlend(lexer, ss);
+                material.parseBlend(lexer, ss, allocator);
                 continue;
             }
 
             if (token.ieql("map")) {
-                const str = try image_program.parse(lexer);
+                const str = try image_program.parse(lexer, allocator);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 continue;
@@ -1296,31 +1291,31 @@ pub const Material = extern struct {
 
             if (token.ieql("remoteRenderMap")) {
                 ts.dynamic = .remote_render;
-                ts.width = @intCast(try lexer.parseInt());
-                ts.height = @intCast(try lexer.parseInt());
+                ts.width = @intCast(try lexer.parseInt(allocator));
+                ts.height = @intCast(try lexer.parseInt(allocator));
                 continue;
             }
 
             if (token.ieql("mirrorRenderMap")) {
                 ts.dynamic = .mirror_render;
-                ts.width = @intCast(try lexer.parseInt());
-                ts.height = @intCast(try lexer.parseInt());
+                ts.width = @intCast(try lexer.parseInt(allocator));
+                ts.height = @intCast(try lexer.parseInt(allocator));
                 ts.texgen = .screen;
                 continue;
             }
 
             if (token.ieql("xrayRenderMap")) {
                 ts.dynamic = .xray_render;
-                ts.width = @intCast(try lexer.parseInt());
-                ts.height = @intCast(try lexer.parseInt());
+                ts.width = @intCast(try lexer.parseInt(allocator));
+                ts.height = @intCast(try lexer.parseInt(allocator));
                 ts.texgen = .screen;
                 continue;
             }
 
             if (token.ieql("guiRenderMap")) {
                 ts.dynamic = .gui_render;
-                ts.width = @intCast(try lexer.parseInt());
-                ts.height = @intCast(try lexer.parseInt());
+                ts.width = @intCast(try lexer.parseInt(allocator));
+                ts.height = @intCast(try lexer.parseInt(allocator));
                 continue;
             }
 
@@ -1340,7 +1335,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("videomap")) {
-                lexer.readToken(&token) catch {
+                lexer.readToken(&token, allocator) catch {
                     std.debug.print(
                         "missing parameter for 'videomap' keyword in material {s}\n",
                         .{material.base.base.?.name.constSlice()},
@@ -1352,7 +1347,7 @@ pub const Material = extern struct {
                 if (token.ieql("loop")) {
                     loop = true;
 
-                    lexer.readToken(&token) catch {
+                    lexer.readToken(&token, allocator) catch {
                         std.debug.print(
                             "missing parameter for 'videomap' keyword in material {s}\n",
                             .{material.base.base.?.name.constSlice()},
@@ -1371,7 +1366,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("soundmap")) {
-                lexer.readToken(&token) catch {
+                lexer.readToken(&token, allocator) catch {
                     std.debug.print(
                         "missing parameter for 'soundmap' keyword in material {s}\n",
                         .{material.base.base.?.name.constSlice()},
@@ -1389,7 +1384,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("cubeMap")) {
-                const str = try image_program.parse(lexer);
+                const str = try image_program.parse(lexer, allocator);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .native;
@@ -1397,7 +1392,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("cubeMapSingle")) {
-                const str = try image_program.parse(lexer);
+                const str = try image_program.parse(lexer, allocator);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .single;
@@ -1406,12 +1401,12 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("cubeMapSize")) {
-                cube_map_size = @intCast(try lexer.parseInt());
+                cube_map_size = @intCast(try lexer.parseInt(allocator));
                 continue;
             }
 
             if (token.ieql("cameraCubeMap")) {
-                const str = try image_program.parse(lexer);
+                const str = try image_program.parse(lexer, allocator);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .camera;
@@ -1419,7 +1414,7 @@ pub const Material = extern struct {
             }
 
             if (token.ieql("quakeCubeMap")) {
-                const str = try image_program.parse(lexer);
+                const str = try image_program.parse(lexer, allocator);
                 image_name.len = 0;
                 image_name.appendSliceAssumeCapacity(str);
                 cube_map = .quake1;
@@ -1482,18 +1477,18 @@ pub const Material = extern struct {
                 ss.vertex_color = .modulate;
                 continue;
             } else if (token.ieql("privatePolygonOffset")) {
-                lexer.readTokenOnLine(&token) catch {
+                lexer.readTokenOnLine(&token, allocator) catch {
                     ss.private_polygon_offset = 1;
                     continue;
                 };
 
-                try lexer.unreadToken(&token);
-                ss.private_polygon_offset = try lexer.parseFloat();
+                try lexer.unreadToken(&token, allocator);
+                ss.private_polygon_offset = try lexer.parseFloat(allocator);
                 continue;
             }
 
             if (token.ieql("texGen")) {
-                try lexer.readToken(&token);
+                try lexer.readToken(&token, allocator);
 
                 if (token.ieql("normal")) {
                     ts.texgen = .diffuse_cube;
@@ -1584,11 +1579,11 @@ pub const Material = extern struct {
 
             if (token.ieql("color")) {
                 ss.color.registers[0] = @intCast(material.parseExpression(lexer));
-                material.matchTokenOrDefaulted(lexer, ",");
+                material.matchTokenOrDefaulted(lexer, ",", allocator);
                 ss.color.registers[1] = @intCast(material.parseExpression(lexer));
-                material.matchTokenOrDefaulted(lexer, ",");
+                material.matchTokenOrDefaulted(lexer, ",", allocator);
                 ss.color.registers[2] = @intCast(material.parseExpression(lexer));
-                material.matchTokenOrDefaulted(lexer, ",");
+                material.matchTokenOrDefaulted(lexer, ",", allocator);
                 ss.color.registers[3] = @intCast(material.parseExpression(lexer));
                 continue;
             }
@@ -1642,13 +1637,14 @@ pub const Material = extern struct {
                     &.{ "USE_GPU_SKINNING", "0" },
                 };
                 if (token.ieql("program")) {
-                    try lexer.readTokenOnLine(&token);
+                    try lexer.readTokenOnLine(&token, allocator);
                     const find_fragment_shader_result = render_prog_manager.instance.findShader(
                         token.slice(),
                         Shader.Stage.fragment,
                         "",
                         macros,
                         false,
+                        allocator,
                     );
                     if (find_fragment_shader_result) |shader_index| {
                         new_stage.fragment_program = @intCast(shader_index);
@@ -1662,6 +1658,7 @@ pub const Material = extern struct {
                         "",
                         macros,
                         false,
+                        allocator,
                     );
                     if (find_vertex_shader_result) |shader_index| {
                         new_stage.vertex_program = @intCast(shader_index);
@@ -1672,13 +1669,14 @@ pub const Material = extern struct {
                 }
 
                 if (token.ieql("fragmentProgram")) {
-                    try lexer.readTokenOnLine(&token);
+                    try lexer.readTokenOnLine(&token, allocator);
                     const find_shader_result = render_prog_manager.instance.findShader(
                         token.slice(),
                         Shader.Stage.fragment,
                         "",
                         macros,
                         false,
+                        allocator,
                     );
                     if (find_shader_result) |shader_index| {
                         new_stage.fragment_program = @intCast(shader_index);
@@ -1689,13 +1687,14 @@ pub const Material = extern struct {
                 }
 
                 if (token.ieql("vertexProgram")) {
-                    try lexer.readTokenOnLine(&token);
+                    try lexer.readTokenOnLine(&token, allocator);
                     const find_shader_result = render_prog_manager.instance.findShader(
                         token.slice(),
                         Shader.Stage.vertex,
                         "",
                         macros,
                         false,
+                        allocator,
                     );
                     if (find_shader_result) |shader_index| {
                         new_stage.vertex_program = @intCast(shader_index);
@@ -1742,6 +1741,7 @@ pub const Material = extern struct {
                 @intCast(new_stage.vertex_program),
                 @intCast(new_stage.fragment_program),
                 .POST_PROCESS_INGAME,
+                allocator,
             );
             new_stage.program = @intCast(program_index);
 
@@ -1907,7 +1907,6 @@ pub const Material = extern struct {
 
         if (!has_bump) {
             var lexer = Lexer{ .flags = lexer_flags };
-            lexer.initEmpty();
             defer lexer.deinit(allocator);
 
             const definition_text = "blend bumpmap\nmap _flat\n}\n";
@@ -1924,7 +1923,6 @@ pub const Material = extern struct {
 
         if (!has_diffuse and !has_specular and !has_reflection) {
             var lexer = Lexer{ .flags = lexer_flags };
-            lexer.initEmpty();
             defer lexer.deinit(allocator);
 
             const definition_text = "blend diffusemap\nmap _white\n}\n";
@@ -2007,12 +2005,16 @@ pub const Material = extern struct {
         @panic("not implemented");
     }
 
-    fn parseBlend(material: *Material, lexer: *Lexer, stage: *ShaderStage) void {
+    fn parseBlend(
+        material: *Material,
+        lexer: *Lexer,
+        stage: *ShaderStage,
+        allocator: Allocator,
+    ) void {
         var token = Token{};
-        token.initEmpty();
-        defer token.deinit();
+        defer token.deinit(allocator);
 
-        lexer.readToken(&token) catch return;
+        lexer.readToken(&token, allocator) catch return;
 
         if (token.ieql("blend")) {
             stage.draw_state_bits = gl_state.GLS_SRCBLEND_SRC_ALPHA | gl_state.GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
@@ -2045,9 +2047,9 @@ pub const Material = extern struct {
         }
 
         const src_blend = material.nameToSrcBlendMode(&token);
-        material.matchTokenOrDefaulted(lexer, ",");
+        material.matchTokenOrDefaulted(lexer, ",", allocator);
 
-        lexer.readToken(&token) catch return;
+        lexer.readToken(&token, allocator) catch return;
 
         const dst_blend = material.nameToDstBlendMode(&token);
 
@@ -2105,8 +2107,13 @@ pub const Material = extern struct {
         return gl_state.GLS_SRCBLEND_ONE;
     }
 
-    fn matchTokenOrDefaulted(material: *Material, lexer: *Lexer, match: []const u8) void {
-        lexer.expectTokenString(match) catch {
+    fn matchTokenOrDefaulted(
+        material: *Material,
+        lexer: *Lexer,
+        match: []const u8,
+        allocator: Allocator,
+    ) void {
+        lexer.expectTokenString(match, allocator) catch {
             material.material_flags.defaulted = true;
             return;
         };

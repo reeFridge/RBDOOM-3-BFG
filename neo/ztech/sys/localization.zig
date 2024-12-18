@@ -1,6 +1,7 @@
 //! @exportCVars
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
+const Allocator = @import("std").mem.Allocator;
 
 pub var sys_lang: CVar = CVar.init(
     "sys_lang",
@@ -17,6 +18,6 @@ pub fn getDefaultLang() []const u8 {
     return lang_english;
 }
 
-pub fn setDefaultLang() !void {
-    try sys_lang.setString(getDefaultLang());
+pub fn setDefaultLang(allocator: Allocator) Allocator.Error!void {
+    try sys_lang.setString(getDefaultLang(), allocator);
 }

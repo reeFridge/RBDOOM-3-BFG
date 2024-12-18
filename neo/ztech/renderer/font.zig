@@ -38,7 +38,7 @@ const FontInfo = extern struct {
 };
 
 pub const Font = extern struct {
-    name: idlib.idStr,
+    name: idlib.Str,
     alias: ?*Font,
     info: *FontInfo,
 };

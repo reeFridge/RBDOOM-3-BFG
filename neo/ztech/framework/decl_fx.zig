@@ -20,9 +20,9 @@ const FXSingleAction = extern struct {
     type: FXActionType,
     sibling: c_int,
 
-    data: idlib.idStr,
-    name: idlib.idStr,
-    fire: idlib.idStr,
+    data: idlib.Str,
+    name: idlib.Str,
+    fire: idlib.Str,
 
     delay: f32,
     duration: f32,
@@ -56,11 +56,10 @@ const FXSingleAction = extern struct {
 
 pub const DeclFX = extern struct {
     base: Decl = .{},
-    events: idlib.idList(FXSingleAction) = .{},
-    joint: idlib.idStr = .{},
+    events: idlib.List(FXSingleAction) = .{},
+    joint: idlib.Str = .{},
 
     pub fn init(self: *DeclFX) void {
         self.* = .{};
-        self.joint.initEmptyBuffer();
     }
 };

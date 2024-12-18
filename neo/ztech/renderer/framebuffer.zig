@@ -1,12 +1,12 @@
 const std = @import("std");
 const idlib = @import("../idlib.zig");
-const idList = idlib.idList;
 const nvrhi = @import("nvrhi.zig");
 const RenderBackend = @import("render_backend.zig").RenderBackend;
 const DeviceManager = @import("../sys/device_manager.zig").DeviceManagerVulkan;
 const image_manager = @import("image_manager.zig");
+const Allocator = std.mem.Allocator;
 
-var framebuffers: idlib.idList(*Framebuffer) = .{};
+var framebuffers: idlib.List(*Framebuffer) = .{};
 
 pub const MAX_SHADOWMAP_RESOLUTIONS = 5;
 pub const ENVPROBE_CAPTURE_SIZE = 256;
@@ -14,7 +14,7 @@ pub const shadow_map_resolutions: [MAX_SHADOWMAP_RESOLUTIONS]u32 = .{ 1024, 512,
 
 pub const Framebuffer = extern struct {
     vptr: *anyopaque = undefined,
-    fboName: idlib.idStr = .{},
+    fboName: idlib.Str = .{},
     frameBuffer: u32 = 0,
     colorBuffers: [16]u32 = std.mem.zeroes([16]u32),
     colorFormat: c_int = 0,
@@ -28,29 +28,28 @@ pub const Framebuffer = extern struct {
     apiObject: nvrhi.FramebufferHandle = .{},
 
     pub fn create(
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
         device: *nvrhi.IDevice,
         name: []const u8,
         desc: *const nvrhi.FramebufferDesc,
-    ) error{OutOfMemory}!*Framebuffer {
+    ) Allocator.Error!*Framebuffer {
         var ptr = try allocator.create(Framebuffer);
         ptr.* = .{};
 
-        ptr.fboName.initEmptyBuffer();
-        try ptr.fboName.assignSlice(name);
+        try ptr.fboName.assignSlice(name, allocator);
 
         ptr.apiObject = device.createFramebuffer(desc);
         const framebuffer_info = ptr.apiObject.ptr_.?.getFramebufferInfo();
         ptr.width = framebuffer_info.width;
         ptr.height = framebuffer_info.height;
 
-        _ = try framebuffers.append(ptr);
+        _ = try framebuffers.append(ptr, allocator);
 
         return ptr;
     }
 
-    pub fn deinit(framebuffer: *Framebuffer) void {
-        framebuffer.fboName.deinit();
+    pub fn deinit(framebuffer: *Framebuffer, allocator: Allocator) void {
+        framebuffer.fboName.deinit(allocator);
         _ = framebuffer.apiObject.reset();
     }
 
@@ -74,7 +73,7 @@ pub const GlobalFramebuffers = extern struct {
     const MAX_SSAO_BUFFERS = 2;
     const MAX_HIERARCHICAL_ZBUFFERS = 6; // native resolution + 5 MIP LEVELS
 
-    swapFramebuffers: idList(*Framebuffer),
+    swapFramebuffers: idlib.List(*Framebuffer),
     shadowAtlasFBO: *Framebuffer,
     shadowFBO: [MAX_SHADOWMAP_RESOLUTIONS][6]*Framebuffer,
     hdrFBO: *Framebuffer,
@@ -106,25 +105,29 @@ extern fn c_framebuffer_resizeFramebuffers(bool) void;
 pub fn resizeFramebuffers(
     backend: *RenderBackend,
     device_manager: *DeviceManager,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     reload_images: bool,
-) error{OutOfMemory}!void {
-    backend.clearCaches();
+) Allocator.Error!void {
+    backend.clearCaches(allocator);
 
     for (framebuffers.slice()) |framebuffer_ptr| {
-        framebuffer_ptr.deinit();
+        framebuffer_ptr.deinit(allocator);
     }
-    framebuffers.clear();
+    framebuffers.clear(allocator);
 
     const device = device_manager.getDevice();
 
     if (reload_images) {
-        try reloadImages(device, backend.commandList.ptr_.?);
+        try reloadImages(
+            device,
+            backend.commandList.ptr_.?,
+            allocator,
+        );
     }
 
     const back_buffer_count = device_manager.getBackBufferCount();
-    try global_framebuffers.swapFramebuffers.resize(back_buffer_count);
-    try global_framebuffers.swapFramebuffers.setNum(back_buffer_count);
+    try global_framebuffers.swapFramebuffers.resize(back_buffer_count, allocator);
+    try global_framebuffers.swapFramebuffers.setNum(back_buffer_count, allocator);
 
     const Attachments = nvrhi.FramebufferDesc.ColorAttachments;
     const global_images = image_manager.instance;
@@ -360,58 +363,62 @@ pub fn resizeFramebuffers(
 pub fn init(
     backend: *RenderBackend,
     device_manager: *DeviceManager,
-    allocator: std.mem.Allocator,
-) error{OutOfMemory}!void {
+    allocator: Allocator,
+) Allocator.Error!void {
     try resizeFramebuffers(backend, device_manager, allocator, true);
 }
 
-fn reloadImages(device: *nvrhi.IDevice, command_list: *nvrhi.ICommandList) error{OutOfMemory}!void {
+fn reloadImages(
+    device: *nvrhi.IDevice,
+    command_list: *nvrhi.ICommandList,
+    allocator: Allocator,
+) Allocator.Error!void {
     const global_images = image_manager.instance;
 
     command_list.open();
 
-    try global_images.ldrImage.?.reload(false, command_list);
-    try global_images.currentRenderImage.?.reload(false, command_list);
-    try global_images.currentDepthImage.?.reload(false, command_list);
-    try global_images.currentRenderHDRImage.?.reload(false, command_list);
+    try global_images.ldrImage.?.reload(false, command_list, allocator);
+    try global_images.currentRenderImage.?.reload(false, command_list, allocator);
+    try global_images.currentDepthImage.?.reload(false, command_list, allocator);
+    try global_images.currentRenderHDRImage.?.reload(false, command_list, allocator);
 
     for (&global_images.ambientOcclusionImage) |image_ptr| {
-        try image_ptr.?.reload(false, command_list);
+        try image_ptr.?.reload(false, command_list, allocator);
     }
 
-    try global_images.hierarchicalZBufferImage.?.reload(false, command_list);
-    try global_images.gbufferNormalsRoughnessImage.?.reload(false, command_list);
-    try global_images.taaMotionVectorsImage.?.reload(false, command_list);
-    try global_images.taaResolvedImage.?.reload(false, command_list);
-    try global_images.envprobeHDRImage.?.reload(false, command_list);
-    try global_images.envprobeDepthImage.?.reload(false, command_list);
-    try global_images.taaFeedback1Image.?.reload(false, command_list);
-    try global_images.taaFeedback2Image.?.reload(false, command_list);
-    try global_images.smaaEdgesImage.?.reload(false, command_list);
-    try global_images.smaaBlendImage.?.reload(false, command_list);
-    try global_images.shadowAtlasImage.?.reload(false, command_list);
+    try global_images.hierarchicalZBufferImage.?.reload(false, command_list, allocator);
+    try global_images.gbufferNormalsRoughnessImage.?.reload(false, command_list, allocator);
+    try global_images.taaMotionVectorsImage.?.reload(false, command_list, allocator);
+    try global_images.taaResolvedImage.?.reload(false, command_list, allocator);
+    try global_images.envprobeHDRImage.?.reload(false, command_list, allocator);
+    try global_images.envprobeDepthImage.?.reload(false, command_list, allocator);
+    try global_images.taaFeedback1Image.?.reload(false, command_list, allocator);
+    try global_images.taaFeedback2Image.?.reload(false, command_list, allocator);
+    try global_images.smaaEdgesImage.?.reload(false, command_list, allocator);
+    try global_images.smaaBlendImage.?.reload(false, command_list, allocator);
+    try global_images.shadowAtlasImage.?.reload(false, command_list, allocator);
 
     for (&global_images.shadowImage) |image_ptr| {
-        try image_ptr.?.reload(false, command_list);
+        try image_ptr.?.reload(false, command_list, allocator);
     }
 
     for (&global_images.bloomRenderImage) |image_ptr| {
-        try image_ptr.?.reload(false, command_list);
+        try image_ptr.?.reload(false, command_list, allocator);
     }
 
-    try global_images.guiEdit.?.reload(false, command_list);
-    try global_images.guiEditDepthStencilImage.?.reload(false, command_list);
-    try global_images.accumImage.?.reload(false, command_list);
+    try global_images.guiEdit.?.reload(false, command_list, allocator);
+    try global_images.guiEditDepthStencilImage.?.reload(false, command_list, allocator);
+    try global_images.accumImage.?.reload(false, command_list, allocator);
 
     command_list.close();
     device.executeCommandList(command_list);
 }
 
-pub fn shutdown() void {
+pub fn shutdown(allocator: Allocator) void {
     for (framebuffers.slice()) |framebuffer_ptr| {
-        framebuffer_ptr.deinit();
+        framebuffer_ptr.deinit(allocator);
     }
-    framebuffers.clear();
+    framebuffers.clear(allocator);
 }
 
 pub fn unbind(backend: *RenderBackend, device_manager: *const DeviceManager) void {

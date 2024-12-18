@@ -3,6 +3,7 @@ const idlib = @import("../idlib.zig");
 const cmd = @import("cmd_system.zig");
 const bit = @import("../math/math.zig").bit;
 const global = @import("../global.zig");
+const Allocator = std.mem.Allocator;
 
 pub const CVarFlags = struct {
     pub const CVAR_ALL: c_int = -1; // all flags
@@ -59,10 +60,10 @@ pub const CVar = extern struct {
     float_value: f32,
     internalVar: ?*CVar,
     next: ?*CVar,
-    nameString: idlib.idStr,
-    resetString: idlib.idStr,
-    valueString: idlib.idStr,
-    descriptionString: idlib.idStr,
+    nameString: idlib.Str,
+    resetString: idlib.Str,
+    valueString: idlib.Str,
+    descriptionString: idlib.Str,
 
     pub fn init(
         name: [:0]const u8,
@@ -83,10 +84,10 @@ pub const CVar = extern struct {
             .float_value = 0,
             .internalVar = null,
             .next = null,
-            .nameString = idlib.idStr{},
-            .resetString = idlib.idStr{},
-            .valueString = idlib.idStr{},
-            .descriptionString = idlib.idStr{},
+            .nameString = idlib.Str{},
+            .resetString = idlib.Str{},
+            .valueString = idlib.Str{},
+            .descriptionString = idlib.Str{},
         };
     }
 
@@ -105,43 +106,37 @@ pub const CVar = extern struct {
         return c;
     }
 
-    pub fn setupStrings(cvar: *CVar) void {
-        cvar.nameString.initEmptyBuffer();
-        cvar.resetString.initEmptyBuffer();
-        cvar.valueString.initEmptyBuffer();
-    }
-
     pub fn getString(cvar: *const CVar) [:0]const u8 {
         return std.mem.span(cvar.value);
     }
 
-    pub fn setup(cvar: *CVar) error{OutOfMemory}!void {
-        try cvar.nameString.assignSlice(std.mem.span(cvar.name));
-        cvar.name = cvar.nameString.constSlice();
-        try cvar.valueString.assignSlice(std.mem.span(cvar.value));
-        cvar.value = cvar.valueString.constSlice();
-        try cvar.resetString.assignSlice(cvar.nameString.constSlice());
-        try cvar.descriptionString.assignSlice(std.mem.span(cvar.description));
+    pub fn setup(cvar: *CVar, allocator: Allocator) Allocator.Error!void {
+        try cvar.nameString.assignSliceZ(std.mem.span(cvar.name), allocator);
+        cvar.name = cvar.nameString.constSliceZ();
+        try cvar.valueString.assignSliceZ(std.mem.span(cvar.value), allocator);
+        cvar.value = cvar.valueString.constSliceZ();
+        try cvar.resetString.assignSliceZ(cvar.nameString.constSlice(), allocator);
+        try cvar.descriptionString.assignSliceZ(std.mem.span(cvar.description), allocator);
         cvar.flags |= CVarFlags.CVAR_MODIFIED;
-        try cvar.updateValue();
+        try cvar.updateValue(allocator);
         cvar.updateCheat();
 
         // TODO: remove
         cvar.internalVar = cvar;
     }
 
-    pub fn setString(cvar: *CVar, value: []const u8) error{OutOfMemory}!void {
-        try cvar.set(value, true);
+    pub fn setString(cvar: *CVar, value: []const u8, allocator: Allocator) Allocator.Error!void {
+        try cvar.set(value, true, allocator);
     }
 
-    pub fn setInteger(cvar: *CVar, value: i32) error{OutOfMemory}!void {
+    pub fn setInteger(cvar: *CVar, value: i32, allocator: Allocator) Allocator.Error!void {
         var buffer: [256]u8 = undefined;
         const pos = std.fmt.formatIntBuf(&buffer, value, 10, .lower, .{});
         const str = buffer[0..pos];
-        try cvar.set(str, true);
+        try cvar.set(str, true, allocator);
     }
 
-    pub fn set(cvar: *CVar, value: ?[]const u8, force: bool) error{OutOfMemory}!void {
+    pub fn set(cvar: *CVar, value: ?[]const u8, force: bool, allocator: Allocator) Allocator.Error!void {
         const new_value = value orelse cvar.resetString.constSlice();
         if (!force) {
             if ((cvar.flags & CVarFlags.CVAR_ROM) != 0) return;
@@ -150,14 +145,14 @@ pub const CVar = extern struct {
 
         if (std.mem.eql(u8, cvar.valueString.constSlice(), new_value)) return;
 
-        try cvar.valueString.assignSlice(new_value);
-        cvar.value = @ptrCast(cvar.valueString.constSlice());
-        try cvar.updateValue();
+        try cvar.valueString.assignSliceZ(new_value, allocator);
+        cvar.value = cvar.valueString.constSliceZ();
+        try cvar.updateValue(allocator);
         cvar.flags |= CVarFlags.CVAR_MODIFIED;
         instance.modifiedFlags |= cvar.flags;
     }
 
-    fn updateValue(cvar: *CVar) error{OutOfMemory}!void {
+    fn updateValue(cvar: *CVar, allocator: Allocator) Allocator.Error!void {
         var clamped = false;
 
         const value_str = std.mem.span(cvar.value);
@@ -170,8 +165,8 @@ pub const CVar = extern struct {
             cvar.float_value = @floatFromInt(cvar.integer_value);
 
             if (!std.mem.eql(u8, "0", value_str) and !std.mem.eql(u8, "1", value_str)) {
-                try cvar.valueString.assignSlice(if (int != 0) "1" else "0");
-                cvar.value = @ptrCast(cvar.valueString.constSlice());
+                try cvar.valueString.assignSliceZ(if (int != 0) "1" else "0", allocator);
+                cvar.value = cvar.valueString.constSliceZ();
             }
         } else if ((cvar.flags & CVarFlags.CVAR_INTEGER) != 0) {
             const int = std.fmt.parseInt(i32, value_str, 10) catch |err| {
@@ -195,8 +190,8 @@ pub const CVar = extern struct {
                 !is_numeric(value_str) or
                 std.mem.indexOfScalar(u8, value_str, '.') != null)
             {
-                try cvar.valueString.assignSlice(value_str);
-                cvar.value = @ptrCast(cvar.valueString.constSlice());
+                try cvar.valueString.assignSlice(value_str, allocator);
+                cvar.value = cvar.valueString.constSliceZ();
             }
             cvar.float_value = @floatFromInt(int);
         } else if ((cvar.flags & CVarFlags.CVAR_FLOAT) != 0) {
@@ -217,8 +212,8 @@ pub const CVar = extern struct {
             }
 
             if (clamped or !is_numeric(value_str)) {
-                try cvar.valueString.assignSlice(value_str);
-                cvar.value = @ptrCast(cvar.valueString.constSlice());
+                try cvar.valueString.assignSliceZ(value_str, allocator);
+                cvar.value = cvar.valueString.constSliceZ();
             }
             cvar.integer_value = @intFromFloat(float);
         } else {
@@ -247,8 +242,8 @@ pub const CVar = extern struct {
                 }
 
                 const variant_ptr = value_strings[@intCast(cvar.integer_value)] orelse unreachable;
-                try cvar.valueString.assignSlice(std.mem.span(variant_ptr));
-                cvar.value = cvar.valueString.constSlice();
+                try cvar.valueString.assignSliceZ(std.mem.span(variant_ptr), allocator);
+                cvar.value = cvar.valueString.constSliceZ();
                 cvar.float_value = @floatFromInt(cvar.integer_value);
             } else if (cvar.valueString.len < 32) {
                 const float = std.fmt.parseFloat(f32, value_str) catch 0;
@@ -282,8 +277,8 @@ pub const CVar = extern struct {
 pub const CVarSystem = extern struct {
     vptr: *anyopaque,
     initialized: bool,
-    cvars: idlib.idList(*CVar),
-    cvarHash: idlib.idHashIndex,
+    cvars: idlib.List(*CVar),
+    cvarHash: idlib.HashIndex,
     modifiedFlags: c_int,
 
     const RegisterError = error{
@@ -291,7 +286,7 @@ pub const CVarSystem = extern struct {
         OutOfMemory,
     };
 
-    pub fn init(cvar_system: *CVarSystem) void {
+    pub fn init(cvar_system: *CVarSystem, allocator: Allocator) Allocator.Error!void {
         // override hash_index
         // TODO: init CVarSystem instance on the Zig side
         cvar_system.cvarHash = .{};
@@ -304,12 +299,12 @@ pub const CVarSystem = extern struct {
         // TODO addCommand listCvars
         // TODO addCommand cvar_restart
         // TODO addCommand cvarAdd
-        cvar_system.registerStaticCVars();
+        cvar_system.registerStaticCVars(allocator);
 
         cvar_system.initialized = true;
     }
 
-    fn registerStaticCVars(cvar_system: *CVarSystem) void {
+    fn registerStaticCVars(cvar_system: *CVarSystem, allocator: Allocator) void {
         const cvar_decls = comptime blk: {
             var count: usize = 0;
             const tree = @import("../static_cvars.zig").root;
@@ -337,8 +332,7 @@ pub const CVarSystem = extern struct {
         };
 
         inline for (cvar_decls) |cvar| {
-            cvar.setupStrings();
-            cvar_system.register(cvar) catch |err| {
+            cvar_system.register(cvar, allocator) catch |err| {
                 std.debug.print(
                     "[CVAR][WARN] {s} err: {s}\n",
                     .{ cvar.name, @errorName(err) },
@@ -347,17 +341,21 @@ pub const CVarSystem = extern struct {
         }
     }
 
-    fn register(cvar_system: *CVarSystem, cvar: *CVar) RegisterError!void {
+    fn register(
+        cvar_system: *CVarSystem,
+        cvar: *CVar,
+        allocator: Allocator,
+    ) RegisterError!void {
         std.debug.print("[CVAR] register: {s}\n", .{cvar.name});
 
         if (cvar_system.findByName(std.mem.span(cvar.name)) != null)
             return error.AlreadyRegistered;
 
         const hash = cvar_system.cvarHash.generateKey(std.mem.span(cvar.name), false);
-        const index = try cvar_system.cvars.append(cvar);
-        try cvar_system.cvarHash.add(hash, @intCast(index));
+        const index = try cvar_system.cvars.append(cvar, allocator);
+        try cvar_system.cvarHash.add(hash, @intCast(index), allocator);
 
-        try cvar.setup();
+        try cvar.setup(allocator);
     }
 
     fn setCVarValue(
@@ -365,20 +363,19 @@ pub const CVarSystem = extern struct {
         name: [:0]const u8,
         value: [:0]const u8,
         flags: c_int,
-    ) error{OutOfMemory}!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         if (cvar_system.findByName(name)) |cvar| {
-            try cvar.set(value, true);
+            try cvar.set(value, true, allocator);
             cvar.flags |= flags & ~CVarFlags.CVAR_STATIC;
             cvar.updateCheat();
         } else {
-            const allocator = global.gpa.allocator();
             const cvar = try allocator.create(CVar);
             cvar.* = CVar.init(name, value, flags, "");
-            cvar.setupStrings();
 
             const hash = cvar_system.cvarHash.generateKey(name, false);
-            const index = try cvar_system.cvars.append(cvar);
-            try cvar_system.cvarHash.add(hash, @intCast(index));
+            const index = try cvar_system.cvars.append(cvar, allocator);
+            try cvar_system.cvarHash.add(hash, @intCast(index), allocator);
         }
     }
 
@@ -402,7 +399,10 @@ pub const instance = @extern(*CVarSystem, .{ .name = "localCVarSystem" });
 const console_lines = @import("common.zig").console_lines;
 const num_console_lines = @import("common.zig").num_console_lines;
 
-pub fn setCVarsFromArgs(opt_match: ?[]const u8) error{OutOfMemory}!void {
+pub fn setCVarsFromArgs(
+    opt_match: ?[]const u8,
+    allocator: Allocator,
+) Allocator.Error!void {
     for (0..@intCast(num_console_lines.*)) |i| {
         const arg = &console_lines[i];
         if (!std.mem.eql(u8, "set", std.mem.span(arg.argv[0]))) continue;
@@ -417,7 +417,7 @@ pub fn setCVarsFromArgs(opt_match: ?[]const u8) error{OutOfMemory}!void {
             true;
 
         if (should_override) {
-            try instance.setCVarValue(var_name, var_value, 0);
+            try instance.setCVarValue(var_name, var_value, 0, allocator);
 
             std.debug.print(
                 "[CVAR] Command-line override [{s}]='{s}'\n",

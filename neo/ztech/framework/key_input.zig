@@ -1,13 +1,16 @@
 const std = @import("std");
+const global = @import("../global.zig");
 const idlib = @import("../idlib.zig");
 const cmd = @import("cmd_system.zig");
 const cvar = @import("cvar_system.zig");
+const Allocator = std.mem.Allocator;
 
 fn cmd_unbindAll(_: *const cmd.CmdArgs) callconv(.C) void {
     const size: usize = @intFromEnum(KeyNum.K_LAST_KEY);
 
+    const allocator = global.gpa.allocator();
     for (0..size) |i| {
-        setBinding(@intCast(i), "") catch unreachable;
+        setBinding(@intCast(i), "", allocator) catch unreachable;
     }
 }
 
@@ -48,9 +51,11 @@ fn cmd_bind(args: *const cmd.CmdArgs) callconv(.C) void {
         }
     }
 
+    const allocator = global.gpa.allocator();
     setBinding(
         @intFromEnum(key_num),
         cmd_buffer[0..len],
+        allocator,
     ) catch unreachable;
 }
 
@@ -318,22 +323,21 @@ const key_names = [_]KeyName{
 const Key = extern struct {
     down: bool = false,
     repeates: c_int = 0,
-    binding: idlib.idStr = .{},
+    binding: idlib.Str = .{},
     usercmdAction: c_int = 0,
 
     pub fn init(key: *Key) void {
         key.* = .{};
-        key.binding.initEmptyBuffer();
     }
 
-    pub fn deinit(key: *Key) void {
-        key.binding.deinit();
+    pub fn deinit(key: *Key, allocator: Allocator) void {
+        key.binding.deinit(allocator);
     }
 };
 
 var opt_keys: ?[]Key = null;
 
-pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!void {
+pub fn init(allocator: Allocator) error{OutOfMemory}!void {
     shutdown(allocator);
     const keys = try allocator.alloc(Key, @intFromEnum(KeyNum.K_LAST_KEY));
 
@@ -349,6 +353,7 @@ pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!void {
         cmd.CmdFlags.CMD_FL_SYSTEM,
         "unbinds any commands from all keys",
         null,
+        allocator,
     );
 
     try cmd.instance.addCommand(
@@ -357,17 +362,19 @@ pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!void {
         cmd.CmdFlags.CMD_FL_SYSTEM,
         "binds a command to a key",
         null,
+        allocator,
     );
+
     // TODO: addCommand bindunbindtwo
     // TODO: addCommand unbind
     // TODO: addCommand listBinds
 }
 
-pub fn shutdown(allocator: std.mem.Allocator) void {
+pub fn shutdown(allocator: Allocator) void {
     const keys = opt_keys orelse return;
 
     for (keys) |*key_ptr| {
-        key_ptr.deinit();
+        key_ptr.deinit(allocator);
     }
 
     allocator.free(keys);
@@ -388,7 +395,11 @@ pub fn stringToKeyNum(str: []const u8) KeyNum {
     return .K_NONE;
 }
 
-pub fn setBinding(keynum: c_int, binding: []const u8) error{OutOfMemory}!void {
+pub fn setBinding(
+    keynum: c_int,
+    binding: []const u8,
+    allocator: Allocator,
+) Allocator.Error!void {
     const keys = opt_keys orelse return;
     if (keynum == -1) return;
 
@@ -396,7 +407,7 @@ pub fn setBinding(keynum: c_int, binding: []const u8) error{OutOfMemory}!void {
 
     // TODO user_cmd_gen.instance.clear();
 
-    try keys[index].binding.assignSlice(binding);
+    try keys[index].binding.assignSlice(binding, allocator);
 
     // TODO keys[index].usercmdAction = user_cmd_gen.instance.commandStringUserCmdData(binding);
     cvar.instance.modifiedFlags |= cvar.CVarFlags.CVAR_ARCHIVE;

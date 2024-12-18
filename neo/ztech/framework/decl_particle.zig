@@ -85,7 +85,7 @@ const ParticleStage = extern struct {
 
 pub const DeclParticle = extern struct {
     base: Decl = .{},
-    stages: idlib.idList(*ParticleStage) = .{},
+    stages: idlib.List(*ParticleStage) = .{},
     bounds: CBounds = .{},
     depthHack: f32 = 0,
 

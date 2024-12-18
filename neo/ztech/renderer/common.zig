@@ -126,8 +126,8 @@ pub const DeclSkin = extern struct {
     ;
 
     base: Decl = .{},
-    mappings: idlib.idList(SkinMapping) = .{},
-    associatedModels: idlib.idStrList = .{},
+    mappings: idlib.List(SkinMapping) = .{},
+    associatedModels: idlib.List(idlib.Str) = .{},
 
     extern fn c_declSkin_remapShaderBySkin(
         *const DeclSkin,
@@ -234,17 +234,17 @@ pub const DrawSurface = extern struct {
         }
 
         const model = tri.staticModelWithJoints orelse return;
-        std.debug.assert(model.jointsInverted != null);
+        std.debug.assert(model.joints_inverted != null);
 
-        if (!VertexCache.instance.cacheIsCurrent(model.jointsInvertedBuffer)) {
-            model.jointsInvertedBuffer = VertexCache.instance.allocJoint(
-                @ptrCast(model.jointsInverted),
-                @intCast(model.numInvertedJoints),
+        if (!VertexCache.instance.cacheIsCurrent(model.joints_inverted_buffer)) {
+            model.joints_inverted_buffer = VertexCache.instance.allocJoint(
+                @ptrCast(model.joints_inverted),
+                @intCast(model.num_inverted_joints),
                 @sizeOf(JointMat),
                 command_list,
             );
         }
-        surf.jointCache = model.jointsInvertedBuffer;
+        surf.jointCache = model.joints_inverted_buffer;
     }
 
     pub fn deform(surf: *DrawSurface, view_def: *ViewDef) ?*DrawSurface {
@@ -719,7 +719,7 @@ pub const CalcEnvprobeParams = extern struct {
     printProgress: bool,
     printWidth: c_int,
     printHeight: c_int,
-    filename: idlib.idStr,
+    filename: idlib.Str,
     outBuffer: [*]f16,
     time: c_int,
 };
