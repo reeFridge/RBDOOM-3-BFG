@@ -1,1 +1,1 @@
-pub const TriIndex = c_ushort;
+pub const TriIndex = u16;

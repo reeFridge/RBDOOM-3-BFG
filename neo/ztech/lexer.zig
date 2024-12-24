@@ -286,7 +286,7 @@ pub const Lexer = struct {
         lexer: *Lexer,
         new_punctuations: ?[]const Punctuation,
         allocator: Allocator,
-    ) error{OutOfMemory}!void {
+    ) Allocator.Error!void {
         const punctuations = new_punctuations orelse default_punctuations;
         defer {
             lexer.punctuations = punctuations.ptr;

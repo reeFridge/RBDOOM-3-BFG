@@ -385,7 +385,7 @@ const ZeroOneSphereTris = struct {
 };
 
 fn initGlobalTris(params: anytype, allocator: std.mem.Allocator) *SurfaceTriangles {
-    var tri = SurfaceTriangles.init(allocator) catch unreachable;
+    var tri = SurfaceTriangles.create(allocator) catch unreachable;
     tri.numVerts = params.num_verts;
     tri.numIndexes = params.num_indexes;
     params.makeIndexes(tri, allocator);
@@ -622,7 +622,11 @@ pub fn init(
     }
 
     const device = device_manager.instance().getDevice();
-    try render_model_manager.instance.init(device, allocator);
+    try render_model_manager.instance.init(
+        render_system.default_material,
+        device,
+        allocator,
+    );
 
     render_system.front_end_job_list = parallel_job_manager.instance.allocJobList(
         .RENDERER_FRONTEND,

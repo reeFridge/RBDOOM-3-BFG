@@ -3,7 +3,16 @@ const FrameData = @import("frame_data.zig");
 const buffer_object = @import("buffer_object.zig");
 const c = @import("../sys/c_import.zig").c;
 
-pub const VertexCacheHandle = c_ulonglong;
+pub const VertexCacheHandle = packed struct(u64) {
+    static: bool = false,
+    size: u23 = 0,
+    offset: u25 = 0,
+    frame: u15 = 0,
+
+    pub inline fn isDefined(h: VertexCacheHandle) bool {
+        return @as(u64, @bitCast(h)) != 0;
+    }
+};
 
 pub const CacheType = enum(c_int) {
     CACHE_VERTEX,
@@ -19,20 +28,21 @@ const STATIC_INDEX_MEMORY: u32 = 31 * 1024 * 1024;
 const STATIC_VERTEX_MEMORY: u32 = 31 * 1024 * 1024;
 
 pub const GeoBufferSet = extern struct {
-    const InterlockedInt = c_int;
-    const SysInterlockedInteger = extern struct {
-        value: InterlockedInt,
-    };
+    fn InterlockedInt(IntType: type) type {
+        return extern struct {
+            value: IntType,
+        };
+    }
 
-    indexBuffer: buffer_object.IndexBuffer,
-    vertexBuffer: buffer_object.VertexBuffer,
-    jointBuffer: buffer_object.UniformBuffer,
-    mappedVertexBase: ?[*]u8,
-    mappedIndexBase: ?[*]u8,
-    mappedJointBase: ?[*]u8,
-    indexMemUsed: SysInterlockedInteger,
-    vertexMemUsed: SysInterlockedInteger,
-    jointMemUsed: SysInterlockedInteger,
+    index_buffer: buffer_object.IndexBuffer,
+    vertex_buffer: buffer_object.VertexBuffer,
+    joint_buffer: buffer_object.UniformBuffer,
+    mapped_vertex_base: ?[*]u8,
+    mapped_index_base: ?[*]u8,
+    mapped_joint_base: ?[*]u8,
+    index_mem_used: InterlockedInt(u32),
+    vertex_mem_used: InterlockedInt(u32),
+    joint_mem_used: InterlockedInt(u32),
     allocations: u32,
 
     fn alloc(
@@ -46,7 +56,7 @@ pub const GeoBufferSet = extern struct {
         device: *nvrhi.IDevice,
         buffer_device_address_enabled: bool,
     ) void {
-        _ = gbs.vertexBuffer.allocBufferObject(
+        _ = gbs.vertex_buffer.allocBufferObject(
             null,
             vertex_bytes,
             usage,
@@ -55,7 +65,7 @@ pub const GeoBufferSet = extern struct {
             device,
             buffer_device_address_enabled,
         );
-        _ = gbs.indexBuffer.allocBufferObject(
+        _ = gbs.index_buffer.allocBufferObject(
             null,
             index_bytes,
             usage,
@@ -66,7 +76,7 @@ pub const GeoBufferSet = extern struct {
         );
 
         if (joint_bytes > 0) {
-            _ = gbs.jointBuffer.allocBufferObject(
+            _ = gbs.joint_buffer.allocBufferObject(
                 null,
                 joint_bytes,
                 usage,
@@ -81,54 +91,54 @@ pub const GeoBufferSet = extern struct {
     }
 
     fn clear(gbs: *GeoBufferSet) void {
-        gbs.indexMemUsed.value = 0;
-        gbs.vertexMemUsed.value = 0;
-        gbs.jointMemUsed.value = 0;
+        gbs.index_mem_used.value = 0;
+        gbs.vertex_mem_used.value = 0;
+        gbs.joint_mem_used.value = 0;
         gbs.allocations = 0;
     }
 
     fn map(gbs: *GeoBufferSet) void {
-        if (gbs.mappedVertexBase == null) {
-            gbs.mappedVertexBase = gbs.vertexBuffer.mapBuffer();
+        if (gbs.mapped_vertex_base == null) {
+            gbs.mapped_vertex_base = gbs.vertex_buffer.mapBuffer();
         }
 
-        if (gbs.mappedIndexBase == null) {
-            gbs.mappedIndexBase = gbs.indexBuffer.mapBuffer();
+        if (gbs.mapped_index_base == null) {
+            gbs.mapped_index_base = gbs.index_buffer.mapBuffer();
         }
 
-        if (gbs.mappedJointBase == null and gbs.jointBuffer.getAllocedSize() != 0) {
-            gbs.mappedJointBase = gbs.jointBuffer.mapBuffer();
+        if (gbs.mapped_joint_base == null and gbs.joint_buffer.getAllocedSize() != 0) {
+            gbs.mapped_joint_base = gbs.joint_buffer.mapBuffer();
         }
     }
 
     fn unmap(gbs: *GeoBufferSet) void {
-        if (gbs.mappedVertexBase != null) {
-            gbs.vertexBuffer.unmapBuffer();
-            gbs.mappedVertexBase = null;
+        if (gbs.mapped_vertex_base != null) {
+            gbs.vertex_buffer.unmapBuffer();
+            gbs.mapped_vertex_base = null;
         }
 
-        if (gbs.mappedIndexBase != null) {
-            gbs.indexBuffer.unmapBuffer();
-            gbs.mappedIndexBase = null;
+        if (gbs.mapped_index_base != null) {
+            gbs.index_buffer.unmapBuffer();
+            gbs.mapped_index_base = null;
         }
 
-        if (gbs.mappedJointBase != null) {
-            gbs.jointBuffer.unmapBuffer();
-            gbs.mappedJointBase = null;
+        if (gbs.mapped_joint_base != null) {
+            gbs.joint_buffer.unmapBuffer();
+            gbs.mapped_joint_base = null;
         }
     }
 };
 
 pub const VertexCache = extern struct {
-    currentFrame: u32,
-    listNum: u32,
-    drawListNum: u32,
-    staticData: GeoBufferSet,
-    frameData: [FrameData.NUM_FRAME_DATA]GeoBufferSet,
-    uniformBufferOffsetAlignment: u32,
-    mostUsedVertex: u32,
-    mostUsedIndex: u32,
-    mostUsedJoint: u32,
+    current_frame: u32,
+    list_num: u32,
+    draw_list_num: u32,
+    static_data: GeoBufferSet,
+    frame_data: [FrameData.NUM_FRAME_DATA]GeoBufferSet,
+    uniform_buffer_offset_alignment: u32,
+    most_used_vertex: u32,
+    most_used_index: u32,
+    most_used_joint: u32,
 
     extern fn c_vertexCache_cacheIsCurrent(*VertexCache, VertexCacheHandle) bool;
     extern fn c_vertexCache_allocStaticIndex(
@@ -143,9 +153,6 @@ pub const VertexCache = extern struct {
         c_int,
         *nvrhi.ICommandList,
     ) VertexCacheHandle;
-    extern fn c_vertexCache_shutdown(*VertexCache) void;
-    extern fn c_vertexCache_init(*VertexCache, c_int, *nvrhi.ICommandList) void;
-    extern fn c_vertexCache_beginBackend(*VertexCache) void;
     extern fn c_vertexCache_actuallyAlloc(
         *VertexCache,
         *GeoBufferSet,
@@ -187,7 +194,7 @@ pub const VertexCache = extern struct {
     ) VertexCacheHandle {
         return c_vertexCache_actuallyAlloc(
             vertex_cache,
-            &vertex_cache.frameData[@intCast(vertex_cache.listNum)],
+            &vertex_cache.frame_data[@intCast(vertex_cache.list_num)],
             data,
             @intCast(num * size),
             .CACHE_VERTEX,
@@ -204,7 +211,7 @@ pub const VertexCache = extern struct {
     ) VertexCacheHandle {
         return c_vertexCache_actuallyAlloc(
             vertex_cache,
-            &vertex_cache.frameData[@intCast(vertex_cache.listNum)],
+            &vertex_cache.frame_data[@intCast(vertex_cache.list_num)],
             data,
             @intCast(num * size),
             .CACHE_INDEX,
@@ -221,7 +228,7 @@ pub const VertexCache = extern struct {
     ) VertexCacheHandle {
         return c_vertexCache_actuallyAlloc(
             vertex_cache,
-            &vertex_cache.frameData[@intCast(vertex_cache.listNum)],
+            &vertex_cache.frame_data[@intCast(vertex_cache.list_num)],
             data,
             @intCast(num * size),
             .CACHE_JOINT,
@@ -265,16 +272,16 @@ pub const VertexCache = extern struct {
         device: *nvrhi.IDevice,
         buffer_device_address_enabled: bool,
     ) void {
-        vertex_cache.currentFrame = 0;
-        vertex_cache.listNum = 0;
+        vertex_cache.current_frame = 0;
+        vertex_cache.list_num = 0;
 
-        vertex_cache.uniformBufferOffsetAlignment = uniform_buffer_offset_alignment;
+        vertex_cache.uniform_buffer_offset_alignment = uniform_buffer_offset_alignment;
 
-        vertex_cache.mostUsedVertex = 0;
-        vertex_cache.mostUsedIndex = 0;
-        vertex_cache.mostUsedJoint = 0;
+        vertex_cache.most_used_vertex = 0;
+        vertex_cache.most_used_index = 0;
+        vertex_cache.most_used_joint = 0;
 
-        for (&vertex_cache.frameData) |*frame_data| {
+        for (&vertex_cache.frame_data) |*frame_data| {
             frame_data.alloc(
                 VERTEX_MEMORY_PER_FRAME,
                 INDEX_MEMORY_PER_FRAME,
@@ -287,7 +294,7 @@ pub const VertexCache = extern struct {
             );
         }
 
-        vertex_cache.staticData.alloc(
+        vertex_cache.static_data.alloc(
             STATIC_VERTEX_MEMORY,
             STATIC_INDEX_MEMORY,
             0,
@@ -298,23 +305,44 @@ pub const VertexCache = extern struct {
             buffer_device_address_enabled,
         );
 
-        vertex_cache.frameData[0].map();
+        vertex_cache.frame_data[0].map();
     }
 
     pub fn shutdown(vertex_cache: *VertexCache, vma_allocator: c.VmaAllocator) void {
-        for (&vertex_cache.frameData) |*frame_data| {
-            frame_data.vertexBuffer.freeBufferObject(vma_allocator);
-            frame_data.indexBuffer.freeBufferObject(vma_allocator);
-            frame_data.jointBuffer.freeBufferObject(vma_allocator);
+        for (&vertex_cache.frame_data) |*frame_data| {
+            frame_data.vertex_buffer.freeBufferObject(vma_allocator);
+            frame_data.index_buffer.freeBufferObject(vma_allocator);
+            frame_data.joint_buffer.freeBufferObject(vma_allocator);
         }
 
-        vertex_cache.staticData.vertexBuffer.freeBufferObject(vma_allocator);
-        vertex_cache.staticData.indexBuffer.freeBufferObject(vma_allocator);
-        vertex_cache.staticData.jointBuffer.freeBufferObject(vma_allocator);
+        vertex_cache.static_data.vertex_buffer.freeBufferObject(vma_allocator);
+        vertex_cache.static_data.index_buffer.freeBufferObject(vma_allocator);
+        vertex_cache.static_data.joint_buffer.freeBufferObject(vma_allocator);
     }
 
     pub fn beginBackend(vertex_cache: *VertexCache) void {
-        c_vertexCache_beginBackend(vertex_cache);
+        vertex_cache.most_used_vertex = @max(
+            vertex_cache.most_used_vertex,
+            vertex_cache.frame_data[vertex_cache.list_num].vertex_mem_used.value,
+        );
+        vertex_cache.most_used_index = @max(
+            vertex_cache.most_used_index,
+            vertex_cache.frame_data[vertex_cache.list_num].index_mem_used.value,
+        );
+        vertex_cache.most_used_joint = @max(
+            vertex_cache.most_used_joint,
+            vertex_cache.frame_data[vertex_cache.list_num].joint_mem_used.value,
+        );
+
+        vertex_cache.frame_data[vertex_cache.list_num].unmap();
+        vertex_cache.static_data.unmap();
+
+        vertex_cache.draw_list_num = vertex_cache.list_num;
+        vertex_cache.current_frame += 1;
+        vertex_cache.list_num = vertex_cache.current_frame % FrameData.NUM_FRAME_DATA;
+
+        vertex_cache.frame_data[vertex_cache.list_num].map();
+        vertex_cache.frame_data[vertex_cache.list_num].clear();
     }
 };
 

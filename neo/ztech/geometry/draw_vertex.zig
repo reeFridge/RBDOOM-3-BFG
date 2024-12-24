@@ -1,8 +1,14 @@
+const Vec2 = @import("../math/vector.zig").Vec2;
 const CVec3 = @import("../math/vector.zig").CVec3;
+const Vec3 = @import("../math/vector.zig").Vec3;
 const math = @import("../math/math.zig");
 
 pub inline fn vertexFloatToByte(f: f32) u8 {
     return math.ftob((f + 1.0) * (255.0 / 2.0) + 0.5);
+}
+
+pub inline fn vertexByteToFloat(b: u8) f32 {
+    return @as(f32, @floatFromInt(b)) * (2.0 / 255.0) - 1.0;
 }
 
 pub const DrawVertex = extern struct {
@@ -48,6 +54,54 @@ pub const DrawVertex = extern struct {
         draw_vertex.normal[0] = vertexFloatToByte(x);
         draw_vertex.normal[1] = vertexFloatToByte(y);
         draw_vertex.normal[2] = vertexFloatToByte(z);
+    }
+
+    pub fn setTangent(draw_vertex: *DrawVertex, x: f32, y: f32, z: f32) void {
+        draw_vertex.tangent[0] = vertexFloatToByte(x);
+        draw_vertex.tangent[1] = vertexFloatToByte(y);
+        draw_vertex.tangent[2] = vertexFloatToByte(z);
+    }
+
+    pub fn setBiTangent(draw_vertex: *DrawVertex, x: f32, y: f32, z: f32) void {
+        const vec: Vec3(f32) = .{ .v = .{ x, y, z } };
+        const bitangent = Vec3(f32).cross(
+            draw_vertex.getNormalVec3(),
+            draw_vertex.getTangentVec3(),
+        );
+        const sign = bitangent.dot(vec);
+        draw_vertex.tangent[3] = if (sign != 0) 0 else 255;
+    }
+
+    pub fn getTangentVec3(draw_vertex: *const DrawVertex) Vec3(f32) {
+        var vec = Vec3(f32){
+            .v = .{
+                vertexByteToFloat(draw_vertex.tangent[0]),
+                vertexByteToFloat(draw_vertex.tangent[1]),
+                vertexByteToFloat(draw_vertex.tangent[2]),
+            },
+        };
+
+        return vec.normalize();
+    }
+
+    pub fn setNormalVec3(draw_vertex: *DrawVertex, vec: Vec3(f32)) void {
+        draw_vertex.setNormal(vec.x(), vec.y(), vec.z());
+    }
+
+    pub fn getTexCoordVec2(draw_vertex: *const DrawVertex) Vec2(f32) {
+        return .{ .v = .{ @floatCast(draw_vertex.st[0]), @floatCast(draw_vertex.st[1]) } };
+    }
+
+    pub fn getNormalVec3(draw_vertex: *const DrawVertex) Vec3(f32) {
+        var vec = Vec3(f32){
+            .v = .{
+                vertexByteToFloat(draw_vertex.normal[0]),
+                vertexByteToFloat(draw_vertex.normal[1]),
+                vertexByteToFloat(draw_vertex.normal[2]),
+            },
+        };
+
+        return vec.normalize();
     }
 
     pub inline fn setNativeOrderColor(draw_vertex: *DrawVertex, color: u32) void {

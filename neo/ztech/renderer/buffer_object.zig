@@ -93,7 +93,7 @@ pub fn BufferObject(buffer_object_type: BufferObjectType) type {
         inline fn alignment() u32 {
             return switch (object_type) {
                 .vertex => VERTEX_CACHE_ALIGN,
-                .uniform => vertex_cache.instance.uniformBufferOffsetAlignment,
+                .uniform => vertex_cache.instance.uniform_buffer_offset_alignment,
                 .index => INDEX_CACHE_ALIGN,
             };
         }

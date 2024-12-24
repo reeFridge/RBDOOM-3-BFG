@@ -48,7 +48,7 @@ pub const Common = opaque {
         try render_system.instance.init(allocator);
         try decl_manager.instance.postInit(allocator);
         // TODO common.initLanguageDict();
-        // TODO gameThread.startWorkerThread("Game/Draw");
+        // TODO game_thread.startWorkerThread("Game/Draw");
         // TODO usercmd_gen.instance.init();
         // TODO system.setRumble(0, 0, 0);
         // TODO ui_manager.instance.init();
@@ -74,7 +74,6 @@ pub const Common = opaque {
         // COMPLETE!
 
         try cvar.setCVarsFromArgs(null, allocator);
-        //c_common_init(common, 0, null);
     }
 
     pub fn initWithArgs(common: *Common, args: []const [*:0]const u8) void {

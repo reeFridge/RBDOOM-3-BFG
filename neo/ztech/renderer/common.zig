@@ -145,7 +145,7 @@ pub const DeclSkin = extern struct {
 
 pub const DrawSurface = extern struct {
     frontEndGeo: ?*const SurfaceTriangles,
-    numIndexes: c_int,
+    numIndexes: u32,
     indexCache: VertexCacheHandle,
     ambientCache: VertexCacheHandle,
     jointCache: VertexCacheHandle,
@@ -229,7 +229,7 @@ pub const DrawSurface = extern struct {
     ) void {
         // if gpu skinning is not available
         if (tri.staticModelWithJoints == null or !r_use_gpu_skinning) {
-            surf.jointCache = 0;
+            surf.jointCache = .{};
             return;
         }
 

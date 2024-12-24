@@ -219,6 +219,7 @@ pub const FileSystem = extern struct {
                     filename,
                     allocator,
                 ) orelse return error.FileNotFound;
+
                 break :buffer inner_file.resource_buffer orelse unreachable;
             },
             else => |left_err| return left_err,
@@ -449,23 +450,35 @@ pub const FileSystem = extern struct {
 
         // TODO: using_zip_files
 
-        // TODO: using_resource_files
         var paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
         while (paths_iterator.next()) |search_path| {
             var res_files_iterator = std.mem.reverseIterator(search_path.resourceFiles.constSlice());
             while (res_files_iterator.next()) |res_container| {
                 for (res_container.cache_table.constSlice()) |entry| {
-                    const ext = std.fs.path.extension(entry.filename.constSlice());
+                    const full = entry.filename.constSlice();
+                    const dirname = std.fs.path.dirname(full) orelse "";
+
+                    if (!std.ascii.eqlIgnoreCase(dirname, folder)) continue;
+
+                    const filename = std.fs.path.basename(full);
+                    const ext = std.fs.path.extension(full);
 
                     for (extensions) |extension| {
-                        if (std.ascii.eqlIgnoreCase(extension, ext)) {}
+                        if (std.ascii.eqlIgnoreCase(extension, ext)) {
+                            _ = try listAppendUnique(
+                                filename,
+                                &list,
+                                &hash_index,
+                                allocator,
+                            );
+                        }
                     }
                 }
             }
         }
 
         paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
-        while (paths_iterator.next()) |search_path| {
+        paths: while (paths_iterator.next()) |search_path| {
             const full_path = buildOSPath(
                 search_path.path.constSlice(),
                 search_path.gamedir.constSlice(),
@@ -473,7 +486,14 @@ pub const FileSystem = extern struct {
             ) catch return error.OutOfMemory;
 
             for (extensions) |extension| {
-                const filenames = try listOSFiles(full_path, extension, allocator);
+                const filenames = listOSFiles(
+                    full_path,
+                    extension,
+                    allocator,
+                ) catch |err| switch (err) {
+                    error.FileNotFound => continue :paths,
+                    else => |left_err| return left_err,
+                };
                 defer {
                     for (filenames) |filename| allocator.free(filename);
                     allocator.free(filenames);

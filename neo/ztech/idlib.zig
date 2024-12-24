@@ -1,3 +1,4 @@
+const Vec3 = @import("math/vector.zig").Vec3;
 const std = @import("std");
 const global = @import("global.zig");
 const fs = @import("framework/file_system.zig");
@@ -21,6 +22,13 @@ pub const Str = extern struct {
     alloced_and_flag: AllocedAndFlag = .{},
     static_buffer: [static_buffer_len]u8 = std.mem.zeroes([static_buffer_len]u8),
 
+    pub fn initStatic(contents: []const u8) Str {
+        var str = Str{};
+        str.assignStaticAssureSize(contents);
+
+        return str;
+    }
+
     pub inline fn buffer(self: *Str) []u8 {
         return if (self.alloced_ptr) |data_ptr|
             data_ptr[0..self.alloced()]
@@ -42,6 +50,11 @@ pub const Str = extern struct {
 
     pub fn empty(self: *Str) void {
         self.len = 0;
+    }
+
+    pub fn assignStaticAssureSize(self: *Str, contents: []const u8) void {
+        std.mem.copyForwards(u8, &self.static_buffer, contents);
+        self.len = @intCast(contents.len);
     }
 
     pub fn assignSlice(
@@ -543,6 +556,44 @@ pub const HashIndex = extern struct {
     hash_mask: i32 = default_hash_size - 1,
     lookup_mask: i32 = 0,
 
+    pub fn init(initial_hash_size: u32, initial_index_size: u32) HashIndex {
+        var hash = HashIndex{};
+
+        hash.hash_size = initial_hash_size;
+        hash.index_size = initial_index_size;
+        hash.hash_mask = @intCast(initial_hash_size - 1);
+
+        return hash;
+    }
+
+    pub fn remove(hash_index: *HashIndex, key: u32, index: u32) void {
+        const k: usize = @intCast(@as(i32, @intCast(key)) & hash_index.hash_mask);
+
+        if (hash_index.hash == &invalid_index) return;
+
+        if (hash_index.hash[k] == @as(i32, @intCast(index))) {
+            hash_index.hash[k] = hash_index.index_chain[index];
+        } else {
+            var i = hash_index.hash[k];
+            while (i != -1) : (i = hash_index.index_chain[@intCast(i)]) {
+                const ui: u32 = @intCast(i);
+                if (hash_index.index_chain[ui] == @as(i32, @intCast(index))) {
+                    hash_index.index_chain[ui] = hash_index.index_chain[index];
+                    break;
+                }
+            }
+        }
+
+        hash_index.index_chain[index] = -1;
+    }
+
+    pub fn removeIndex(hash_index: *HashIndex, key: u32, index: u32) void {
+        _ = hash_index;
+        _ = key;
+        _ = index;
+        @panic("not implemented");
+    }
+
     pub fn add(
         hash_index: *HashIndex,
         key: u32,
@@ -642,6 +693,17 @@ pub const HashIndex = extern struct {
         allocator.free(old_index_chain);
         hash_index.index_chain = index_chain.ptr;
         hash_index.index_size = @intCast(new_size);
+    }
+
+    pub fn generateKeyVec3(hash_index: *const HashIndex, vec: *const Vec3(f32)) u32 {
+        const x: i32 = @intFromFloat(vec.v[0]);
+        const y: i32 = @intFromFloat(vec.v[1]);
+        const z: i32 = @intFromFloat(vec.v[2]);
+
+        const vec_sum = x + y + z;
+        const hash_signed = vec_sum & hash_index.hash_mask;
+
+        return @intCast(hash_signed);
     }
 
     pub fn generateKey(

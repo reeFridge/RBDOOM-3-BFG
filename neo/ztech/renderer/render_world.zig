@@ -1568,7 +1568,7 @@ fn addSingleModel(
                 // contact the light, even when the total model does
 
                 const is_cached = if (opt_surf_inter) |surf_inter|
-                    surf_inter.lightTrisIndexCache > 0
+                    surf_inter.lightTrisIndexCache.isDefined()
                 else
                     false;
                 if (opt_surf_inter == null or is_cached) {
@@ -1638,7 +1638,7 @@ fn addSingleModel(
                 continue;
 
             const is_cached = if (opt_surf_inter) |surf_inter|
-                surf_inter.lightTrisIndexCache > 0
+                surf_inter.lightTrisIndexCache.isDefined()
             else
                 false;
 
@@ -2707,7 +2707,7 @@ pub fn freeWorld(render_world: *RenderWorld) void {
     }
 
     for (render_world.local_models.items) |item| {
-        render_model_manager.instance.removeModel(item);
+        render_model_manager.instance.removeModel(@ptrCast(@alignCast(item)));
         item.deinit(render_world);
     }
     render_world.local_models.clearAndFree();
@@ -2873,7 +2873,10 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             if (std.mem.eql(u8, token.slice(), "model")) {
                 const render_model = try render_world.parseModel(&lexer);
                 // add it to the model manager list
-                try render_model_manager.instance.addModel(render_model);
+                try render_model_manager.instance.addModel(
+                    @ptrCast(@alignCast(render_model)),
+                    render_world.allocator,
+                );
 
                 // save it in the list to free when clearing this map
                 try render_world.local_models.append(render_model);

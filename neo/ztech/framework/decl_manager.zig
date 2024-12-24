@@ -241,6 +241,8 @@ pub const DeclFile = extern struct {
         );
         defer allocator.free(buffer);
 
+        if (buffer.len == 0) return;
+
         var lexer = Lexer{
             .flags = decl_lexer_flags,
         };

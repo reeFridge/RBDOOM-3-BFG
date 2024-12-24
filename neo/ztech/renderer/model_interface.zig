@@ -23,7 +23,7 @@ export fn ztech_triSurf_deinit(tris: *SurfaceTriangles) void {
 }
 
 export fn ztech_triSurf_init() *SurfaceTriangles {
-    return SurfaceTriangles.init(global.gpa.allocator()) catch unreachable;
+    return SurfaceTriangles.create(global.gpa.allocator()) catch unreachable;
 }
 
 export fn ztech_triSurf_freeVertices(tris: *SurfaceTriangles) void {

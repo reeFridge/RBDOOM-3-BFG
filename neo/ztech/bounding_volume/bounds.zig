@@ -83,6 +83,35 @@ pub fn getRadius(b: *const Bounds, center: Vec3(f32)) f32 {
     return @sqrt(total);
 }
 
+pub fn addBounds(b: *Bounds, a: *const Bounds) bool {
+    var expanded = false;
+    if (a.min.x() < b.min.x()) {
+        b.min.v[0] = a.min.x();
+        expanded = true;
+    }
+    if (a.min.y() < b.min.y()) {
+        b.min.v[1] = a.min.y();
+        expanded = true;
+    }
+    if (a.min.z() < b.min.z()) {
+        b.min.v[2] = a.min.z();
+        expanded = true;
+    }
+    if (a.max.x() > b.max.x()) {
+        b.max.v[0] = a.max.x();
+        expanded = true;
+    }
+    if (a.max.y() > b.max.y()) {
+        b.max.v[1] = a.max.y();
+        expanded = true;
+    }
+    if (a.max.z() > b.max.z()) {
+        b.max.v[2] = a.max.z();
+        expanded = true;
+    }
+    return expanded;
+}
+
 pub fn addPoint(b: *Bounds, v: Vec3(f32)) bool {
     var expanded = false;
 

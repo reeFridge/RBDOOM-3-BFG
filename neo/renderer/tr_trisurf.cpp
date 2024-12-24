@@ -1182,7 +1182,7 @@ to save space or speed transforms?
 this version only handles bilateral symetry
 =================
 */
-void R_DeriveTangentsWithoutNormals( srfTriangles_t* tri, bool useMikktspace )
+extern "C" void R_DeriveTangentsWithoutNormals( srfTriangles_t* tri, bool useMikktspace )
 {
 	// SP begin
 	if( useMikktspace )
@@ -1582,8 +1582,16 @@ void R_RemoveDegenerateTriangles( srfTriangles_t* tri )
 		if( a == b || a == c || b == c )
 		{
 			c_removed++;
-			memmove( tri->indexes + i, tri->indexes + i + 3, ( tri->numIndexes - i - 3 ) * sizeof( tri->indexes[0] ) );
-			memmove( tri->silIndexes + i, tri->silIndexes + i + 3, ( tri->numIndexes - i - 3 ) * sizeof( tri->silIndexes[0] ) );
+			memmove(
+					tri->indexes + i,
+					tri->indexes + i + 3,
+					( tri->numIndexes - i - 3 ) * sizeof( tri->indexes[0] )
+					);
+			memmove(
+					tri->silIndexes + i,
+					tri->silIndexes + i + 3,
+					( tri->numIndexes - i - 3 ) * sizeof( tri->silIndexes[0] )
+					);
 			tri->numIndexes -= 3;
 			i -= 3;
 		}

@@ -2,6 +2,7 @@
 pub const root = .{
 @import("sys/device_manager.zig"),
 @import("sys/localization.zig"),
+@import("renderer/model.zig"),
 @import("renderer/render_system.zig"),
 @import("renderer/parallel_job_manager.zig"),
 @import("renderer/render_backend.zig"),

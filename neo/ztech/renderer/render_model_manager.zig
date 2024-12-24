@@ -5,20 +5,19 @@ const backend = @import("render_backend.zig");
 const RenderModel = @import("model.zig").RenderModel;
 const RenderModelStatic = @import("model.zig").RenderModelStatic;
 const Allocator = std.mem.Allocator;
+const Material = @import("material.zig").Material;
 
 pub const RenderModelManager = extern struct {
     pub const GetModelError = error{ModelNotFound};
 
-    extern fn c_renderModelManager_allocModel(*RenderModelManager) *RenderModel;
-    extern fn c_renderModelManager_addModel(*RenderModelManager, *RenderModel) void;
-    extern fn c_renderModelManager_removeModel(*RenderModelManager, *RenderModel) void;
-    extern fn c_renderModelManager_findModel(*RenderModelManager, [*:0]const u8) ?*RenderModel;
+    extern fn c_renderModelManager_findModel(
+        *RenderModelManager,
+        [*:0]const u8,
+    ) ?*RenderModel;
     extern fn c_renderModelManager_defaultModel(*RenderModelManager) ?*RenderModel;
-    extern fn c_renderModelManager_init(*RenderModelManager) void;
-    extern fn c_renderModelManager_shutdown(*RenderModelManager) void;
 
     vptr: *anyopaque = undefined,
-    models: idlib.List(*RenderModel) = .{},
+    models: idlib.List(*RenderModelStatic) = .{},
     hash: idlib.HashIndex = .{},
     default_model: ?*RenderModelStatic = null,
     beam_model: ?*RenderModelStatic = null,
@@ -28,6 +27,7 @@ pub const RenderModelManager = extern struct {
 
     pub fn init(
         manager: *RenderModelManager,
+        default_material: *const Material,
         device: *nvrhi.IDevice,
         allocator: Allocator,
     ) Allocator.Error!void {
@@ -52,52 +52,60 @@ pub const RenderModelManager = extern struct {
         // TODO: addCommand: touchModel
 
         const model = try allocator.create(RenderModelStatic);
-        model.initEmpty("_DEFAULT");
-        model.makeDefaultModel();
+        model.* = .{};
+        try model.initEmpty("_DEFAULT", allocator);
+        try model.makeDefault(default_material, allocator);
         model.level_load_referenced = true;
         manager.default_model = model;
-        try manager.addModel(@ptrCast(model));
+        try manager.addModel(model, allocator);
 
         const beam = try allocator.create(RenderModelStatic);
-        beam.initEmpty("_BEAM");
+        beam.* = .{};
+        try beam.initEmpty("_BEAM", allocator);
         beam.level_load_referenced = true;
         manager.beam_model = beam;
-        try manager.addModel(@ptrCast(beam));
+        try manager.addModel(beam, allocator);
 
         const sprite = try allocator.create(RenderModelStatic);
-        sprite.initEmpty("_SPRITE");
+        sprite.* = .{};
+        try sprite.initEmpty("_SPRITE", allocator);
         sprite.level_load_referenced = true;
         manager.sprite_model = sprite;
-        try manager.addModel(@ptrCast(sprite));
+        try manager.addModel(sprite, allocator);
     }
 
     pub fn shutdown(manager: *RenderModelManager, allocator: Allocator) void {
-        for (manager.models.constSlice()) |_| {
-            // TODO: provide type_id to upcast
-            //allocator.destroy(model_ptr);
+        for (manager.models.constSlice()) |model_ptr| {
+            model_ptr.deinit(allocator);
         }
 
         manager.models.clear(allocator);
         manager.hash.free(allocator);
-        _ = manager.command_list_handle.reset();
+        manager.command_list_handle.deinit();
     }
 
-    pub fn allocModel(manager: *RenderModelManager) *RenderModel {
-        return c_renderModelManager_allocModel(manager);
+    pub fn addModel(
+        manager: *RenderModelManager,
+        model: *RenderModelStatic,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const index = try manager.models.append(model, allocator);
+
+        try manager.hash.add(
+            manager.hash.generateKey(model.name.constSlice(), false),
+            @intCast(index),
+            allocator,
+        );
     }
 
-    pub fn addModel(manager: *RenderModelManager, model_ptr: *RenderModel) error{}!void {
-        _ = model_ptr;
-        _ = manager;
-
-        @panic("not implemented");
-    }
-
-    pub fn removeModel(manager: *RenderModelManager, model_ptr: *RenderModel) void {
-        _ = model_ptr;
-        _ = manager;
-
-        @panic("not implemented");
+    pub fn removeModel(manager: *RenderModelManager, model: *RenderModelStatic) void {
+        if (manager.models.findIndex(&model)) |index| {
+            manager.hash.removeIndex(
+                manager.hash.generateKey(model.name.constSlice(), false),
+                @intCast(index),
+            );
+            manager.models.removeIndex(index);
+        }
     }
 
     pub fn findModel(manager: *RenderModelManager, model_name: [*:0]const u8) GetModelError!*RenderModel {

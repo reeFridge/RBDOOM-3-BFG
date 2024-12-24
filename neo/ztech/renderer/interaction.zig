@@ -20,7 +20,7 @@ pub const SurfaceInteraction = extern struct {
     // The vertexes for light tris will always come from ambient triangles.
     // For interactions created at load time, the indexes will be uniquely
     // generated in static vertex memory.
-    numLightTrisIndexes: c_int,
+    numLightTrisIndexes: u32,
     lightTrisIndexCache: VertexCache.VertexCacheHandle,
 };
 
@@ -469,7 +469,7 @@ fn createInteractionLightSurfaceTriangles(
         entity_def.parms.noSelfShadow or
         entity_def.parms.noShadow;
 
-    var surface_triangles = try SurfaceTriangles.init(allocator);
+    var surface_triangles = try SurfaceTriangles.create(allocator);
     errdefer surface_triangles.deinit(allocator);
 
     // save a reference to the original surface
