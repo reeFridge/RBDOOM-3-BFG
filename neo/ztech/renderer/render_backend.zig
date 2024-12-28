@@ -14,7 +14,9 @@ const Common = @import("../framework/common.zig");
 const image_manager = @import("image_manager.zig");
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 const vulkan = @import("vulkan");
+const gl_state = @import("gl_state.zig");
 const Allocator = std.mem.Allocator;
+const DeviceManager = device_manager.DeviceManagerVulkan;
 
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
@@ -105,7 +107,7 @@ const TileMap = extern struct {
     }
 };
 
-const BindingCache = extern struct {
+pub const BindingCache = extern struct {
     device: ?*nvrhi.IDevice,
     bindingSets: idlib.List(nvrhi.BindingSetHandle),
     bindingHash: idlib.HashIndex,
@@ -125,6 +127,50 @@ const BindingCache = extern struct {
 
         binding_cache.bindingSets.clear(allocator);
         binding_cache.bindingHash.clear();
+    }
+
+    pub fn getOrCreateBindingSet(
+        binding_cache: *BindingCache,
+        desc: *const nvrhi.BindingSetDesc,
+        layout: *nvrhi.IBindingLayout,
+        allocator: Allocator,
+    ) Allocator.Error!nvrhi.BindingSetHandle {
+        var hash: usize = 0;
+        desc.hashCombine(&hash);
+        nvrhi.hashCombinePtr(&hash, @ptrCast(layout));
+
+        var result: nvrhi.BindingSetHandle = .{};
+        {
+            _ = binding_cache.mutex.lockBlocking();
+            defer binding_cache.mutex.unlock();
+
+            const binding_sets = binding_cache.bindingSets.constSlice();
+            var i = binding_cache.bindingHash.first(@intCast(hash));
+            while (i != -1) : (i = binding_cache.bindingHash.next(@intCast(i))) {
+                const binding_set = binding_sets[@intCast(i)].ptr_.?;
+                if (binding_set.getDesc().eql(desc)) {
+                    result = .{ .ptr_ = binding_set };
+                    break;
+                }
+            }
+        }
+
+        if (result.ptr_ == null) {
+            _ = binding_cache.mutex.lockBlocking();
+            defer binding_cache.mutex.unlock();
+
+            const device = binding_cache.device orelse @panic("device is not set");
+            result = device.createBindingSet(desc, layout);
+
+            const entry_index = try binding_cache.bindingSets.append(result, allocator);
+            try binding_cache.bindingHash.add(
+                @intCast(hash),
+                @intCast(entry_index),
+                allocator,
+            );
+        }
+
+        return result;
     }
 };
 
@@ -234,7 +280,7 @@ pub const RenderBackend = extern struct {
     slopeScaleBias: f32,
     depthBias: f32,
     glStateBits: c_ulonglong,
-    viewDef: ?*const ViewDef,
+    view_def: ?*const ViewDef,
     currentSpace: ?*const ViewEntity,
     currentScissor: ScreenRect,
     currentRenderCopied: bool,
@@ -445,9 +491,10 @@ pub const RenderBackend = extern struct {
         device.runGarbageCollection();
     }
 
-    pub fn swapBuffersBlocking(_: *RenderBackend) void {
+    pub const SwapBuffersError = DeviceManager.PresentError;
+    pub fn swapBuffersBlocking(_: *RenderBackend) DeviceManager.PresentError!void {
         const device_manager_instance = device_manager.instance();
-        device_manager_instance.present();
+        try device_manager_instance.present();
         device_manager_instance.getDevice().runGarbageCollection();
         render_log.instance.endFrame();
 
@@ -460,9 +507,18 @@ pub const RenderBackend = extern struct {
         c_renderBackend_checkCVars(backend);
     }
 
-    pub fn executeBackendCommands(backend: *RenderBackend, cmd_head: *FrameData.EmptyCommand) void {
-        ResolutionScale.instance.setCurrentGPUFrameTime(@intCast(Common.instance.getRendererGPUMicroseconds()));
-        backend.resizeImages();
+    pub const ExecuteCommandsError =
+        DeviceManager.UpdateWindowSizeError ||
+        DeviceManager.BeginFrameError;
+    pub fn executeBackendCommands(
+        backend: *RenderBackend,
+        cmd_head: *FrameData.EmptyCommand,
+        allocator: Allocator,
+    ) ExecuteCommandsError!void {
+        ResolutionScale.instance.setCurrentGPUFrameTime(
+            @intCast(Common.instance.getRendererGPUMicroseconds()),
+        );
+        try backend.resizeImages(allocator);
 
         if (cmd_head.commandId == .RC_NOP and cmd_head.next == null) return;
 
@@ -471,7 +527,7 @@ pub const RenderBackend = extern struct {
             return;
         }
 
-        backend.glStartFrame();
+        try backend.glStartFrame();
         const global_images = image_manager.instance;
 
         const texture_id = global_images.hierarchicalZBufferImage.?.getTextureID();
@@ -480,61 +536,61 @@ pub const RenderBackend = extern struct {
         // this can be expensive here because of the runtime image compression
         // image_manager.instance.loadDeferredImages(backend.commandList.ptr_);
         const device_manager_instance = device_manager.instance();
-        const device = device_manager_instance.getDevice();
+        _ = device_manager_instance.getDevice();
 
         if (backend.ssaoPass == null) {
-            backend.ssaoPass = Pass.SsaoPass.create(
-                device,
-                &backend.commonPasses,
-                global_images.currentDepthImage.?.getTexturePtr(),
-                global_images.gbufferNormalsRoughnessImage.?.getTexturePtr(),
-                global_images.ambientOcclusionImage[0].?.getTexturePtr(),
-            );
+            //backend.ssaoPass = Pass.SsaoPass.create(
+            //    device,
+            //    &backend.commonPasses,
+            //    global_images.currentDepthImage.?.getTexturePtr(),
+            //    global_images.gbufferNormalsRoughnessImage.?.getTexturePtr(),
+            //    global_images.ambientOcclusionImage[0].?.getTexturePtr(),
+            //);
         }
 
         if (texture_id != global_images.hierarchicalZBufferImage.?.getTextureID() or
             backend.hiZGenPass == null)
         {
-            if (backend.hiZGenPass) |pass| {
-                pass.destroy();
-            }
+            //if (backend.hiZGenPass) |pass| {
+            //    pass.destroy();
+            //}
 
-            backend.hiZGenPass = Pass.MipMapGenPass.create(
-                device,
-                global_images.hierarchicalZBufferImage.?.getTexturePtr(),
-                .MODE_MAX,
-            );
+            //backend.hiZGenPass = Pass.MipMapGenPass.create(
+            //    device,
+            //    global_images.hierarchicalZBufferImage.?.getTexturePtr(),
+            //    .MODE_MAX,
+            //);
         }
 
         if (backend.toneMapPass == null) {
-            const pass = Pass.TonemapPass.create();
-            pass.init(
-                device,
-                &backend.commonPasses,
-                .{},
-                global_framebuffers.ldrFBO.getApiObject(),
-            );
-            backend.toneMapPass = pass;
+            //const pass = Pass.TonemapPass.create();
+            //pass.init(
+            //    device,
+            //    &backend.commonPasses,
+            //    .{},
+            //    global_framebuffers.ldrFBO.getApiObject(),
+            //);
+            //backend.toneMapPass = pass;
         }
 
         if (backend.taaPass == null) {
-            const pass = Pass.TemporalAntiAliasingPass.create();
-            pass.init(
-                device,
-                &backend.commonPasses,
-                null,
-                .{
-                    .sourceDepth = global_images.currentDepthImage.?.getTexturePtr(),
-                    .motionVectors = global_images.taaMotionVectorsImage.?.getTexturePtr(),
-                    .unresolvedColor = global_images.currentRenderHDRImage.?.getTexturePtr(),
-                    .resolvedColor = global_images.taaResolvedImage.?.getTexturePtr(),
-                    .feedback1 = global_images.taaFeedback1Image.?.getTexturePtr(),
-                    .feedback2 = global_images.taaFeedback2Image.?.getTexturePtr(),
-                    .motionVectorStencilMask = 0, //0x01,
-                    .useCatmullRomFilter = true,
-                },
-            );
-            backend.taaPass = pass;
+            //const pass = Pass.TemporalAntiAliasingPass.create();
+            //pass.init(
+            //    device,
+            //    &backend.commonPasses,
+            //    null,
+            //    .{
+            //        .sourceDepth = global_images.currentDepthImage.?.getTexturePtr(),
+            //        .motionVectors = global_images.taaMotionVectorsImage.?.getTexturePtr(),
+            //        .unresolvedColor = global_images.currentRenderHDRImage.?.getTexturePtr(),
+            //        .resolvedColor = global_images.taaResolvedImage.?.getTexturePtr(),
+            //        .feedback1 = global_images.taaFeedback1Image.?.getTexturePtr(),
+            //        .feedback2 = global_images.taaFeedback2Image.?.getTexturePtr(),
+            //        .motionVectorStencilMask = 0, //0x01,
+            //        .useCatmullRomFilter = true,
+            //    },
+            //);
+            //backend.taaPass = pass;
         }
 
         backend.glSetDefaultState();
@@ -554,14 +610,14 @@ pub const RenderBackend = extern struct {
                         RenderSystem.gl_config.timerQueryAvailable = false;
                         defer RenderSystem.gl_config.timerQueryAvailable = timerQueryAvailable;
 
-                        backend.drawView(@ptrCast(cmd), 0);
+                        try backend.drawView(@ptrCast(cmd), 0, allocator);
                     } else {
-                        backend.drawView(@ptrCast(cmd), 0);
+                        try backend.drawView(@ptrCast(cmd), 0, allocator);
                     }
                 },
                 .RC_DRAW_VIEW_3D => {
                     draw_view_3d = true;
-                    backend.drawView(@ptrCast(cmd), 0);
+                    try backend.drawView(@ptrCast(cmd), 0, allocator);
                 },
                 .RC_SET_BUFFER => {
                     backend.setBuffer(@ptrCast(cmd));
@@ -581,12 +637,204 @@ pub const RenderBackend = extern struct {
         backend.glEndFrame();
     }
 
-    fn drawView(backend: *RenderBackend, data: *anyopaque, stereo_eye: c_int) void {
-        c_renderBackend_drawView(backend, data, stereo_eye);
+    fn drawView(
+        backend: *RenderBackend,
+        cmd: *FrameData.DrawSurfacesCommand,
+        stereo_eye: i32,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const view_def = cmd.viewDef orelse return;
+        backend.view_def = view_def;
+
+        if (view_def.numDrawSurfs == 0) {
+            const RDF_IRRADIANCE: c_int = 4;
+            if ((view_def.renderView.rdflags & RDF_IRRADIANCE) != 0) {
+                @panic("not implemented");
+            }
+
+            return;
+        }
+
+        const r_skip_render = false;
+        if (r_skip_render and view_def.viewEntitys != null) return;
+
+        if (view_def.viewEntitys != null) {
+            backend.drawView3d(view_def, stereo_eye);
+        } else {
+            try backend.drawViewGui(view_def, stereo_eye, allocator);
+        }
     }
 
-    fn setBuffer(backend: *RenderBackend, data: *anyopaque) void {
-        c_renderBackend_setBuffer(backend, data);
+    fn drawView3d(backend: *RenderBackend, view_def: *ViewDef, stereo_eye: i32) void {
+        _ = backend;
+        _ = view_def;
+        _ = stereo_eye;
+
+        @panic("not implemented");
+    }
+
+    fn drawViewGui(
+        backend: *RenderBackend,
+        view_def: *ViewDef,
+        _: i32,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const command_list = backend.commandList.ptr_ orelse @panic("command_list not set");
+
+        // resetViewportAndScissorToDefaultCamera
+        {
+            // set the window clipping
+            const x: f32 = @floatFromInt(view_def.viewport.x1);
+            const y: f32 = @floatFromInt(view_def.viewport.y1);
+            const w: f32 = @floatFromInt(view_def.viewport.x2 + 1 - view_def.viewport.x1);
+            const h: f32 = @floatFromInt(view_def.viewport.y2 + 1 - view_def.viewport.y1);
+            backend.currentViewport.clear();
+            backend.currentViewport.addPoint(x, y);
+            backend.currentViewport.addPoint(x + w, y + h);
+        }
+
+        {
+            // the scissor may be smaller than the viewport for subviews
+            const x: u32 = @intCast(backend.view_def.?.viewport.x1 + view_def.scissor.x1);
+            const y: u32 = @intCast(backend.view_def.?.viewport.y2 - view_def.scissor.y2);
+            const w: u32 = @intCast(view_def.scissor.x2 + 1 - view_def.scissor.x1);
+            const h: u32 = @intCast(view_def.scissor.y2 + 1 - view_def.scissor.y1);
+            backend.glScissor(x, y, w, h);
+
+            backend.currentScissor = backend.view_def.?.scissor;
+        }
+
+        backend.glSetState(gl_state.GLS_DEFAULT | gl_state.GLS_CULL_FRONTSIDED);
+
+        framebuffer.global_framebuffers.ldrFBO.bind(backend);
+
+        const clear_color = false;
+        backend.glClear(
+            clear_color,
+            true,
+            true,
+            gl_state.STENCIL_SHADOW_TEST_VALUE,
+            false,
+        );
+
+        // set common shader vars
+        {
+            render_prog_manager.instance.setUniformValue(
+                .globaleyepos,
+                &.{
+                    view_def.renderView.view_origin.x,
+                    view_def.renderView.view_origin.y,
+                    view_def.renderView.view_origin.z,
+                    1,
+                },
+            );
+
+            const overbright = 3 * 0.5;
+            render_prog_manager.instance.setUniformValue(
+                .overbright,
+                &.{
+                    overbright,
+                    overbright,
+                    overbright,
+                    overbright,
+                },
+            );
+
+            render_prog_manager.instance.setUniformValue(
+                .psx_distortions,
+                &.{ 0, 0, 0, 0 },
+            );
+
+            const projection_matrix: *RenderMatrix = @ptrCast(&view_def.projectionMatrix);
+            const proj_transpose_matrix = projection_matrix.transpose().m;
+
+            for (0..4) |i| {
+                var param_index: u32 = @intFromEnum(render_prog_manager.RenderParam.projmatrix_x);
+                param_index += @intCast(i);
+                render_prog_manager.instance.setUniformValue(
+                    @enumFromInt(param_index),
+                    @ptrCast((proj_transpose_matrix[i * 4 ..][0..4]).ptr),
+                );
+            }
+        }
+
+        // const processed = backend.drawShaderPasses(
+        //     drawSurfs,
+        //     numDrawSurfs,
+        //     guiScreenOffset,
+        //     stereoEye,
+        // );
+
+        // copy LDR result to swapchain image
+        {
+            const current_framebuffer_index = device_manager.instance().getCurrentBackBufferIndex();
+            const swap_framebuffers = framebuffer.global_framebuffers.swap_framebuffers.constSlice();
+            const blit_params: Pass.BlitParameters = .{
+                .source_texture = image_manager.instance.ldrImage.?.texture.ptr_,
+                .target_framebuffer = swap_framebuffers[current_framebuffer_index].getApiObject(),
+                .target_viewport = nvrhi.Viewport.fromWidthHeight(
+                    @floatFromInt(RenderSystem.instance.getWidth()),
+                    @floatFromInt(RenderSystem.instance.getHeight()),
+                ),
+            };
+
+            try backend.commonPasses.blitTexture(
+                command_list,
+                blit_params,
+                &backend.bindingCache,
+                allocator,
+            );
+        }
+
+        //const draw_surfs = &view_def.drawSurfs[0];
+        //const num_draw_surfs = view_def.numDrawSurfs;
+
+        //@panic("not implemented");
+    }
+
+    fn glClear(
+        backend: *RenderBackend,
+        color: bool,
+        depth: bool,
+        stencil: bool,
+        stencil_value: u8,
+        clear_hdr: bool,
+    ) void {
+        const current_fb = backend.currentFramebuffer.getApiObject();
+        const command_list = backend.commandList.ptr_ orelse @panic("command_list not set");
+
+        if (color) {
+            nvrhi.utils.clearColorAttachment(command_list, current_fb, 0, .{});
+        }
+
+        if (clear_hdr) {
+            const hdr_fb = framebuffer.global_framebuffers.hdrFBO.getApiObject();
+            nvrhi.utils.clearColorAttachment(command_list, hdr_fb, 0, .{});
+        }
+
+        if (depth or stencil) {
+            const depth_attachment = &current_fb.getDesc().depthAttachment;
+            if (depth_attachment.texture) |texture| {
+                command_list.clearDepthStencilTexture(
+                    texture,
+                    nvrhi.AllSubresources,
+                    depth,
+                    1.0,
+                    stencil,
+                    stencil_value,
+                );
+            }
+        }
+    }
+
+    fn setBuffer(backend: *RenderBackend, _: *anyopaque) void {
+        // TODO: render_log
+        backend.currentScissor.clear();
+        backend.currentScissor.addPoint(0, 0);
+        backend.currentScissor.addPoint(
+            @floatFromInt(RenderSystem.instance.getWidth()),
+            @floatFromInt(RenderSystem.instance.getHeight()),
+        );
     }
 
     fn copyRender(backend: *RenderBackend, data: *anyopaque) void {
@@ -637,14 +885,10 @@ pub const RenderBackend = extern struct {
     }
 
     fn glSetState(backend: *RenderBackend, state_bits: u64) void {
-        const GLS_DEPTH_TEST_MASK: u64 = @as(u64, 1) << @intCast(60);
-        const GLS_MIRROR_VIEW: u64 = @as(u64, 1) << @intCast(62);
-        const GLS_KEEP: u64 = GLS_DEPTH_TEST_MASK;
-
-        backend.glStateBits = state_bits | (backend.glStateBits & GLS_KEEP);
-        if (backend.viewDef) |view_def| {
+        backend.glStateBits = state_bits | (backend.glStateBits & gl_state.GLS_KEEP);
+        if (backend.view_def) |view_def| {
             if (view_def.isMirror) {
-                backend.glStateBits |= GLS_MIRROR_VIEW;
+                backend.glStateBits |= gl_state.GLS_MIRROR_VIEW;
             }
         }
 
@@ -652,10 +896,13 @@ pub const RenderBackend = extern struct {
         // PipelineCache::GetOrCreatePipeline and GetRenderState similar to Vulkan
     }
 
-    fn glStartFrame(backend: *RenderBackend) void {
-        render_log.instance.fetchGPUTimers(&backend.pc, device_manager.instance().getDevice());
+    fn glStartFrame(backend: *RenderBackend) DeviceManager.BeginFrameError!void {
+        render_log.instance.fetchGPUTimers(
+            &backend.pc,
+            device_manager.instance().getDevice(),
+        );
 
-        device_manager.instance().beginFrame();
+        try device_manager.instance().beginFrame();
         Image.emptyGarbage();
 
         const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
@@ -679,11 +926,14 @@ pub const RenderBackend = extern struct {
         if (backend.taaPass) |taaPass| taaPass.advanceFrame();
     }
 
-    fn resizeImages(_: *RenderBackend) void {
-        device_manager.instance().updateWindowSize(.{
+    fn resizeImages(
+        _: *RenderBackend,
+        allocator: Allocator,
+    ) DeviceManager.UpdateWindowSizeError!void {
+        try device_manager.instance().updateWindowSize(.{
             .width = @intCast(RenderSystem.gl_config.nativeScreenWidth),
             .height = @intCast(RenderSystem.gl_config.nativeScreenHeight),
             .multi_samples = @intCast(RenderSystem.gl_config.multisamples),
-        });
+        }, allocator);
     }
 };

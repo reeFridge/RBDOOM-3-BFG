@@ -13,14 +13,14 @@ pub const bimage_magic: u32 =
 
 pub const BinaryImage = struct {
     const FileHeader = extern struct {
-        source_file_time: idlib.Time,
-        header_magic: u32,
-        texture_type: image.TextureType,
-        format: image.TextureFormat,
-        color_format: image.TextureColor,
-        width: u32,
-        height: u32,
-        num_levels: u32,
+        source_file_time: idlib.Time align(1),
+        header_magic: u32 align(1),
+        texture_type: image.TextureType align(1),
+        format: image.TextureFormat align(1),
+        color_format: image.TextureColor align(1),
+        width: u32 align(1),
+        height: u32 align(1),
+        num_levels: u32 align(1),
     };
 
     const Image = struct {
@@ -73,9 +73,10 @@ pub const BinaryImage = struct {
             bin_image.name.constSlice(),
         );
 
-        const file = fs.instance.openFileRead(binary_filename) catch
-            return fs.not_found_time;
-        defer file.close();
+        const owns_file, const file = fs.instance.openFileReadAny(
+            binary_filename,
+        ) catch return fs.not_found_time;
+        defer if (owns_file) file.close();
 
         bin_image.loadFromGeneratedFile(file, source_file_time, allocator) catch
             return fs.not_found_time;
@@ -138,15 +139,17 @@ pub const BinaryImage = struct {
 
             const data = try allocator.alloc(u8, data_size);
             errdefer allocator.free(data);
-
-            level_image.data = data;
+            level_image.header.data_size = data_size;
 
             if (try reader.read(data[0..header.data_size]) == 0)
                 return error.EndOfStream;
 
             if (bimage_header.format == .rgb565) {
-                std.debug.assert(@mod(header.data_size, 4) == 0);
-                var pixel_index: i32 = @as(i32, @intCast(@divTrunc(header.data_size, 2))) - 2;
+                std.debug.assert(@mod(level_image.header.data_size, 4) == 0);
+                var pixel_index: i32 = @as(
+                    i32,
+                    @intCast(@divTrunc(level_image.header.data_size, 2)),
+                ) - 2;
                 while (pixel_index >= 0) : (pixel_index -= 2) {
                     const index: u32 = @intCast(pixel_index);
 
@@ -158,6 +161,8 @@ pub const BinaryImage = struct {
                     data[index * 2 + 3] = 0xFF;
                 }
             }
+
+            level_image.data = data;
         }
     }
 

@@ -132,108 +132,6 @@ const BuiltinShader = enum(c_int) {
     }
 };
 
-const RenderParam = enum(c_int) {
-    // For backwards compatibility, do not change the order of the first 17 items
-    SCREENCORRECTIONFACTOR = 0,
-    WINDOWCOORD,
-    DIFFUSEMODIFIER,
-    SPECULARMODIFIER,
-    LOCALLIGHTORIGIN,
-    LOCALVIEWORIGIN,
-    LIGHTPROJECTION_S,
-    LIGHTPROJECTION_T,
-    LIGHTPROJECTION_Q,
-    LIGHTFALLOFF_S,
-    BUMPMATRIX_S,
-    BUMPMATRIX_T,
-    DIFFUSEMATRIX_S,
-    DIFFUSEMATRIX_T,
-    SPECULARMATRIX_S,
-    SPECULARMATRIX_T,
-    VERTEXCOLOR_MODULATE,
-    VERTEXCOLOR_ADD,
-    COLOR,
-    VIEWORIGIN,
-    GLOBALEYEPOS,
-    MVPMATRIX_X,
-    MVPMATRIX_Y,
-    MVPMATRIX_Z,
-    MVPMATRIX_W,
-    MODELMATRIX_X,
-    MODELMATRIX_Y,
-    MODELMATRIX_Z,
-    MODELMATRIX_W,
-    PROJMATRIX_X,
-    PROJMATRIX_Y,
-    PROJMATRIX_Z,
-    PROJMATRIX_W,
-    MODELVIEWMATRIX_X,
-    MODELVIEWMATRIX_Y,
-    MODELVIEWMATRIX_Z,
-    MODELVIEWMATRIX_W,
-    TEXTUREMATRIX_S,
-    TEXTUREMATRIX_T,
-    TEXGEN_0_S,
-    TEXGEN_0_T,
-    TEXGEN_0_Q,
-    TEXGEN_0_ENABLED,
-    TEXGEN_1_S,
-    TEXGEN_1_T,
-    TEXGEN_1_Q,
-    TEXGEN_1_ENABLED,
-    WOBBLESKY_X,
-    WOBBLESKY_Y,
-    WOBBLESKY_Z,
-    OVERBRIGHT,
-    ENABLE_SKINNING,
-    ALPHA_TEST,
-    AMBIENT_COLOR,
-    GLOBALLIGHTORIGIN,
-    JITTERTEXSCALE,
-    JITTERTEXOFFSET,
-    PSX_DISTORTIONS,
-    CASCADEDISTANCES,
-    SHADOW_MATRIX_0_X, // rpShadowMatrices[6 * 4]
-    SHADOW_MATRIX_0_Y,
-    SHADOW_MATRIX_0_Z,
-    SHADOW_MATRIX_0_W,
-    SHADOW_MATRIX_1_X,
-    SHADOW_MATRIX_1_Y,
-    SHADOW_MATRIX_1_Z,
-    SHADOW_MATRIX_1_W,
-    SHADOW_MATRIX_2_X,
-    SHADOW_MATRIX_2_Y,
-    SHADOW_MATRIX_2_Z,
-    SHADOW_MATRIX_2_W,
-    SHADOW_MATRIX_3_X,
-    SHADOW_MATRIX_3_Y,
-    SHADOW_MATRIX_3_Z,
-    SHADOW_MATRIX_3_W,
-    SHADOW_MATRIX_4_X,
-    SHADOW_MATRIX_4_Y,
-    SHADOW_MATRIX_4_Z,
-    SHADOW_MATRIX_4_W,
-    SHADOW_MATRIX_5_X,
-    SHADOW_MATRIX_5_Y,
-    SHADOW_MATRIX_5_Z,
-    SHADOW_MATRIX_5_W,
-    SHADOW_ATLAS_OFFSET_0, // rpShadowAtlasOffsets[6]
-    SHADOW_ATLAS_OFFSET_1,
-    SHADOW_ATLAS_OFFSET_2,
-    SHADOW_ATLAS_OFFSET_3,
-    SHADOW_ATLAS_OFFSET_4,
-    SHADOW_ATLAS_OFFSET_5,
-    USER0,
-    USER1,
-    USER2,
-    USER3,
-    USER4,
-    USER5,
-    USER6,
-    USER7,
-    TOTAL,
-};
-
 const RenderProg = extern struct {
     name: idlib.Str = .{},
     vertexShaderIndex: c_int = -1,
@@ -294,13 +192,113 @@ pub const Shader = extern struct {
     }
 };
 
+pub const RenderParam = enum(u32) {
+    screencorrectionfactor = 0,
+    windowcoord,
+    diffusemodifier,
+    specularmodifier,
+    locallightorigin,
+    localvieworigin,
+    lightprojection_s,
+    lightprojection_t,
+    lightprojection_q,
+    lightfalloff_s,
+    bumpmatrix_s,
+    bumpmatrix_t,
+    diffusematrix_s,
+    diffusematrix_t,
+    specularmatrix_s,
+    specularmatrix_t,
+    vertexcolor_modulate,
+    vertexcolor_add,
+    color,
+    vieworigin,
+    globaleyepos,
+    mvpmatrix_x,
+    mvpmatrix_y,
+    mvpmatrix_z,
+    mvpmatrix_w,
+    modelmatrix_x,
+    modelmatrix_y,
+    modelmatrix_z,
+    modelmatrix_w,
+    projmatrix_x,
+    projmatrix_y,
+    projmatrix_z,
+    projmatrix_w,
+    modelviewmatrix_x,
+    modelviewmatrix_y,
+    modelviewmatrix_z,
+    modelviewmatrix_w,
+    texturematrix_s,
+    texturematrix_t,
+    texgen_0_s,
+    texgen_0_t,
+    texgen_0_q,
+    texgen_0_enabled,
+    texgen_1_s,
+    texgen_1_t,
+    texgen_1_q,
+    texgen_1_enabled,
+    wobblesky_x,
+    wobblesky_y,
+    wobblesky_z,
+    overbright,
+    enable_skinning,
+    alpha_test,
+    ambient_color,
+    globallightorigin,
+    jittertexscale,
+    jittertexoffset,
+    psx_distortions,
+    cascadedistances,
+    shadow_matrix_0_x,
+    shadow_matrix_0_y,
+    shadow_matrix_0_z,
+    shadow_matrix_0_w,
+    shadow_matrix_1_x,
+    shadow_matrix_1_y,
+    shadow_matrix_1_z,
+    shadow_matrix_1_w,
+    shadow_matrix_2_x,
+    shadow_matrix_2_y,
+    shadow_matrix_2_z,
+    shadow_matrix_2_w,
+    shadow_matrix_3_x,
+    shadow_matrix_3_y,
+    shadow_matrix_3_z,
+    shadow_matrix_3_w,
+    shadow_matrix_4_x,
+    shadow_matrix_4_y,
+    shadow_matrix_4_z,
+    shadow_matrix_4_w,
+    shadow_matrix_5_x,
+    shadow_matrix_5_y,
+    shadow_matrix_5_z,
+    shadow_matrix_5_w,
+    shadow_atlas_offset_0,
+    shadow_atlas_offset_1,
+    shadow_atlas_offset_2,
+    shadow_atlas_offset_3,
+    shadow_atlas_offset_4,
+    shadow_atlas_offset_5,
+    user0,
+    user1,
+    user2,
+    user3,
+    user4,
+    user5,
+    user6,
+    user7,
+};
+
 pub const RenderProgManager = extern struct {
     const VertexAttribDescList = idlib.List(nvrhi.VertexAttributeDesc);
     const BindingLayoutList = idlib.StaticList(nvrhi.BindingLayoutHandle, nvrhi.c_MaxBindingLayouts);
     const NUM_VERTEX_LAYOUTS: usize = @intCast(@intFromEnum(common.VertexLayoutType.NUM_VERTEX_LAYOUTS));
     const NUM_BINDING_LAYOUTS: usize = @intCast(@intFromEnum(common.BindingLayoutType.NUM_BINDING_LAYOUTS));
     const MAX_BUILTINS: usize = @intCast(@intFromEnum(BuiltinShader.MAX_BUILTINS));
-    const MAX_UNIFORMS: usize = @intCast(@intFromEnum(RenderParam.TOTAL));
+    const MAX_UNIFORMS: usize = @typeInfo(RenderParam).Enum.fields.len;
 
     vptr: *anyopaque,
     renderParmUbo: buffer_object.UniformBuffer,
@@ -323,12 +321,29 @@ pub const RenderProgManager = extern struct {
     ),
     constantBuffer: nvrhi.BufferHandle,
 
-    extern fn c_renderProgManager_init(*RenderProgManager, *nvrhi.IDevice) callconv(.C) void;
-    extern fn c_renderProgManager_shutdown(*RenderProgManager) callconv(.C) void;
-    extern fn c_renderProgManager_unbind(*RenderProgManager) callconv(.C) void;
+    extern fn c_renderProgManager_shutdown(*RenderProgManager) void;
+    extern fn c_renderProgManager_unbind(*RenderProgManager) void;
+
+    pub fn setUniformValue(
+        prog_manager: *RenderProgManager,
+        param: RenderParam,
+        value: *const [4]f32,
+    ) void {
+        const uniforms = prog_manager.uniforms.slice();
+        const param_ptr: *[4]f32 = @ptrCast(&uniforms[@intFromEnum(param)]);
+        for (value, 0..) |component, i| {
+            param_ptr[i] = component;
+        }
+
+        prog_manager.uniformsChanged = true;
+    }
+
+    pub fn bindProgramIndex(prog_manager: *RenderProgManager, index: u32) void {
+        prog_manager.currentIndex = @intCast(index);
+    }
 
     pub fn unbind(prog_manager: *RenderProgManager) void {
-        c_renderProgManager_unbind(prog_manager);
+        prog_manager.currentIndex = -1;
     }
 
     pub fn init(

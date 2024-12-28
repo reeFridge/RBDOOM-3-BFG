@@ -160,7 +160,6 @@ nvrhi::SamplerHandle SamplerCache::GetOrCreateSampler( nvrhi::SamplerDesc desc )
 extern "C" {
 
 void c_samplerCache_init(SamplerCache* instance, nvrhi::IDevice* device) {
-
 }
 
 }

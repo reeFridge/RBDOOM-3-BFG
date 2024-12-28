@@ -73,7 +73,7 @@ struct BlitConstants
 
 class CommonRenderPasses
 {
-protected:
+public:
 	nvrhi::DeviceHandle m_Device;
 
 	struct PsoCacheKey

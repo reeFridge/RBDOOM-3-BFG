@@ -535,6 +535,7 @@ pub fn destroyRenderWorld(
 }
 
 pub const InitError =
+    RenderBackend.SwapBuffersError ||
     std.mem.Allocator.Error ||
     decl_manager.DeclManager.FindDeclError;
 pub fn init(
@@ -586,7 +587,6 @@ pub fn init(
         allocator,
     ));
 
-    // TODO: check not found
     render_system.white_material = @ptrCast(try decl_manager.instance.findType(
         .material,
         "_white",
@@ -648,7 +648,7 @@ pub fn init(
 
     // For VULKAN only!
     render_system.omit_swap_buffers = true;
-    _ = render_system.swapCommandBuffers();
+    _ = try render_system.swapCommandBuffers();
 }
 
 pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
@@ -689,13 +689,15 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     render_system.* = RenderSystem{};
 }
 
-pub fn swapCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyCommand {
-    render_system.finishRendering();
+pub fn swapCommandBuffers(render_system: *RenderSystem) RenderBackend.SwapBuffersError!?*frame_data.EmptyCommand {
+    try render_system.finishRendering();
 
     return render_system.finishCommandBuffers();
 }
 
-pub fn finishRendering(render_system: *RenderSystem) void {
+pub fn finishRendering(
+    render_system: *RenderSystem,
+) RenderBackend.SwapBuffersError!void {
     if (!render_system.initialized) return;
 
     // keep capturing envprobes completely in the background
@@ -703,14 +705,18 @@ pub fn finishRendering(render_system: *RenderSystem) void {
     if (!render_system.omit_swap_buffers) {
         // wait for our fence to hit, which means the swap has actually happened
         // We must do this before clearing any resources the GPU may be using
-        backend_.swapBuffersBlocking();
+        try backend_.swapBuffersBlocking();
     }
 
     backend_.checkCVars();
     //framebuffer.checkFramebuffers();
 }
 
-extern fn R_InitDrawSurfFromTri(*DrawSurface, *SurfaceTriangles, *nvrhi.ICommandList) callconv(.C) void;
+extern fn R_InitDrawSurfFromTri(
+    *DrawSurface,
+    *SurfaceTriangles,
+    *nvrhi.ICommandList,
+) void;
 
 pub fn finishCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyCommand {
     if (!render_system.initialized) return null;
@@ -799,10 +805,15 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyComm
     return command_buffer_head;
 }
 
-pub fn renderCommandBuffers(_: *RenderSystem, opt_cmd_head: ?*frame_data.EmptyCommand) void {
+pub fn renderCommandBuffers(
+    _: *RenderSystem,
+    opt_cmd_head: ?*frame_data.EmptyCommand,
+    allocator: Allocator,
+) RenderBackend.ExecuteCommandsError!void {
     var opt_cmd = opt_cmd_head;
     const cmd_head = opt_cmd orelse return;
 
+    // execute backend commands only if view_3d or view_gui are present
     while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
         if (cmd.commandId == .RC_DRAW_VIEW_3D or cmd.commandId == .RC_DRAW_VIEW_GUI)
             break;
@@ -817,7 +828,7 @@ pub fn renderCommandBuffers(_: *RenderSystem, opt_cmd_head: ?*frame_data.EmptyCo
     // r_skipRender is usually more usefull, because it will still
     // draw 2D graphics
     const r_skip_backend = false;
-    if (!r_skip_backend) backend_.executeBackendCommands(cmd_head);
+    if (!r_skip_backend) try backend_.executeBackendCommands(cmd_head, allocator);
 
     ResolutionScale.instance.initForMap();
 }
@@ -877,6 +888,22 @@ pub fn frameCount(render_system: *const RenderSystem) usize {
     return render_system.frame_count;
 }
 
+pub fn getVirtualWidth(_: *const RenderSystem) u32 {
+    return gl_config.nativeScreenWidth / 2;
+}
+
+pub fn getVirtualHeight(_: *const RenderSystem) u32 {
+    return gl_config.nativeScreenHeight / 2;
+}
+
+pub fn getPixelAspect(_: *const RenderSystem) f32 {
+    return switch (gl_config.stereo3Dmode) {
+        .SIDE_BY_SIDE_COMPRESSED => gl_config.pixelAspect * 2.0,
+        .TOP_AND_BOTTOM_COMPRESSED, .INTERLACED => gl_config.pixelAspect * 0.5,
+        else => gl_config.pixelAspect,
+    };
+}
+
 pub fn getWidth(_: *const RenderSystem) u32 {
     if (gl_config.stereo3Dmode == .SIDE_BY_SIDE or
         gl_config.stereo3Dmode == .SIDE_BY_SIDE_COMPRESSED)
@@ -925,6 +952,29 @@ pub fn viewCount(render_system: *const RenderSystem) usize {
 
 pub fn clearViewDef(render_system: *RenderSystem) void {
     render_system.view_def = null;
+}
+
+pub fn drawStretchPictureScalars(
+    render_system: *RenderSystem,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    s1: f32,
+    t1: f32,
+    s2: f32,
+    t2: f32,
+    opt_material: ?*const Material,
+    z: f32,
+) void {
+    render_system.drawStretchPicture(
+        .{ .v = .{ x, y, s1, t1 } },
+        .{ .v = .{ x + w, y, s2, t1 } },
+        .{ .v = .{ x + w, y + h, s2, t2 } },
+        .{ .v = .{ x, y + h, s1, t2 } },
+        opt_material,
+        z,
+    );
 }
 
 const quad_pic_indexes: [6]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
@@ -1005,7 +1055,11 @@ fn packColorLittle(color: Vec4(f32)) u32 {
 }
 
 pub fn setColor(render_system: *RenderSystem, rgba: Vec4(f32)) void {
-    render_system.current_color_native_bytes_order = std.mem.toNative(u32, packColorLittle(rgba), .little);
+    render_system.current_color_native_bytes_order = std.mem.toNative(
+        u32,
+        packColorLittle(rgba),
+        .little,
+    );
 }
 
 const cvar = @import("../framework/cvar_system.zig");

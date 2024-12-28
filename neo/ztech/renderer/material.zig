@@ -22,6 +22,7 @@ const Cinematic = @import("cinematic.zig").Cinematic;
 const image_program = @import("image_program.zig");
 const image_manager = @import("image_manager.zig");
 const render_entity = @import("render_entity.zig");
+const string = @import("../string.zig");
 const Allocator = std.mem.Allocator;
 
 const cvar = @import("../framework/cvar_system.zig");
@@ -497,10 +498,6 @@ pub const Material = extern struct {
         );
 
         try lexer.skipUntilString("{", allocator);
-
-        std.debug.print("[MATERIAL] parse: {s}\n", .{
-            decl_local.name.constSlice(),
-        });
 
         var parsing_data = std.mem.zeroes(MtrParsingData);
         material.pd = &parsing_data;
@@ -1759,9 +1756,9 @@ pub const Material = extern struct {
                 .diffuse => .diffuse,
                 .specular => texture_usage: {
                     const img = image_name.constSlice();
-                    break :texture_usage if (icontains(img, "_rmaod") != null)
+                    break :texture_usage if (string.icontains(img, "_rmaod") != null)
                         .specular_pbr_rmaod
-                    else if (icontains(img, "_rmao") != null)
+                    else if (string.icontains(img, "_rmao") != null)
                         .specular_pbr_rmao
                     else
                         .specular;
@@ -2181,13 +2178,3 @@ pub const Material = extern struct {
         return (material_flags_u32 & flags_u32) != 0;
     }
 };
-
-fn icontains(haystack: []const u8, needle: []const u8) ?usize {
-    if (needle.len > haystack.len) return null;
-    var i: usize = 0;
-    const end = haystack.len - needle.len;
-    while (i <= end) : (i += 1) {
-        if (std.ascii.eqlIgnoreCase(haystack[i..][0..needle.len], needle)) return i;
-    }
-    return null;
-}

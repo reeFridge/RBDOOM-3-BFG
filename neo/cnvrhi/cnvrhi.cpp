@@ -105,7 +105,6 @@ void c_nvrhi_device_createShader(
 	*handle = device->createShader(*desc, binary, binarySize);
 }
 
-
 void c_nvrhi_device_createInputLayout(
 		nvrhi::IDevice* device,
 		nvrhi::InputLayoutHandle* handle,
@@ -114,6 +113,24 @@ void c_nvrhi_device_createInputLayout(
 		nvrhi::IShader* vertexShader)
 {
 	*handle = device->createInputLayout(descs, attributeCount, vertexShader);
+}
+
+void c_nvrhi_device_createBindingSet(
+		nvrhi::IDevice* device,
+		nvrhi::BindingSetHandle* handle,
+		const nvrhi::BindingSetDesc* desc,
+		nvrhi::IBindingLayout* layout)
+{
+	*handle = device->createBindingSet(*desc, layout);
+}
+
+void c_nvrhi_device_createGraphicsPipeline(
+		nvrhi::IDevice* device,
+		nvrhi::GraphicsPipelineHandle* handle,
+		const nvrhi::GraphicsPipelineDesc* desc,
+		nvrhi::IFramebuffer* framebuffer)
+{
+	*handle = device->createGraphicsPipeline(*desc, framebuffer);
 }
 
 void c_nvrhi_device_runGarbageCollection(nvrhi::IDevice* device) {
@@ -126,6 +143,18 @@ void c_nvrhi_commandList_open(nvrhi::ICommandList* commandList) {
 
 void c_nvrhi_commandList_close(nvrhi::ICommandList* commandList) {
 	commandList->close();
+}
+
+void c_nvrhi_commandList_clearDepthStencilTexture(
+		nvrhi::ICommandList* commandList,
+		nvrhi::ITexture* t,
+		nvrhi::TextureSubresourceSet subresources,
+		bool clearDepth,
+		float depth,
+		bool clearStencil,
+		uint8_t stencil)
+{
+	commandList->clearDepthStencilTexture(t, subresources, clearDepth, depth, clearStencil, stencil);
 }
 
 void c_nvrhi_commandList_writeTexture(
@@ -187,6 +216,26 @@ void c_nvrhi_commandList_setPermanentBufferState(
 	commandList->setPermanentBufferState(buffer, stateBits);
 }
 
+void c_nvrhi_commandList_draw(nvrhi::ICommandList* commandList, const nvrhi::DrawArguments* args)
+{
+	commandList->draw(*args);
+}
+
+void c_nvrhi_commandList_setPushConstants(
+		nvrhi::ICommandList* commandList,
+		const void* data,
+		size_t byteSize)
+{
+	commandList->setPushConstants(data, byteSize);
+}
+
+void c_nvrhi_commandList_setGraphicsState(
+		nvrhi::ICommandList* commandList,
+		const nvrhi::GraphicsState* state)
+{
+	commandList->setGraphicsState(*state);
+}
+
 unsigned long c_nvrhi_resource_addRef(nvrhi::IResource* res) {
 	return res->AddRef();
 }
@@ -202,9 +251,15 @@ void c_nvrhi_vertexAttributeDesc_setName(
 	desc->setName(name);
 }
 
-nvrhi::FramebufferInfoEx c_nvrhi_framebuffer_getFramebufferInfo(const nvrhi::IFramebuffer* framebuffer)
+const nvrhi::FramebufferInfoEx* c_nvrhi_framebuffer_getFramebufferInfo(const nvrhi::IFramebuffer* framebuffer)
 {
-	return framebuffer->getFramebufferInfo();
+	return &framebuffer->getFramebufferInfo();
+}
+
+const nvrhi::FramebufferDesc* c_nvrhi_framebuffer_getDesc(
+		const nvrhi::IFramebuffer* framebuffer)
+{
+	return &framebuffer->getDesc();
 }
 
 const char* c_nvrhi_vertexAttributeDesc_getName(const nvrhi::VertexAttributeDesc* desc) {
@@ -213,6 +268,33 @@ const char* c_nvrhi_vertexAttributeDesc_getName(const nvrhi::VertexAttributeDesc
 
 const nvrhi::FormatInfo* c_nvrhi_getFormatInfo(nvrhi::Format format) {
 	return &nvrhi::getFormatInfo(format);
+}
+
+const nvrhi::TextureDesc* c_nvrhi_texture_getDesc(const nvrhi::ITexture* texture)
+{
+	return &texture->getDesc();
+}
+
+const nvrhi::BindingSetDesc* c_nvrhi_bindingSet_getDesc(const nvrhi::IBindingSet* set)
+{
+	return set->getDesc();
+}
+
+bool c_nvrhi_bindingSetDesc_eql(
+		const nvrhi::BindingSetDesc* a,
+		const nvrhi::BindingSetDesc* b)
+{
+	return *a == *b;
+}
+
+void c_nvrhi_bindingSetDesc_hashCombine(const nvrhi::BindingSetDesc* desc, size_t* seed)
+{
+	nvrhi::hash_combine(*seed, *desc);
+}
+
+void c_nvrhi_hashCombinePtr(size_t* seed, void* ptr)
+{
+	nvrhi::hash_combine(*seed, ptr);
 }
 
 // vulkan
@@ -230,6 +312,24 @@ void c_nvrhi_vulkan_createDevice(
 	*handle = nvrhi::vulkan::createDevice(*desc);
 }
 
+void c_nvrhi_vulkan_device_queueSignalSemaphore(
+		nvrhi::vulkan::IDevice* device,
+		nvrhi::CommandQueue executionQueue,
+		VkSemaphore semaphore,
+		uint64_t value)
+{
+	device->queueSignalSemaphore(executionQueue, semaphore, value);
+}
+
+void c_nvrhi_vulkan_device_queueWaitForSemaphore(
+		nvrhi::vulkan::IDevice* device,
+		nvrhi::CommandQueue waitQueue,
+		VkSemaphore semaphore,
+		uint64_t value)
+{
+	device->queueWaitForSemaphore(waitQueue, semaphore, value);
+}
+
 // utils
 
 nvrhi::BufferDesc c_nvrhi_utils_createVolatileConstantBufferDesc(
@@ -238,5 +338,13 @@ nvrhi::BufferDesc c_nvrhi_utils_createVolatileConstantBufferDesc(
 		uint32_t maxVersions)
 {
 	return nvrhi::utils::CreateVolatileConstantBufferDesc(byteSize, debugName, maxVersions);
+}
 
+void c_nvrhi_utils_clearColorAttachment(
+		nvrhi::ICommandList* commandList,
+		nvrhi::IFramebuffer* framebuffer,
+		uint32_t attachmentIndex,
+		nvrhi::Color color)
+{
+	nvrhi::utils::ClearColorAttachment(commandList, framebuffer, attachmentIndex, color);
 }

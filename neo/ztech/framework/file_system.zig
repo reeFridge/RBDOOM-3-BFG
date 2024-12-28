@@ -33,16 +33,16 @@ pub const FsMode = enum(c_int) {
 pub const FileSystem = extern struct {
     vptr: *anyopaque,
     searchPaths: idlib.List(SearchPath),
-    loadCount: c_int,
-    loadStack: c_int,
+    loadCount: u32,
+    loadStack: u32,
     gameFolder: idlib.Str,
     manifestName: idlib.Str,
     fileManifest: idlib.StrList,
     preloadList: idlib.PreloadManifest,
     resourceBufferPtr: ?[*]u8,
-    resourceBufferSize: c_int,
-    resourceBufferAvailable: c_int,
-    numFilesOpenedAsCached: c_int,
+    resourceBufferSize: u32,
+    resourceBufferAvailable: u32,
+    numFilesOpenedAsCached: u32,
     resourceFilesFound: bool,
     zipFilesFound: bool,
     doom2004Found: bool,
@@ -53,7 +53,7 @@ pub const FileSystem = extern struct {
     }
 
     pub inline fn usingResourceFiles(_: *const FileSystem) bool {
-        return false;
+        return true;
     }
 
     pub inline fn inProductionMode(_: *const FileSystem) bool {
@@ -238,6 +238,41 @@ pub const FileSystem = extern struct {
         return @intCast(file_stat.mtime);
     }
 
+    pub const OpenFileReadAnyError =
+        OpenOSFileError ||
+        std.fs.File.GetSeekPosError;
+    pub fn openFileReadAny(
+        fs: *const FileSystem,
+        filename: []const u8,
+    ) OpenFileReadAnyError!struct { bool, std.fs.File } {
+        return if (fs.openFileRead(filename)) |file|
+            .{ true, file }
+        else |err| switch (err) {
+            error.FileNotFound => result: {
+                const cache_entry = fs.getResourceCacheEntry(
+                    filename,
+                ) orelse break :result error.FileNotFound;
+
+                var inner_file = InnerResourceFile{
+                    .name = cache_entry.filename.constSlice(),
+                    .offset = cache_entry.offset,
+                    .length = cache_entry.length,
+                    .resource_file = cache_entry.owner.resource_file orelse unreachable,
+                    .internal_file_pos = 0,
+                };
+
+                // resource file is open by default
+                const offset = inner_file.offset + inner_file.internal_file_pos;
+                if (try inner_file.resource_file.getPos() != offset) {
+                    try inner_file.resource_file.seekTo(offset);
+                }
+
+                break :result .{ false, inner_file.resource_file };
+            },
+            else => |left_err| return left_err,
+        };
+    }
+
     pub fn openFileRead(fs: *const FileSystem, filename: []const u8) OpenOSFileError!std.fs.File {
         var paths_iterator = std.mem.reverseIterator(fs.searchPaths.constSlice());
         while (paths_iterator.nextPtr()) |search| {
@@ -324,7 +359,9 @@ pub const FileSystem = extern struct {
         internal_file_pos: usize = 0,
         resource_buffer: ?[]u8 = null,
 
-        pub const ReadBufferError = std.fs.File.GetSeekPosError || std.fs.File.ReadError;
+        pub const ReadBufferError =
+            std.fs.File.GetSeekPosError ||
+            std.fs.File.ReadError;
         pub fn readBuffer(
             res: *InnerResourceFile,
             dest: []u8,
@@ -383,7 +420,10 @@ pub const FileSystem = extern struct {
         return inner_file;
     }
 
-    fn getResourceCacheEntry(fs: *const FileSystem, filename: []const u8) ?ResourceContainer.CacheEntry {
+    fn getResourceCacheEntry(
+        fs: *const FileSystem,
+        filename: []const u8,
+    ) ?ResourceContainer.CacheEntry {
         var buffer: [max_os_path]u8 = std.mem.zeroes([max_os_path]u8);
         const canonical_path = buffer[0..filename.len];
         _ = std.mem.replace(u8, filename, "\\", "/", canonical_path);

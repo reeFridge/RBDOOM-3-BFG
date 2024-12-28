@@ -38,7 +38,7 @@ pub fn setGamma(
 pub const InitError = error{
     NoDisplay,
     NoWindow,
-} || device_manager.DeviceManagerVulkan.CreateDeviceAndSwapChainError;
+} || device_manager.DeviceManagerVulkan.CreateDeviceAndSwapchainError;
 pub fn init(params: GLImplParams) InitError!void {
     std.debug.print("[GL] Initializing Vulkan subsystem\n", .{});
     beforeInit();

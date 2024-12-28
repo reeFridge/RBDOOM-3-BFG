@@ -94,6 +94,8 @@ pub const BindingSetHandle = RefCountPtr(IBindingSet);
 pub const c_MaxRenderTargets: usize = 8;
 pub const c_MaxBindingLayouts: usize = 5;
 pub const c_MaxBindingsPerLayout: usize = 128;
+pub const c_MaxVertexAttributes: usize = 16;
+pub const c_MaxViewports: usize = 16;
 
 pub const MipLevel = u32;
 pub const ArraySlice = u32;
@@ -123,15 +125,63 @@ pub const BufferRange = extern struct {
 pub const BindingSetItem = extern struct {
     resourceHandle: ?*IResource,
     slot: u32,
-    type: u8,
-    dimension: u8,
-    format: u8,
+    type: ResourceType,
+    dimension: TextureDimension,
+    format: Format,
     unused: u8,
     unnamed_0: extern union {
         subresources: TextureSubresourceSet,
         range: BufferRange,
         rawData: [2]u64,
     },
+
+    pub fn createTextureSrv(
+        slot: u32,
+        texture: *ITexture,
+        format: Format,
+        subresources: TextureSubresourceSet,
+        dimension: TextureDimension,
+    ) BindingSetItem {
+        return .{
+            .slot = slot,
+            .type = .Texture_SRV,
+            .resourceHandle = @ptrCast(texture),
+            .format = format,
+            .dimension = dimension,
+            .unused = 0,
+            .unnamed_0 = .{
+                .subresources = subresources,
+            },
+        };
+    }
+
+    pub fn createPushConstants(slot: u32, byte_size: u32) BindingSetItem {
+        return .{
+            .slot = slot,
+            .type = .PushConstants,
+            .resourceHandle = null,
+            .format = .UNKNOWN,
+            .dimension = .Unknown,
+            .unused = 0,
+            .unnamed_0 = .{
+                .range = .{ .byteOffset = 0, .byteSize = byte_size },
+            },
+        };
+    }
+
+    pub fn createSampler(slot: u32, sampler: *ISampler) BindingSetItem {
+        return .{
+            .slot = slot,
+            .type = .Sampler,
+            .resourceHandle = @ptrCast(sampler),
+            .format = .UNKNOWN,
+            .dimension = .Unknown,
+            .unused = 0,
+            .unnamed_0 = .{
+                .rawData = .{ 0, 0 },
+            },
+        };
+    }
 };
 
 pub fn static_vector(T: type, max_elements: u32) type {
@@ -140,6 +190,24 @@ pub fn static_vector(T: type, max_elements: u32) type {
 
         base: [max_elements]T = undefined,
         current_size: usize = 0,
+
+        pub fn fromSliceWithDefault(slice: []const T, default: T) Self {
+            var base: [max_elements]T = undefined;
+            for (base[0..slice.len], slice) |*item, in| {
+                item.* = in;
+            }
+
+            if (base.len > slice.len) {
+                for (base[slice.len..]) |*item| {
+                    item.* = default;
+                }
+            }
+
+            return .{
+                .base = base,
+                .current_size = slice.len,
+            };
+        }
 
         pub fn fromSlice(slice: []const T) Self {
             var base: [max_elements]T = undefined;
@@ -155,9 +223,25 @@ pub fn static_vector(T: type, max_elements: u32) type {
     };
 }
 
+extern fn c_nvrhi_hashCombinePtr(*usize, *anyopaque) void;
+pub fn hashCombinePtr(seed: *usize, ptr: *anyopaque) void {
+    c_nvrhi_hashCombinePtr(seed, ptr);
+}
+
 pub const BindingSetDesc = extern struct {
+    extern fn c_nvrhi_bindingSetDesc_hashCombine(*const BindingSetDesc, *usize) void;
+    extern fn c_nvrhi_bindingSetDesc_eql(*const BindingSetDesc, *const BindingSetDesc) bool;
+
     bindings: static_vector(BindingSetItem, c_MaxBindingsPerLayout),
-    trackLiveness: bool,
+    trackLiveness: bool = true,
+
+    pub fn hashCombine(desc: *const BindingSetDesc, seed: *usize) void {
+        c_nvrhi_bindingSetDesc_hashCombine(desc, seed);
+    }
+
+    pub fn eql(desc: *const BindingSetDesc, other: *const BindingSetDesc) bool {
+        return c_nvrhi_bindingSetDesc_eql(desc, other);
+    }
 };
 
 pub const Color = extern struct {
@@ -165,6 +249,30 @@ pub const Color = extern struct {
     g: f32 = 0,
     b: f32 = 0,
     a: f32 = 0,
+};
+
+pub const Viewport = extern struct {
+    minX: f32 = 0,
+    maxX: f32 = 0,
+    minY: f32 = 0,
+    maxY: f32 = 0,
+    minZ: f32 = 0,
+    maxZ: f32 = 1,
+
+    pub fn width(viewport: *const Viewport) f32 {
+        return viewport.maxX - viewport.minX;
+    }
+
+    pub fn height(viewport: *const Viewport) f32 {
+        return viewport.maxY - viewport.minY;
+    }
+
+    pub fn fromWidthHeight(w: f32, h: f32) Viewport {
+        return .{
+            .maxX = w,
+            .maxY = h,
+        };
+    }
 };
 
 pub const SamplerAddressMode = enum(u8) {
@@ -470,6 +578,66 @@ pub const ShaderDesc = extern struct {
     pCoordinateSwizzling: ?*u32 = null,
 };
 
+pub const BlendFactor = enum(u8) {
+    Zero = 1,
+    One = 2,
+    SrcColor = 3,
+    InvSrcColor = 4,
+    SrcAlpha = 5,
+    InvSrcAlpha = 6,
+    DstAlpha = 7,
+    InvDstAlpha = 8,
+    DstColor = 9,
+    InvDstColor = 10,
+    SrcAlphaSaturate = 11,
+    ConstantColor = 14,
+    InvConstantColor = 15,
+    Src1Color = 16,
+    InvSrc1Color = 17,
+    Src1Alpha = 18,
+    InvSrc1Alpha = 19,
+
+    pub const OneMinusSrcColor = BlendFactor.InvSrcColor;
+    pub const OneMinusSrcAlpha = BlendFactor.InvSrcAlpha;
+    pub const OneMinusDstAlpha = BlendFactor.InvDstAlpha;
+    pub const OneMinusDstColor = BlendFactor.InvDstColor;
+    pub const OneMinusConstantColor = BlendFactor.InvConstantColor;
+    pub const OneMinusSrc1Color = BlendFactor.InvSrc1Color;
+    pub const OneMinusSrc1Alpha = BlendFactor.InvSrc1Alpha;
+};
+
+pub const BlendOp = enum(u8) {
+    Add = 1,
+    Subrtact = 2,
+    ReverseSubtract = 3,
+    Min = 4,
+    Max = 5,
+};
+
+pub const ColorMask = enum(u8) {
+    Red = 1,
+    Green = 2,
+    Blue = 4,
+    Alpha = 8,
+    All = 0xF,
+};
+
+pub const BlendState = extern struct {
+    pub const RenderTarget = extern struct {
+        blendEnable: bool = false,
+        srcBlend: BlendFactor = .One,
+        destBlend: BlendFactor = .Zero,
+        blendOp: BlendOp = .Add,
+        srcBlendAlpha: BlendFactor = .One,
+        destBlendAlpha: BlendFactor = .Zero,
+        blendOpAlpha: BlendOp = .Add,
+        colorWriteMask: ColorMask = .All,
+    };
+
+    targets: [c_MaxRenderTargets]RenderTarget = [_]RenderTarget{.{}} ** c_MaxRenderTargets,
+    alphaToCoverageEnable: bool = false,
+};
+
 pub const BindingLayoutDesc = extern struct {
     visibility: ShaderType = .None,
     registerSpace: u32 = 0,
@@ -542,7 +710,15 @@ pub const FramebufferHandle = RefCountPtr(IFramebuffer);
 pub const EventQueryHandle = RefCountPtr(IEventQuery);
 
 pub const IEventQuery = opaque {};
-pub const ITexture = opaque {};
+
+pub const ITexture = opaque {
+    extern fn c_nvrhi_texture_getDesc(*const ITexture) *const TextureDesc;
+
+    pub fn getDesc(texture: *const ITexture) *const TextureDesc {
+        return c_nvrhi_texture_getDesc(texture);
+    }
+};
+
 pub const ISampler = opaque {};
 pub const IShader = opaque {};
 
@@ -560,16 +736,217 @@ pub const FramebufferInfoEx = extern struct {
 };
 
 pub const IFramebuffer = opaque {
-    extern fn c_nvrhi_framebuffer_getFramebufferInfo(*const IFramebuffer) FramebufferInfoEx;
+    extern fn c_nvrhi_framebuffer_getFramebufferInfo(*const IFramebuffer) *const FramebufferInfoEx;
+    extern fn c_nvrhi_framebuffer_getDesc(*const IFramebuffer) *const FramebufferDesc;
 
-    pub fn getFramebufferInfo(framebuffer: *const IFramebuffer) FramebufferInfoEx {
+    pub fn getFramebufferInfo(framebuffer: *const IFramebuffer) *const FramebufferInfoEx {
         return c_nvrhi_framebuffer_getFramebufferInfo(framebuffer);
+    }
+
+    pub fn getDesc(framebuffer: *const IFramebuffer) *const FramebufferDesc {
+        return c_nvrhi_framebuffer_getDesc(framebuffer);
     }
 };
 
 pub const IInputLayout = opaque {};
-pub const IBindingSet = opaque {};
+
+pub const IBindingSet = opaque {
+    extern fn c_nvrhi_bindingSet_getDesc(*const IBindingSet) *const BindingSetDesc;
+
+    pub fn getDesc(binding_set: *const IBindingSet) *const BindingSetDesc {
+        return c_nvrhi_bindingSet_getDesc(binding_set);
+    }
+};
+
+pub const PrimitiveType = enum(u8) {
+    PointList,
+    LineList,
+    TriangleList,
+    TriangleStrip,
+    TriangleFan,
+    TriangleListWithAdjacency,
+    TriangleStripWithAdjacency,
+    PatchList,
+};
+
+pub const StencilOp = enum(u8) {
+    Keep = 1,
+    Zero = 2,
+    Replace = 3,
+    IncrementAndClamp = 4,
+    DecrementAndClamp = 5,
+    Invert = 6,
+    IncrementAndWrap = 7,
+    DecrementAndWrap = 8,
+};
+
+pub const ComparisonFunc = enum(u8) {
+    Never = 1,
+    Less = 2,
+    Equal = 3,
+    LessOrEqual = 4,
+    Greater = 5,
+    NotEqual = 6,
+    GreaterOrEqual = 7,
+    Always = 8,
+};
+
+pub const DepthStencilState = extern struct {
+    pub const StencilOpDesc = extern struct {
+        failOp: StencilOp = .Keep,
+        depthFailOp: StencilOp = .Keep,
+        passOp: StencilOp = .Keep,
+        stencilFunc: ComparisonFunc = .Always,
+    };
+
+    depthTestEnable: bool = true,
+    depthWriteEnable: bool = true,
+    depthFunc: ComparisonFunc = .Less,
+    stencilEnable: bool = false,
+    stencilReadMask: u8 = 0xff,
+    stencilWriteMask: u8 = 0xff,
+    stencilRefValue: u8 = 0,
+    dynamicStencilRef: bool = false,
+    frontFaceStencil: StencilOpDesc = .{},
+    backFaceStencil: StencilOpDesc = .{},
+};
+
+pub const RasterFillMode = enum(u8) {
+    Solid,
+    Wireframe,
+
+    pub const Fill = RasterFillMode.Solid;
+    pub const Line = RasterFillMode.Wireframe;
+};
+
+pub const RasterCullMode = enum(u8) {
+    Back,
+    Front,
+    None,
+};
+
+pub const RasterState = extern struct {
+    fillMode: RasterFillMode = .Solid,
+    cullMode: RasterCullMode = .Back,
+    frontCounterClockwise: bool = false,
+    depthClipEnable: bool = false,
+    scissorEnable: bool = false,
+    multisampleEnable: bool = false,
+    antialiasedLineEnable: bool = false,
+    depthBias: i32 = 0,
+    depthBiasClamp: f32 = 0,
+    slopeScaledDepthBias: f32 = 0,
+    forcedSampleCount: u8 = 0,
+    programmableSamplePositionsEnable: bool = false,
+    conservativeRasterEnable: bool = false,
+    quadFillEnable: bool = false,
+    samplePositionsX: [16]u8 = std.mem.zeroes([16]u8),
+    samplePositionsY: [16]u8 = std.mem.zeroes([16]u8),
+};
+
+pub const SinglePassStereoState = extern struct {
+    enabled: bool = false,
+    independentViewportMask: bool = false,
+    renderTargetIndexOffset: u16 = 0,
+};
+
+pub const RenderState = extern struct {
+    blendState: BlendState = .{},
+    depthStencilState: DepthStencilState = .{},
+    rasterState: RasterState = .{},
+    singlePassStereo: SinglePassStereoState = .{},
+};
+
+pub const VertexBufferBinding = extern struct {
+    buffer: ?*IBuffer = null,
+    slot: u32,
+    offset: u64,
+};
+
+pub const IndexBufferBinding = extern struct {
+    buffer: ?*IBuffer = null,
+    format: Format = .UNKNOWN,
+    offset: u32 = 0,
+};
+
+pub const Rect = extern struct {
+    minX: i32,
+    maxX: i32,
+    minY: i32,
+    maxY: i32,
+
+    pub fn fromViewport(viewport: *const Viewport) Rect {
+        return .{
+            .minX = @intFromFloat(@floor(viewport.minX)),
+            .maxX = @intFromFloat(@ceil(viewport.maxX)),
+            .minY = @intFromFloat(@floor(viewport.minY)),
+            .maxY = @intFromFloat(@ceil(viewport.maxY)),
+        };
+    }
+};
+
+pub const ViewportState = extern struct {
+    viewports: static_vector(Viewport, c_MaxViewports) = .{},
+    scissorRects: static_vector(Rect, c_MaxViewports) = .{},
+};
+
+pub const GraphicsState = extern struct {
+    pipeline: ?*IGraphicsPipeline = null,
+    framebuffer: ?*IFramebuffer = null,
+    viewport: ViewportState = .{},
+    shadingRateState: VariableRateShadingState = .{},
+    blendConstantColor: Color = .{},
+    dynamicStencilRefValue: u8 = 0,
+    bindings: static_vector(*IBindingSet, c_MaxBindingLayouts) = .{},
+    vertexBuffers: static_vector(VertexBufferBinding, c_MaxVertexAttributes) = .{},
+    indexBuffer: IndexBufferBinding = .{},
+    indirectParams: ?*IBuffer = null,
+};
+
+pub const VariableShadingRate = enum(u8) {
+    e1x1,
+    e1x2,
+    e2x1,
+    e2x2,
+    e2x4,
+    e4x2,
+    e4x4,
+};
+
+pub const ShadingRateCombiner = enum(u8) {
+    Passthrough,
+    Override,
+    Min,
+    Max,
+    ApplyRelative,
+};
+
+pub const VariableRateShadingState = extern struct {
+    enabled: bool = false,
+    shadingRate: VariableShadingRate = .e1x1,
+    pipelinePrimitiveCombiner: ShadingRateCombiner = .Passthrough,
+    imageCombiner: ShadingRateCombiner = .Passthrough,
+};
+
+pub const GraphicsPipelineDesc = extern struct {
+    primType: PrimitiveType = .TriangleList,
+    patchControlPoints: u32 = 0,
+    inputLayout: InputLayoutHandle = .{},
+
+    VS: ShaderHandle = .{},
+    HS: ShaderHandle = .{},
+    DS: ShaderHandle = .{},
+    GS: ShaderHandle = .{},
+    PS: ShaderHandle = .{},
+
+    renderState: RenderState = .{},
+    shadingRateState: VariableRateShadingState = .{},
+
+    bindingLayouts: static_vector(BindingLayoutHandle, c_MaxBindingLayouts) = .{},
+};
+
 pub const IGraphicsPipeline = opaque {};
+
 pub const IBindingLayout = opaque {};
 pub const IBuffer = opaque {};
 pub const IDevice = opaque {
@@ -614,6 +991,12 @@ pub const IDevice = opaque {
         *const anyopaque,
         usize,
     ) void;
+    extern fn c_nvrhi_device_createBindingSet(
+        *IDevice,
+        *BindingSetHandle,
+        *const BindingSetDesc,
+        *IBindingLayout,
+    ) void;
     extern fn c_nvrhi_device_createBindingLayout(
         *IDevice,
         *BindingLayoutHandle,
@@ -636,6 +1019,12 @@ pub const IDevice = opaque {
         u32,
         ?*IShader,
     ) void;
+    extern fn c_nvrhi_device_createGraphicsPipeline(
+        *IDevice,
+        *GraphicsPipelineHandle,
+        *const GraphicsPipelineDesc,
+        *IFramebuffer,
+    ) void;
 
     pub fn runGarbageCollection(device: *IDevice) void {
         c_nvrhi_device_runGarbageCollection(device);
@@ -643,6 +1032,32 @@ pub const IDevice = opaque {
 
     pub fn executeCommandList(device: *IDevice, command_list_ptr: *ICommandList) void {
         c_nvrhi_device_executeCommandList(device, command_list_ptr);
+    }
+
+    /// increases ref count
+    /// should call handle.deinit on resource release
+    pub fn createBindingSet(
+        device: *IDevice,
+        desc: *const BindingSetDesc,
+        layout: *IBindingLayout,
+    ) BindingSetHandle {
+        var handle = BindingSetHandle{};
+        c_nvrhi_device_createBindingSet(device, &handle, desc, layout);
+
+        return handle;
+    }
+
+    /// increases ref count
+    /// should call handle.deinit on resource release
+    pub fn createGraphicsPipeline(
+        device: *IDevice,
+        desc: *const GraphicsPipelineDesc,
+        fb: *IFramebuffer,
+    ) GraphicsPipelineHandle {
+        var handle = GraphicsPipelineHandle{};
+        c_nvrhi_device_createGraphicsPipeline(device, &handle, desc, fb);
+
+        return handle;
     }
 
     /// increases ref count
@@ -814,9 +1229,29 @@ pub const CommandListParameters = extern struct {
     queueType: CommandQueue = CommandQueue.Graphics,
 };
 
+pub const DrawArguments = extern struct {
+    vertexCount: u32 = 0,
+    instanceCount: u32 = 1,
+    startIndexLocation: u32 = 0,
+    startVertexLocation: u32 = 0,
+    startInstanceLocation: u32 = 0,
+};
+
 pub const ICommandList = opaque {
+    extern fn c_nvrhi_commandList_setGraphicsState(*ICommandList, *const GraphicsState) void;
+    extern fn c_nvrhi_commandList_draw(*ICommandList, *const DrawArguments) void;
+    extern fn c_nvrhi_commandList_setPushConstants(*ICommandList, *const anyopaque, usize) void;
     extern fn c_nvrhi_commandList_open(*ICommandList) void;
     extern fn c_nvrhi_commandList_close(*ICommandList) void;
+    extern fn c_nvrhi_commandList_clearDepthStencilTexture(
+        *ICommandList,
+        *ITexture,
+        TextureSubresourceSet,
+        bool,
+        f32,
+        bool,
+        u8,
+    ) void;
     extern fn c_nvrhi_commandList_beginTrackingTextureState(
         *ICommandList,
         *ITexture,
@@ -941,6 +1376,45 @@ pub const ICommandList = opaque {
     ) void {
         c_nvrhi_commandList_setPermanentBufferState(command_list, buffer, state_bits);
     }
+
+    pub fn clearDepthStencilTexture(
+        command_list: *ICommandList,
+        t: *ITexture,
+        subresources: TextureSubresourceSet,
+        clear_depth: bool,
+        depth: f32,
+        clear_stencil: bool,
+        stencil: u8,
+    ) void {
+        c_nvrhi_commandList_clearDepthStencilTexture(
+            command_list,
+            t,
+            subresources,
+            clear_depth,
+            depth,
+            clear_stencil,
+            stencil,
+        );
+    }
+
+    pub fn setGraphicsState(
+        command_list: *ICommandList,
+        state: *const GraphicsState,
+    ) void {
+        c_nvrhi_commandList_setGraphicsState(command_list, state);
+    }
+
+    pub fn draw(command_list: *ICommandList, args: *const DrawArguments) void {
+        c_nvrhi_commandList_draw(command_list, args);
+    }
+
+    pub fn setPushConstants(
+        command_list: *ICommandList,
+        data: *const anyopaque,
+        byte_size: usize,
+    ) void {
+        c_nvrhi_commandList_setPushConstants(command_list, data, byte_size);
+    }
 };
 
 pub const ResourceStates = packed struct(u32) {
@@ -1014,6 +1488,10 @@ pub const FramebufferAttachment = extern struct {
     subresources: TextureSubresourceSet = .{},
     format: Format = .UNKNOWN,
     isReadOnly: bool = false,
+
+    pub inline fn valid(attach: *const FramebufferAttachment) bool {
+        return attach.texture != null;
+    }
 };
 
 pub const FramebufferDesc = extern struct {
@@ -1031,6 +1509,13 @@ pub const utils = struct {
         u32,
     ) BufferDesc;
 
+    extern fn c_nvrhi_utils_clearColorAttachment(
+        *ICommandList,
+        *IFramebuffer,
+        u32,
+        Color,
+    ) void;
+
     pub fn createVolatileConstantBufferDesc(
         byte_size: u32,
         debug_name: [:0]const u8,
@@ -1042,36 +1527,95 @@ pub const utils = struct {
             max_versions,
         );
     }
+
+    pub fn clearColorAttachment(
+        command_list: *ICommandList,
+        framebuffer: *IFramebuffer,
+        attachment_index: u32,
+        color: Color,
+    ) void {
+        c_nvrhi_utils_clearColorAttachment(
+            command_list,
+            framebuffer,
+            attachment_index,
+            color,
+        );
+    }
 };
 
 pub const IMessageCallback = opaque {};
 
 pub const vulkan = struct {
-    const vk = @cImport(@cInclude("vulkan/vulkan.h"));
+    const c = @import("../sys/c_import.zig").c;
 
-    extern fn c_nvrhi_vulkan_convertFormat(Format) vk.VkFormat;
+    pub const IVulkanDevice = opaque {
+        extern fn c_nvrhi_vulkan_device_queueWaitForSemaphore(
+            *IVulkanDevice,
+            CommandQueue,
+            c.VkSemaphore,
+            u64,
+        ) void;
+        extern fn c_nvrhi_vulkan_device_queueSignalSemaphore(
+            *IVulkanDevice,
+            CommandQueue,
+            c.VkSemaphore,
+            u64,
+        ) void;
+
+        pub fn queueWaitForSemaphore(
+            device: *IVulkanDevice,
+            wait_queue: CommandQueue,
+            semaphore: c.VkSemaphore,
+            value: u64,
+        ) void {
+            c_nvrhi_vulkan_device_queueWaitForSemaphore(
+                device,
+                wait_queue,
+                semaphore,
+                value,
+            );
+        }
+
+        pub fn queueSignalSemaphore(
+            device: *IVulkanDevice,
+            execution_queue: CommandQueue,
+            semaphore: c.VkSemaphore,
+            value: u64,
+        ) void {
+            c_nvrhi_vulkan_device_queueSignalSemaphore(
+                device,
+                execution_queue,
+                semaphore,
+                value,
+            );
+        }
+    };
+
+    pub const VulkanDeviceHandle = RefCountPtr(IVulkanDevice);
+
+    extern fn c_nvrhi_vulkan_convertFormat(Format) c.VkFormat;
     extern fn c_nvrhi_vulkan_createDevice(
         *const DeviceDesc,
-        *DeviceHandle,
-        vk.PFN_vkGetInstanceProcAddr,
+        *VulkanDeviceHandle,
+        c.PFN_vkGetInstanceProcAddr,
     ) void;
 
-    pub fn convertFormat(format: Format) vk.VkFormat {
+    pub fn convertFormat(format: Format) c.VkFormat {
         return c_nvrhi_vulkan_convertFormat(format);
     }
 
     pub const DeviceDesc = extern struct {
         errorCB: ?*IMessageCallback = null,
-        instance: vk.VkInstance,
-        physicalDevice: vk.VkPhysicalDevice,
-        device: vk.VkDevice,
-        graphicsQueue: vk.VkQueue = null,
+        instance: c.VkInstance,
+        physicalDevice: c.VkPhysicalDevice,
+        device: c.VkDevice,
+        graphicsQueue: c.VkQueue = null,
         graphicsQueueIndex: c_int = -1,
-        transferQueue: vk.VkQueue = null,
+        transferQueue: c.VkQueue = null,
         transferQueueIndex: c_int = -1,
-        computeQueue: vk.VkQueue = null,
+        computeQueue: c.VkQueue = null,
         computeQueueIndex: c_int = -1,
-        allocationCallbacks: ?*vk.VkAllocationCallbacks = null,
+        allocationCallbacks: ?*c.VkAllocationCallbacks = null,
         instanceExtensions: ?[*][*:0]const u8 = null,
         numInstanceExtensions: usize = 0,
         deviceExtensions: ?[*][*:0]const u8 = null,
@@ -1080,8 +1624,11 @@ pub const vulkan = struct {
         bufferDeviceAddressSupported: bool = false,
     };
 
-    pub fn createDevice(desc: *const DeviceDesc, vkGetInstanceProcAddr: vk.PFN_vkGetInstanceProcAddr) DeviceHandle {
-        var handle = DeviceHandle{};
+    pub fn createDevice(
+        desc: *const DeviceDesc,
+        vkGetInstanceProcAddr: c.PFN_vkGetInstanceProcAddr,
+    ) VulkanDeviceHandle {
+        var handle = VulkanDeviceHandle{};
         c_nvrhi_vulkan_createDevice(desc, &handle, vkGetInstanceProcAddr);
 
         return handle;

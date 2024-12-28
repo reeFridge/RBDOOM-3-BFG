@@ -541,9 +541,9 @@ const ViewLight = @import("common.zig").ViewLight;
 const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 const DrawSurface = @import("common.zig").DrawSurface;
 
-extern fn R_AddInGameGuis2([*]*DrawSurface, c_int, *ViewDef, *GuiModel) callconv(.C) void;
-extern fn R_OptimizeViewLightsList(*ViewDef) callconv(.C) void;
-extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) callconv(.C) void;
+extern fn R_AddInGameGuis2([*][*]DrawSurface, c_int, *ViewDef, *GuiModel) void;
+extern fn R_OptimizeViewLightsList(*ViewDef) void;
+extern fn R_SortDrawSurfs([*][*]DrawSurface, c_int) void;
 
 pub const RenderSceneError = RenderViewError;
 pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) RenderSceneError!void {
@@ -646,7 +646,7 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) RenderViewError!vo
     if (view_def.drawSurfs) |draw_surfs| {
         R_AddInGameGuis2(
             draw_surfs,
-            view_def.numDrawSurfs,
+            @intCast(view_def.numDrawSurfs),
             view_def,
             RenderSystem.instance.gui_model,
         );
@@ -656,9 +656,9 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) RenderViewError!vo
 
     if (view_def.drawSurfs) |draw_surfs| {
         // sort all the ambient surfaces for translucency ordering
-        R_SortDrawSurfs(draw_surfs, view_def.numDrawSurfs);
+        R_SortDrawSurfs(draw_surfs, @intCast(view_def.numDrawSurfs));
         // generate any subviews (mirrors, cameras, etc) before adding this view
-        render_world.generateSubviews(draw_surfs[0..@intCast(view_def.numDrawSurfs)]);
+        render_world.generateSubviews(draw_surfs[0..view_def.numDrawSurfs]);
     }
 
     render_world.findClosestEnvironmentProbes(view_def);
@@ -702,11 +702,12 @@ fn findClosestEnvironmentProbes(_: RenderWorld, view_def: *ViewDef) void {
 /// It is important to do this after all drawSurfs for the current
 /// view have been generated, because it may create a subview which
 /// would change tr.viewCount.
-fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
+fn generateSubviews(_: *RenderWorld, draw_surfs: [][*]const DrawSurface) void {
     const skip_subviews = false;
     if (skip_subviews) return;
 
-    for (draw_surfs) |surf_ptr| {
+    for (draw_surfs, 0..) |surf_array_ptr, i| {
+        const surf_ptr = surf_array_ptr[i];
         const surf_material = surf_ptr.material orelse continue;
         if (!surf_material.has_subview) continue;
 

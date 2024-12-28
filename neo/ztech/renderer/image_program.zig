@@ -555,7 +555,20 @@ fn loadImage(
     path: []const u8,
     allocator: Allocator,
 ) LoadImageError!LoadImageResult {
-    const buffer = try fs.instance.readFileAnyAlloc(path, allocator);
+    var ext = std.fs.path.extension(path);
+    const basepath = path[0 .. path.len - ext.len];
+    if (ext.len == 0) {
+        ext = ".tga";
+    }
+
+    var path_buffer: [fs.max_os_path]u8 = undefined;
+    const adjusted_path = std.fmt.bufPrint(
+        &path_buffer,
+        "{s}{s}",
+        .{ basepath, ext },
+    ) catch @panic("filename len is too long");
+
+    const buffer = try fs.instance.readFileAnyAlloc(adjusted_path, allocator);
     defer allocator.free(buffer);
 
     return std.mem.zeroes(LoadImageResult);

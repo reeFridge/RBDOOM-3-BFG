@@ -345,4 +345,11 @@ void c_commonRenderPasses_shutdown(CommonRenderPasses* instance) {
 	instance->Shutdown();
 }
 
+nvrhi::GraphicsPipelineHandle* c_unorderedMap_getOrCreateRef(
+		std::unordered_map<CommonRenderPasses::PsoCacheKey, nvrhi::GraphicsPipelineHandle, CommonRenderPasses::PsoCacheKey::Hash>* map,
+		CommonRenderPasses::PsoCacheKey key)
+{
+	return std::addressof((*map)[key]);
+}
+
 }

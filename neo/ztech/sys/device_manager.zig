@@ -4,9 +4,12 @@ const FrameData = @import("../renderer/frame_data.zig");
 const std = @import("std");
 const nvrhi = @import("../renderer/nvrhi.zig");
 const GLImplParams = @import("../renderer/render_system.zig").GLImplParams;
+const RenderSystem = @import("../renderer/render_system.zig");
 const vulkan = @import("vulkan");
 const vulkan_impl = @import("sdl/vulkan.zig");
+const framebuffer = @import("../renderer/framebuffer.zig");
 const c = @import("c_import.zig").c;
+const Allocator = std.mem.Allocator;
 
 pub var vma_allocator: c.VmaAllocator = null;
 
@@ -112,10 +115,10 @@ pub const DeviceCreationParams = struct {
     back_buffer_height: u32 = 720,
     back_buffer_sample_count: u32 = 1, // optional HDR Framebuffer MSAA
     refresh_rate: u32 = 0,
-    swap_chain_buffer_count: u32 = FrameData.NUM_FRAME_DATA,
-    swap_chain_format: nvrhi.Format = .RGBA8_UNORM,
-    swap_chain_sample_count: u32 = 1,
-    swap_chain_sample_quality: u32 = 0,
+    swapchain_buffer_count: u32 = FrameData.NUM_FRAME_DATA,
+    swapchain_format: nvrhi.Format = .RGBA8_UNORM,
+    swapchain_sample_count: u32 = 1,
+    swapchain_sample_quality: u32 = 0,
     enable_debug_runtime: bool = false,
     enable_nvrhi_validation_layer: bool = false,
     vsync_enabled: bool = false,
@@ -183,6 +186,9 @@ pub const DeviceManagerVulkan = struct {
                 .getDeviceQueue = true,
                 .createSemaphore = true,
                 .destroySemaphore = true,
+                .deviceWaitIdle = true,
+                .acquireNextImageKHR = true,
+                .queuePresentKHR = true,
             },
         },
     };
@@ -234,7 +240,7 @@ pub const DeviceManagerVulkan = struct {
     vsync_requested: bool = false,
     enabled_device_extensions: [][*:0]const u8 = &.{},
     enabled_instance_extensions: [][*:0]const u8 = &.{},
-    swap_chain_format: vulkan.SurfaceFormatKHR = .{
+    swapchain_format: vulkan.SurfaceFormatKHR = .{
         .format = .undefined,
         .color_space = .srgb_nonlinear_khr,
     },
@@ -244,13 +250,14 @@ pub const DeviceManagerVulkan = struct {
     present_semaphore_queue: []vulkan.Semaphore = &.{},
     present_semaphore: vulkan.Semaphore = .null_handle,
     frame_wait_query: nvrhi.EventQueryHandle = .{},
-    allocator: std.mem.Allocator = undefined,
+    window_visible: bool = false,
+    allocator: Allocator = undefined,
 
     pub const CreateError = error{
         OutOfMemory,
         CommandLoadFailure,
     };
-    pub fn create(allocator: std.mem.Allocator) CreateError!*DeviceManagerVulkan {
+    pub fn create(allocator: Allocator) CreateError!*DeviceManagerVulkan {
         const device_manager = try allocator.create(DeviceManagerVulkan);
         device_manager.* = .{};
         device_manager.vkb = try BaseDispatch.load(vulkan_impl.vkGetInstanceProcAddr);
@@ -285,8 +292,8 @@ pub const DeviceManagerVulkan = struct {
         device_manager.allocator.destroy(device_manager);
     }
 
-    pub const CreateDeviceAndSwapChainError =
-        CreateSwapChainError ||
+    pub const CreateDeviceAndSwapchainError =
+        CreateSwapchainError ||
         CreateDeviceError ||
         CreateInstanceError ||
         vulkan_impl.CreateWindowSurfaceError ||
@@ -295,7 +302,7 @@ pub const DeviceManagerVulkan = struct {
         device_manager: *DeviceManagerVulkan,
         params: GLImplParams,
         instance_extensions: []const [*:0]const u8,
-    ) CreateDeviceAndSwapChainError!void {
+    ) CreateDeviceAndSwapchainError!void {
         device_manager.device_params.back_buffer_width = params.width;
         device_manager.device_params.back_buffer_height = params.height;
         device_manager.device_params.vsync_enabled = device_manager.vsync_requested;
@@ -309,7 +316,7 @@ pub const DeviceManagerVulkan = struct {
             device_manager.instance.handle,
         );
 
-        device_manager.device_params.swap_chain_format = switch (device_manager.device_params.swap_chain_format) {
+        device_manager.device_params.swapchain_format = switch (device_manager.device_params.swapchain_format) {
             .SRGBA8_UNORM => .SBGRA8_UNORM,
             .RGBA8_UNORM => .BGRA8_UNORM,
             else => |format| format,
@@ -328,7 +335,7 @@ pub const DeviceManagerVulkan = struct {
 
         // TODO: validation layer
 
-        try device_manager.createSwapChain(arena_allocator);
+        try device_manager.createSwapchain(arena_allocator);
 
         device_manager.present_semaphore_queue = try device_manager.allocator.alloc(
             vulkan.Semaphore,
@@ -345,13 +352,16 @@ pub const DeviceManagerVulkan = struct {
         nvrhi_device_ptr.setEventQuery(frame_wait_query_ptr, .Graphics);
     }
 
-    const CreateSwapChainError =
+    const CreateSwapchainError =
         Device.CreateSwapchainKHRError ||
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         Instance.GetPhysicalDeviceSurfacePresentModesAllocKHRError;
-    fn createSwapChain(device_manager: *DeviceManagerVulkan, allocator: std.mem.Allocator) CreateSwapChainError!void {
-        device_manager.swap_chain_format = .{
-            .format = @enumFromInt(nvrhi.vulkan.convertFormat(device_manager.device_params.swap_chain_format)),
+    fn createSwapchain(
+        device_manager: *DeviceManagerVulkan,
+        allocator: Allocator,
+    ) CreateSwapchainError!void {
+        device_manager.swapchain_format = .{
+            .format = @enumFromInt(nvrhi.vulkan.convertFormat(device_manager.device_params.swapchain_format)),
             .color_space = .srgb_nonlinear_khr,
         };
 
@@ -396,7 +406,7 @@ pub const DeviceManagerVulkan = struct {
             }
         }
 
-        const enable_swap_chain_sharing = queue_families.constSlice().len > 1;
+        const enable_swapchain_sharing = queue_families.constSlice().len > 1;
 
         const present_mode: vulkan.PresentModeKHR = if (device_manager.device_params.vsync_enabled)
             if (device_manager.present_modes.fifo_relaxed) .fifo_relaxed_khr else .fifo_khr
@@ -407,9 +417,9 @@ pub const DeviceManagerVulkan = struct {
 
         const desc = vulkan.SwapchainCreateInfoKHR{
             .surface = device_manager.surface,
-            .min_image_count = device_manager.device_params.swap_chain_buffer_count,
-            .image_format = device_manager.swap_chain_format.format,
-            .image_color_space = device_manager.swap_chain_format.color_space,
+            .min_image_count = device_manager.device_params.swapchain_buffer_count,
+            .image_format = device_manager.swapchain_format.format,
+            .image_color_space = device_manager.swapchain_format.color_space,
             .image_extent = extent,
             .image_array_layers = 1,
             .image_usage = .{
@@ -417,9 +427,9 @@ pub const DeviceManagerVulkan = struct {
                 .transfer_dst_bit = true,
                 .sampled_bit = true,
             },
-            .image_sharing_mode = if (enable_swap_chain_sharing) .concurrent else .exclusive,
-            .queue_family_index_count = if (enable_swap_chain_sharing) @intCast(queue_families.constSlice().len) else 0,
-            .p_queue_family_indices = if (enable_swap_chain_sharing) queue_families.constSlice().ptr else null,
+            .image_sharing_mode = if (enable_swapchain_sharing) .concurrent else .exclusive,
+            .queue_family_index_count = if (enable_swapchain_sharing) @intCast(queue_families.constSlice().len) else 0,
+            .p_queue_family_indices = if (enable_swapchain_sharing) queue_families.constSlice().ptr else null,
             .pre_transform = .{ .identity_bit_khr = true },
             .composite_alpha = .{ .opaque_bit_khr = true },
             .present_mode = present_mode,
@@ -429,7 +439,10 @@ pub const DeviceManagerVulkan = struct {
         device_manager.swapchain = try device_manager.device.createSwapchainKHR(&desc, null);
 
         // retrieve swap chain images
-        const images = try device_manager.device.getSwapchainImagesAllocKHR(device_manager.swapchain, allocator);
+        const images = try device_manager.device.getSwapchainImagesAllocKHR(
+            device_manager.swapchain,
+            allocator,
+        );
         defer allocator.free(images);
 
         device_manager.swapchain_images = try device_manager.allocator.alloc(SwapchainImage, images.len);
@@ -439,7 +452,7 @@ pub const DeviceManagerVulkan = struct {
             const texture_desc = nvrhi.TextureDesc{
                 .width = device_manager.device_params.back_buffer_width,
                 .height = device_manager.device_params.back_buffer_height,
-                .format = device_manager.device_params.swap_chain_format,
+                .format = device_manager.device_params.swapchain_format,
                 .initialState = .{ .Present = true },
                 .keepInitialState = true,
                 .isRenderTarget = true,
@@ -486,10 +499,10 @@ pub const DeviceManagerVulkan = struct {
             device_desc.transferQueueIndex = @intCast(device_manager.queue_family.transfer.?);
         }
 
-        device_manager.nvrhi_device = nvrhi.vulkan.createDevice(
+        device_manager.nvrhi_device = @bitCast(nvrhi.vulkan.createDevice(
             &device_desc,
             @ptrCast(device_manager.vkb.dispatch.vkGetInstanceProcAddr),
-        );
+        ));
         std.debug.assert(device_manager.nvrhi_device.ptr_ != null);
     }
 
@@ -504,7 +517,7 @@ pub const DeviceManagerVulkan = struct {
         Instance.CreateDeviceError;
     fn createDevice(
         device_manager: *DeviceManagerVulkan,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) CreateDeviceError!void {
         var required_layers = std.BufSet.init(allocator);
         defer required_layers.deinit();
@@ -897,14 +910,14 @@ pub const DeviceManagerVulkan = struct {
         ExtensionNotSupported,
         LayerNotSupported,
     } ||
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         BaseDispatch.EnumerateInstanceExtensionPropertiesAllocError ||
         BaseDispatch.EnumerateInstanceLayerPropertiesAllocError ||
         BaseDispatch.CreateInstanceError;
     fn createInstance(
         device_manager: *DeviceManagerVulkan,
         extensions: []const [*:0]const u8,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) CreateInstanceError!void {
         var required_extensions = std.BufSet.init(allocator);
         defer required_extensions.deinit();
@@ -1112,10 +1125,10 @@ pub const DeviceManagerVulkan = struct {
         Instance.GetPhysicalDeviceSurfaceCapabilitiesKHRError;
     fn selectPhysicalDevice(
         device_manager: *DeviceManagerVulkan,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) SelectPhysicalDeviceError!void {
         const requested_format: vulkan.Format = @enumFromInt(nvrhi.vulkan.convertFormat(
-            device_manager.device_params.swap_chain_format,
+            device_manager.device_params.swapchain_format,
         ));
 
         const max_physical_devices = 32;
@@ -1178,9 +1191,9 @@ pub const DeviceManagerVulkan = struct {
 
             const min_buffer_count = @max(
                 surface_caps.min_image_count,
-                device_manager.device_params.swap_chain_buffer_count,
+                device_manager.device_params.swapchain_buffer_count,
             );
-            device_manager.device_params.swap_chain_buffer_count = if (surface_caps.max_image_count > 0)
+            device_manager.device_params.swapchain_buffer_count = if (surface_caps.max_image_count > 0)
                 @min(min_buffer_count, surface_caps.max_image_count)
             else
                 min_buffer_count;
@@ -1225,13 +1238,13 @@ pub const DeviceManagerVulkan = struct {
 
     const FindQueueFamiliesError =
         error{QueueFamilyNotFound} ||
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         Instance.GetPhysicalDeviceSurfaceSupportKHRError;
     fn findQueueFamilies(
         device_manager: *DeviceManagerVulkan,
         device: vulkan.PhysicalDevice,
         surface: vulkan.SurfaceKHR,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) FindQueueFamiliesError!void {
         const props = try device_manager.instance.getPhysicalDeviceQueueFamilyPropertiesAlloc(
             device,
@@ -1315,20 +1328,122 @@ pub const DeviceManagerVulkan = struct {
         return device_manager.swapchain_images[index].handle.ptr_;
     }
 
-    pub fn beginFrame(_: *DeviceManagerVulkan) void {
-        @panic("beginFrame is not implemented");
+    pub const BeginFrameError = Device.AcquireNextImageKHRError;
+    pub fn beginFrame(device_manager: *DeviceManagerVulkan) BeginFrameError!void {
+        const device: *nvrhi.vulkan.IVulkanDevice = @ptrCast(
+            device_manager.nvrhi_device.ptr_.?,
+        );
+
+        _ = try device_manager.device.acquireNextImageKHR(
+            device_manager.swapchain,
+            std.math.maxInt(u64),
+            device_manager.present_semaphore,
+            .null_handle,
+        );
+
+        device.queueWaitForSemaphore(
+            .Graphics,
+            @ptrFromInt(@intFromEnum(device_manager.present_semaphore)),
+            0,
+        );
     }
 
-    pub fn endFrame(_: *DeviceManagerVulkan) void {
-        @panic("endFrame is not implemented");
+    pub fn endFrame(device_manager: *DeviceManagerVulkan) void {
+        const device: *nvrhi.vulkan.IVulkanDevice = @ptrCast(
+            device_manager.nvrhi_device.ptr_.?,
+        );
+
+        device.queueSignalSemaphore(
+            .Graphics,
+            @ptrFromInt(@intFromEnum(device_manager.present_semaphore)),
+            0,
+        );
     }
 
-    pub fn updateWindowSize(_: *DeviceManagerVulkan, _: GLImplParams) void {
-        @panic("updateWindowSize is not implemented");
+    fn destroySwapchain(device_manager: *DeviceManagerVulkan) void {
+        device_manager.device.deviceWaitIdle() catch @panic("device waitIdle error");
+
+        for (device_manager.swapchain_images) |*sc_image| {
+            sc_image.handle.deinit();
+        }
+        device_manager.swapchain_images = &.{};
+
+        if (device_manager.swapchain != .null_handle) {
+            device_manager.device.destroySwapchainKHR(device_manager.swapchain, null);
+            device_manager.swapchain = .null_handle;
+        }
     }
 
-    pub fn present(_: *DeviceManagerVulkan) void {
-        @panic("present is not implemented");
+    fn resizeSwapchain(
+        device_manager: *DeviceManagerVulkan,
+        allocator: Allocator,
+    ) CreateSwapchainError!void {
+        device_manager.destroySwapchain();
+        try device_manager.createSwapchain(allocator);
+    }
+
+    pub const UpdateWindowSizeError = CreateSwapchainError;
+    pub fn updateWindowSize(
+        device_manager: *DeviceManagerVulkan,
+        params: GLImplParams,
+        allocator: Allocator,
+    ) CreateSwapchainError!void {
+        device_manager.window_visible = true;
+
+        if (device_manager.device_params.back_buffer_width != params.width or
+            device_manager.device_params.back_buffer_height != params.height or
+            device_manager.device_params.vsync_enabled != device_manager.vsync_requested)
+        {
+            framebuffer.shutdown(allocator);
+
+            device_manager.device_params.back_buffer_width = params.width;
+            device_manager.device_params.back_buffer_height = params.height;
+            device_manager.device_params.back_buffer_sample_count = params.multi_samples;
+            device_manager.device_params.vsync_enabled = device_manager.vsync_requested;
+
+            try device_manager.resizeSwapchain(allocator);
+
+            const gl_config = RenderSystem.gl_config;
+            device_manager.getWindowDimensions(
+                &gl_config.nativeScreenWidth,
+                &gl_config.nativeScreenHeight,
+            );
+
+            if (RenderSystem.instance.initialized) {
+                try framebuffer.resizeFramebuffers(
+                    &RenderSystem.backend_,
+                    device_manager,
+                    allocator,
+                    true,
+                );
+            }
+        } else {
+            device_manager.device_params.vsync_enabled = device_manager.vsync_requested;
+        }
+    }
+
+    pub const PresentError = Device.QueuePresentKHRError;
+    pub fn present(
+        device_manager: *DeviceManagerVulkan,
+    ) PresentError!void {
+        _ = try device_manager.device.queuePresentKHR(device_manager.queue.present, &.{
+            .wait_semaphore_count = 1,
+            .p_wait_semaphores = @ptrCast(&device_manager.present_semaphore),
+            .swapchain_count = 1,
+            .p_swapchains = @ptrCast(&device_manager.swapchain),
+            .p_image_indices = @ptrCast(&device_manager.swapchain_index),
+        });
+
+        // pop
+        std.mem.copyBackwards(
+            vulkan.Semaphore,
+            device_manager.present_semaphore_queue,
+            device_manager.present_semaphore_queue[1..],
+        );
+        // push
+        const queue_back = &device_manager.present_semaphore_queue[device_manager.present_semaphore_queue.len - 1];
+        queue_back.* = device_manager.present_semaphore;
+        device_manager.present_semaphore = device_manager.present_semaphore_queue[0];
     }
 
     pub fn getDevice(device_manager: *DeviceManagerVulkan) *nvrhi.IDevice {

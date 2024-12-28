@@ -49,7 +49,10 @@ export fn ztech_renderSystem_setColor(color: CVec4) callconv(.C) void {
 }
 
 export fn ztech_renderSystem_renderCommandBuffers(cmd_head: ?*FrameData.EmptyCommand) callconv(.C) void {
-    RenderSystem.instance.renderCommandBuffers(cmd_head);
+    RenderSystem.instance.renderCommandBuffers(
+        cmd_head,
+        global.gpa.allocator(),
+    ) catch @panic("OOM?");
 }
 
 export fn ztech_renderSystem_isInitialized() callconv(.C) bool {
@@ -81,11 +84,11 @@ export fn ztech_renderSystem_invalidateSwapBuffers() callconv(.C) void {
 }
 
 export fn ztech_renderSystem_swapCommandBuffers() callconv(.C) ?*FrameData.EmptyCommand {
-    return RenderSystem.instance.swapCommandBuffers();
+    return RenderSystem.instance.swapCommandBuffers() catch @panic("swap buffers");
 }
 
 export fn ztech_renderSystem_finishRendering() callconv(.C) void {
-    RenderSystem.instance.finishRendering();
+    RenderSystem.instance.finishRendering() catch @panic("finish rendering");
 }
 
 export fn ztech_renderSystem_getShaderTime() callconv(.C) f32 {

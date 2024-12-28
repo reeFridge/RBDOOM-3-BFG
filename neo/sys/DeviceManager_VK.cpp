@@ -1266,7 +1266,7 @@ bool DeviceManager_VK::CreateDeviceAndSwapChain()
 	}
 
 	// SRS - make static so ~DynamicLoader() does not prematurely unload vulkan dynamic lib
-	static const vk::DynamicLoader dl;
+	static const vk::detail::DynamicLoader dl;
 #endif
 	vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>( "vkGetInstanceProcAddr" );
 	VULKAN_HPP_DEFAULT_DISPATCHER.init( vkGetInstanceProcAddr );

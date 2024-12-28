@@ -73,7 +73,7 @@ pub const GlobalFramebuffers = extern struct {
     const MAX_SSAO_BUFFERS = 2;
     const MAX_HIERARCHICAL_ZBUFFERS = 6; // native resolution + 5 MIP LEVELS
 
-    swapFramebuffers: idlib.List(*Framebuffer),
+    swap_framebuffers: idlib.List(*Framebuffer),
     shadowAtlasFBO: *Framebuffer,
     shadowFBO: [MAX_SHADOWMAP_RESOLUTIONS][6]*Framebuffer,
     hdrFBO: *Framebuffer,
@@ -94,13 +94,10 @@ pub const GlobalFramebuffers = extern struct {
     accumFBO: *Framebuffer,
 };
 
-pub const global_framebuffers = @extern(*GlobalFramebuffers, .{ .name = "globalFramebuffers" });
-
-extern fn c_framebuffer_init() void;
-extern fn c_framebuffer_shutdown() void;
-extern fn c_framebuffer_checkFramebuffers() void;
-extern fn c_framebuffer_unbind() void;
-extern fn c_framebuffer_resizeFramebuffers(bool) void;
+pub const global_framebuffers = @extern(
+    *GlobalFramebuffers,
+    .{ .name = "globalFramebuffers" },
+);
 
 pub fn resizeFramebuffers(
     backend: *RenderBackend,
@@ -126,15 +123,15 @@ pub fn resizeFramebuffers(
     }
 
     const back_buffer_count = device_manager.getBackBufferCount();
-    try global_framebuffers.swapFramebuffers.resize(back_buffer_count, allocator);
-    try global_framebuffers.swapFramebuffers.setNum(back_buffer_count, allocator);
+    try global_framebuffers.swap_framebuffers.resize(back_buffer_count, allocator);
+    try global_framebuffers.swap_framebuffers.setNum(back_buffer_count, allocator);
 
     const Attachments = nvrhi.FramebufferDesc.ColorAttachments;
     const global_images = image_manager.instance;
 
     var string_buffer: [256]u8 = undefined;
 
-    for (global_framebuffers.swapFramebuffers.slice(), 0..) |*fb, index| {
+    for (global_framebuffers.swap_framebuffers.slice(), 0..) |*fb, index| {
         fb.* = try Framebuffer.create(
             allocator,
             device,
@@ -422,6 +419,6 @@ pub fn shutdown(allocator: Allocator) void {
 }
 
 pub fn unbind(backend: *RenderBackend, device_manager: *const DeviceManager) void {
-    const swap = global_framebuffers.swapFramebuffers.slice();
+    const swap = global_framebuffers.swap_framebuffers.slice();
     swap[device_manager.getCurrentBackBufferIndex()].bind(backend);
 }

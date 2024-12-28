@@ -873,7 +873,7 @@ void idImage::ActuallyLoadImage( bool fromBackEnd, nvrhi::ICommandList* commandL
 
 	AllocImage();
 
-#if defined( USE_NVRHI ) && !defined( DMAP )
+#if 1
 	const nvrhi::FormatInfo& info = nvrhi::getFormatInfo( texture->getDesc().format );
 	const int bytesPerPixel = info.bytesPerBlock / info.blockSize;
 

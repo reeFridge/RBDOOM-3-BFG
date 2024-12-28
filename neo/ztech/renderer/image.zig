@@ -8,6 +8,7 @@ const nvrhi = @import("nvrhi.zig");
 const idlib = @import("../idlib.zig");
 const material = @import("material.zig");
 const frame_data = @import("frame_data.zig");
+const string = @import("../string.zig");
 const BinaryImage = @import("binary_image.zig").BinaryImage;
 const Allocator = std.mem.Allocator;
 
@@ -302,7 +303,7 @@ pub const Image = extern struct {
         image.deriveOpts();
 
         // The image will be uploaded to the gpu on a deferred state.
-        image.createTexture();
+        _ = image.createTexture();
 
         image.is_loaded = true;
     }
@@ -340,7 +341,7 @@ pub const Image = extern struct {
 
         image.deriveOpts();
 
-        image.createTexture();
+        _ = image.createTexture();
         image.is_loaded = true;
     }
 
@@ -381,7 +382,7 @@ pub const Image = extern struct {
         image.deriveOpts();
 
         if (image.opts.texture_type == .@"2d_multisample") {
-            image.createTexture();
+            _ = image.createTexture();
             image.is_loaded = true;
         } else {
             var im = BinaryImage{};
@@ -409,7 +410,7 @@ pub const Image = extern struct {
                 );
             }
 
-            image.createTexture();
+            _ = image.createTexture();
 
             if (opt_command_list) |command_list| {
                 command_list.beginTrackingTextureState(
@@ -579,7 +580,7 @@ pub const Image = extern struct {
     }
 
     // TODO: return error (vma allocation error)
-    fn createTexture(image: *Image) void {
+    fn createTexture(image: *Image) *nvrhi.ITexture {
         image.purgeImage();
         image.createSamplerDesc();
 
@@ -614,7 +615,7 @@ pub const Image = extern struct {
             },
         };
 
-        if (!render_system.instance.backend_initialized) return;
+        if (!render_system.instance.backend_initialized) @panic("backend is not initialzied");
 
         const original_width = image.opts.width;
         const original_height = image.opts.height;
@@ -746,6 +747,7 @@ pub const Image = extern struct {
         }
 
         std.debug.assert(image.texture.ptr_ != null);
+        return image.texture.ptr_.?;
     }
 
     pub inline fn isCompressed(image: *const Image) bool {
@@ -909,14 +911,25 @@ pub const Image = extern struct {
 
         const binary_file_time = im.loadFromGenerated(image.source_file_time, allocator);
 
+        // hack to override already built resources
         if (binary_file_time == fs.not_found_time and
             fs.instance.usingResourceFiles())
         {
-            @panic("not implemented");
+            if (string.icontains(generated_name, "guis/assets/white#__0000") != null or
+                string.icontains(generated_name, "guis/assets/white#__0100") != null or
+                string.icontains(generated_name, "textures/black#__0100") != null or
+                string.icontains(generated_name, "textures/decals/bulletglass1_d#__0100") != null or
+                string.icontains(generated_name, "models/monsters/skeleton/skeleton01_d#__1000") != null)
+            {
+                @panic("not implemented");
+            }
         }
 
-        if ((fs.instance.inProductionMode() and
-            binary_file_time != fs.not_found_time) or
+        const in_prod = fs.instance.inProductionMode() and
+            binary_file_time != fs.not_found_time;
+
+        // use bimage if it exists
+        if (in_prod or
             (binary_file_time != fs.not_found_time and
             im.header.color_format == image.opts.color_format and
             (im.header.format == image.opts.format or
@@ -970,8 +983,7 @@ pub const Image = extern struct {
                     image.defaulted = true;
 
                     const command_list = opt_command_list orelse return;
-
-                    image.createTexture();
+                    const texture = image.createTexture();
 
                     // it was unset by createTexture().purgeImage()
                     image.defaulted = true;
@@ -983,7 +995,7 @@ pub const Image = extern struct {
                     defer allocator.free(clear);
 
                     command_list.beginTrackingTextureState(
-                        image.texture.ptr_.?,
+                        texture,
                         nvrhi.AllSubresources,
                         .{ .Common = true },
                     );
@@ -991,7 +1003,7 @@ pub const Image = extern struct {
                     for (0..image.opts.num_levels) |level| {
                         const row_pitch = getRowPitch(image.opts.format, image.opts.width);
                         command_list.writeTexture(
-                            image.texture.ptr_.?,
+                            texture,
                             0,
                             @intCast(level),
                             clear.ptr,
@@ -1001,7 +1013,7 @@ pub const Image = extern struct {
                     }
 
                     command_list.setPermanentTextureState(
-                        image.texture.ptr_.?,
+                        texture,
                         .{ .ShaderResource = true },
                     );
                     command_list.commitBarriers();
@@ -1023,10 +1035,31 @@ pub const Image = extern struct {
             //binary_file_time = im.writeGeneratedFile(source_file_time);
         }
 
-        _ = opt_command_list orelse return;
+        const command_list = opt_command_list orelse return;
+        const texture = image.createTexture();
 
-        // image.allocImage;
-        // nvrhi stuff
+        command_list.beginTrackingTextureState(
+            texture,
+            nvrhi.AllSubresources,
+            .{ .Common = true },
+        );
+
+        for (im.images.constSlice()) |*level_image| {
+            command_list.writeTexture(
+                texture,
+                level_image.header.dest_z,
+                level_image.header.level,
+                level_image.data.?.ptr,
+                getRowPitch(image.opts.format, level_image.header.width),
+                0,
+            );
+        }
+
+        command_list.setPermanentTextureState(
+            texture,
+            .{ .ShaderResource = true },
+        );
+        command_list.commitBarriers();
 
         image.is_loaded = true;
     }
