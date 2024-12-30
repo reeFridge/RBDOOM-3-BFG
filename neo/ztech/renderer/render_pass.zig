@@ -160,7 +160,7 @@ pub const CommonRenderPasses = extern struct {
             .addressW = .Repeat,
         });
 
-        common_pass.linear_wrap_sampler = device.createSampler(&.{
+        common_pass.linear_clamp_sampler = device.createSampler(&.{
             .minFilter = true,
             .magFilter = true,
             .mipFilter = true,

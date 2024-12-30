@@ -43,7 +43,7 @@ pub fn findPermutationInBlob(
 
     var blob_slice = blob[0..];
     while (blob_slice.len > @sizeOf(ShaderBlobEntry)) {
-        const header: *const ShaderBlobEntry = @ptrCast(@alignCast(blob.ptr));
+        const header: *align(1) const ShaderBlobEntry = @ptrCast(blob_slice.ptr);
         if (header.data_size == 0) return null;
         if (blob_slice.len < (@sizeOf(ShaderBlobEntry) + header.data_size + header.permutation_size)) return null;
 
@@ -52,7 +52,7 @@ pub fn findPermutationInBlob(
             ((constants_str_slice.len == 0) or
             (std.mem.eql(u8, entry_permutation_mem[0..constants_str_slice.len], constants_str_slice))))
         {
-            return blob_slice[@sizeOf(ShaderBlobEntry) + header.permutation_size ..];
+            return blob_slice[@sizeOf(ShaderBlobEntry) + header.permutation_size ..][0..header.data_size];
         }
         const offset: usize = @sizeOf(ShaderBlobEntry) + header.data_size + header.permutation_size;
         blob_slice = blob_slice[offset..];

@@ -9,6 +9,9 @@
 
 extern "C" {
 
+void c_cpp_string_set(void* string_ptr, const char* value);
+const char* c_cpp_string_get(const void* string_ptr);
+
 void c_nvrhi_device_waitForIdle(nvrhi::IDevice* device);
 void c_nvrhi_device_executeCommandList(
 		nvrhi::IDevice* device,
@@ -150,9 +153,6 @@ const nvrhi::FramebufferDesc* c_nvrhi_framebuffer_getDesc(
 
 unsigned long c_nvrhi_resource_addRef(nvrhi::IResource* res);
 unsigned long c_nvrhi_resource_release(nvrhi::IResource* res);
-
-void c_nvrhi_vertexAttributeDesc_setName(nvrhi::VertexAttributeDesc*, const char*);
-const char* c_nvrhi_vertexAttributeDesc_getName(const nvrhi::VertexAttributeDesc*);
 
 const nvrhi::FormatInfo* c_nvrhi_getFormatInfo(nvrhi::Format);
 

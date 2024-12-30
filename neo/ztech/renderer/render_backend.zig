@@ -139,13 +139,15 @@ pub const BindingCache = extern struct {
         desc.hashCombine(&hash);
         nvrhi.hashCombinePtr(&hash, @ptrCast(layout));
 
+        const hash_u16: u16 = @truncate(hash);
+
         var result: nvrhi.BindingSetHandle = .{};
         {
             _ = binding_cache.mutex.lockBlocking();
             defer binding_cache.mutex.unlock();
 
             const binding_sets = binding_cache.bindingSets.constSlice();
-            var i = binding_cache.bindingHash.first(@intCast(hash));
+            var i = binding_cache.bindingHash.first(hash_u16);
             while (i != -1) : (i = binding_cache.bindingHash.next(@intCast(i))) {
                 const binding_set = binding_sets[@intCast(i)].ptr_.?;
                 if (binding_set.getDesc().eql(desc)) {
@@ -164,7 +166,7 @@ pub const BindingCache = extern struct {
 
             const entry_index = try binding_cache.bindingSets.append(result, allocator);
             try binding_cache.bindingHash.add(
-                @intCast(hash),
+                hash_u16,
                 @intCast(entry_index),
                 allocator,
             );
@@ -758,9 +760,11 @@ pub const RenderBackend = extern struct {
             }
         }
 
+        // const draw_surfs = &view_def.drawSurfs[0];
+        // const num_draw_surfs = view_def.numDrawSurfs;
         // const processed = backend.drawShaderPasses(
-        //     drawSurfs,
-        //     numDrawSurfs,
+        //     draw_surfs,
+        //     num_draw_surfs,
         //     guiScreenOffset,
         //     stereoEye,
         // );
@@ -785,11 +789,6 @@ pub const RenderBackend = extern struct {
                 allocator,
             );
         }
-
-        //const draw_surfs = &view_def.drawSurfs[0];
-        //const num_draw_surfs = view_def.numDrawSurfs;
-
-        //@panic("not implemented");
     }
 
     fn glClear(

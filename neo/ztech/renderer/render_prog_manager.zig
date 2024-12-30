@@ -1147,7 +1147,7 @@ pub const RenderProgManager = extern struct {
             }) catch @panic("Buffer overflow");
         }
 
-        const desc = nvrhi.ShaderDesc{ .shaderType = shader_type };
+        var desc = nvrhi.ShaderDesc{ .shaderType = shader_type };
 
         if (createShaderPermutation(
             prog_manager.device,
@@ -1165,8 +1165,10 @@ pub const RenderProgManager = extern struct {
         blob: []const u8,
         constants: []const shader_blob.ShaderConstant,
     ) ?nvrhi.ShaderHandle {
-        const binary = shader_blob.findPermutationInBlob(blob, constants) orelse
-            return null;
+        const binary = shader_blob.findPermutationInBlob(
+            blob,
+            constants,
+        ) orelse return null;
 
         return device.createShader(desc, binary);
     }

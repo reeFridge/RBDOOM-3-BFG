@@ -105,6 +105,24 @@ pub fn deinit() void {
     }
 }
 
+fn debugCallback(
+    message_severity: vulkan.DebugUtilsMessageSeverityFlagsEXT,
+    message_types: vulkan.DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: ?*const vulkan.DebugUtilsMessengerCallbackDataEXT,
+    p_user_data: ?*anyopaque,
+) callconv(vulkan.vulkan_call_conv) vulkan.Bool32 {
+    _ = message_severity;
+    _ = message_types;
+    _ = p_user_data;
+    b: {
+        const msg = (p_callback_data orelse break :b).p_message orelse break :b;
+        std.debug.print("[VULKAN][WARN] {s}\n", .{msg});
+        return vulkan.FALSE;
+    }
+    std.debug.print("[VULKAN] unrecognized validation layer debug message\n", .{});
+    return vulkan.FALSE;
+}
+
 pub const DeviceCreationParams = struct {
     start_maximized: bool = false,
     start_fullscreen: bool = false,
@@ -130,6 +148,8 @@ pub const DeviceCreationParams = struct {
 };
 
 pub const DeviceManagerVulkan = struct {
+    const enable_validation_layers = true;
+
     const required_instance_extensions: []const vulkan.ApiInfo = &.{
         vulkan.extensions.khr_surface,
         vulkan.extensions.khr_get_physical_device_properties_2,
@@ -191,6 +211,7 @@ pub const DeviceManagerVulkan = struct {
                 .queuePresentKHR = true,
             },
         },
+        vulkan.extensions.ext_debug_utils,
     };
 
     const apis = base_api ++
@@ -237,6 +258,7 @@ pub const DeviceManagerVulkan = struct {
         immediate: bool = false,
         fifo_relaxed: bool = false,
     } = .{},
+    debug_messenger: vulkan.DebugUtilsMessengerEXT = .null_handle,
     vsync_requested: bool = false,
     enabled_device_extensions: [][*:0]const u8 = &.{},
     enabled_instance_extensions: [][*:0]const u8 = &.{},
@@ -937,6 +959,10 @@ pub const DeviceManagerVulkan = struct {
             try optional_extensions.insert(api_info.name);
         }
 
+        if (enable_validation_layers) {
+            try optional_extensions.insert(vulkan.extensions.ext_debug_utils.name);
+        }
+
         var enabled_extensions = std.BufSet.init(allocator);
         defer enabled_extensions.deinit();
 
@@ -1005,6 +1031,10 @@ pub const DeviceManagerVulkan = struct {
 
         var optional_layers = std.BufSet.init(allocator);
         defer optional_layers.deinit();
+
+        if (enable_validation_layers) {
+            try optional_layers.insert("VK_LAYER_KHRONOS_validation");
+        }
 
         var enabled_layers = std.BufSet.init(allocator);
         defer enabled_layers.deinit();
@@ -1114,6 +1144,22 @@ pub const DeviceManagerVulkan = struct {
         );
 
         device_manager.instance = Instance.init(instance_handle, vki);
+
+        if (enable_validation_layers) {
+            device_manager.debug_messenger = try device_manager.instance.createDebugUtilsMessengerEXT(&.{
+                .message_severity = .{
+                    .error_bit_ext = true,
+                    .warning_bit_ext = true,
+                },
+                .message_type = .{
+                    .general_bit_ext = true,
+                    .validation_bit_ext = true,
+                    .performance_bit_ext = true,
+                    .device_address_binding_bit_ext = true,
+                },
+                .pfn_user_callback = debugCallback,
+            }, null);
+        }
     }
 
     const SelectPhysicalDeviceError =

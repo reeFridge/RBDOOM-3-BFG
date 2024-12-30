@@ -468,6 +468,16 @@ pub fn getFormatInfo(format: Format) FormatInfo {
 
 const CppString = [24]u8;
 
+extern fn c_cpp_string_set(*anyopaque, [*:0]const u8) void;
+pub fn cppString_set(ptr: *CppString, value: [:0]const u8) void {
+    c_cpp_string_set(@ptrCast(ptr), value.ptr);
+}
+
+extern fn c_cpp_string_get(*const anyopaque) [*:0]const u8;
+pub fn cppString_get(ptr: *const CppString) [:0]const u8 {
+    return std.mem.span(c_cpp_string_get(@ptrCast(ptr)));
+}
+
 pub const VertexAttributeDesc = extern struct {
     name: CppString = std.mem.zeroes(CppString),
     format: Format = .UNKNOWN,
@@ -477,15 +487,12 @@ pub const VertexAttributeDesc = extern struct {
     elementStride: u32 = 0,
     isInstanced: bool = false,
 
-    extern fn c_nvrhi_vertexAttributeDesc_setName(*VertexAttributeDesc, [*:0]const u8) void;
-    extern fn c_nvrhi_vertexAttributeDesc_getName(*const VertexAttributeDesc) [*:0]const u8;
-
     pub fn setName(desc: *VertexAttributeDesc, name: [:0]const u8) void {
-        c_nvrhi_vertexAttributeDesc_setName(desc, name.ptr);
+        cppString_set(&desc.name, name);
     }
 
     pub fn getName(desc: *const VertexAttributeDesc) [:0]const u8 {
-        return std.mem.span(c_nvrhi_vertexAttributeDesc_getName(desc));
+        return cppString_get(&desc.name);
     }
 };
 
@@ -568,8 +575,8 @@ pub const FastGeometryShaderFlags = enum(u8) {
 
 pub const ShaderDesc = extern struct {
     shaderType: ShaderType = .None,
-    debugName: CppString = std.mem.zeroes(CppString),
-    entryName: CppString = std.mem.zeroes(CppString),
+    debugName: [*:0]const u8 = "",
+    entryName: [*:0]const u8 = "main",
     hlslExtensionsUAV: c_int = -1,
     useSpecificShaderExt: bool = false,
     numCustomSemantics: u32 = 0,

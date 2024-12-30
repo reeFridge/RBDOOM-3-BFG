@@ -244,11 +244,17 @@ unsigned long c_nvrhi_resource_release(nvrhi::IResource* res) {
 	return res->Release();
 }
 
-void c_nvrhi_vertexAttributeDesc_setName(
-		nvrhi::VertexAttributeDesc* desc,
-		const char* name)
+void c_cpp_string_set(void* string_ptr, const char* value)
 {
-	desc->setName(name);
+	auto string = reinterpret_cast<std::string*>(string_ptr);
+	*string = std::string(value);
+}
+
+const char* c_cpp_string_get(const void* string_ptr)
+{
+	auto string = reinterpret_cast<const std::string*>(string_ptr);
+
+	return string->c_str();
 }
 
 const nvrhi::FramebufferInfoEx* c_nvrhi_framebuffer_getFramebufferInfo(const nvrhi::IFramebuffer* framebuffer)
@@ -260,10 +266,6 @@ const nvrhi::FramebufferDesc* c_nvrhi_framebuffer_getDesc(
 		const nvrhi::IFramebuffer* framebuffer)
 {
 	return &framebuffer->getDesc();
-}
-
-const char* c_nvrhi_vertexAttributeDesc_getName(const nvrhi::VertexAttributeDesc* desc) {
-	return desc->name.c_str();
 }
 
 const nvrhi::FormatInfo* c_nvrhi_getFormatInfo(nvrhi::Format format) {
