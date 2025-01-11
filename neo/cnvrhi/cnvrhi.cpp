@@ -221,6 +221,11 @@ void c_nvrhi_commandList_draw(nvrhi::ICommandList* commandList, const nvrhi::Dra
 	commandList->draw(*args);
 }
 
+void c_nvrhi_commandList_drawIndexed(nvrhi::ICommandList* commandList, const nvrhi::DrawArguments* args)
+{
+	commandList->drawIndexed(*args);
+}
+
 void c_nvrhi_commandList_setPushConstants(
 		nvrhi::ICommandList* commandList,
 		const void* data,
@@ -268,6 +273,11 @@ const nvrhi::FramebufferDesc* c_nvrhi_framebuffer_getDesc(
 	return &framebuffer->getDesc();
 }
 
+const nvrhi::BufferDesc* c_nvrhi_buffer_getDesc(const nvrhi::IBuffer* buffer)
+{
+	return &buffer->getDesc();
+}
+
 const nvrhi::FormatInfo* c_nvrhi_getFormatInfo(nvrhi::Format format) {
 	return &nvrhi::getFormatInfo(format);
 }
@@ -294,9 +304,34 @@ void c_nvrhi_bindingSetDesc_hashCombine(const nvrhi::BindingSetDesc* desc, size_
 	nvrhi::hash_combine(*seed, *desc);
 }
 
-void c_nvrhi_hashCombinePtr(size_t* seed, void* ptr)
+
+const nvrhi::SamplerDesc* c_nvrhi_sampler_getDesc(const nvrhi::ISampler* sampler)
+{
+	return &sampler->getDesc();
+}
+
+void c_nvrhi_samplerDesc_hashCombine(const nvrhi::SamplerDesc* desc, size_t* seed)
+{
+	nvrhi::hash_combine(*seed, *desc);
+}
+
+void c_nvrhi_hashCombine_ptr(size_t* seed, void* ptr)
 {
 	nvrhi::hash_combine(*seed, ptr);
+}
+
+void c_nvrhi_hashCombine_u64(size_t* seed, uint64_t u)
+{
+	nvrhi::hash_combine(*seed, u);
+}
+
+void c_nvrhi_hashCombine_float(size_t* seed, float f)
+{
+	nvrhi::hash_combine(*seed, f);
+}
+
+void c_nvrhi_hashCombine_int(size_t* seed, int i) {
+	nvrhi::hash_combine(*seed, i);
 }
 
 // vulkan

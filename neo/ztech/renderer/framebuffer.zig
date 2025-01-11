@@ -58,12 +58,12 @@ pub const Framebuffer = extern struct {
     }
 
     pub fn bind(framebuffer: *Framebuffer, backend: *RenderBackend) void {
-        if (backend.currentFramebuffer != framebuffer) {
-            backend.currentPipeline.ptr_ = null;
+        if (backend.current_framebuffer != framebuffer) {
+            backend.current_pipeline.ptr_ = null;
         }
 
-        backend.lastFramebuffer = backend.currentFramebuffer;
-        backend.currentFramebuffer = framebuffer;
+        backend.last_framebuffer = backend.current_framebuffer;
+        backend.current_framebuffer = framebuffer;
     }
 };
 
@@ -117,7 +117,7 @@ pub fn resizeFramebuffers(
     if (reload_images) {
         try reloadImages(
             device,
-            backend.commandList.ptr_.?,
+            backend.command_list.ptr_.?,
             allocator,
         );
     }

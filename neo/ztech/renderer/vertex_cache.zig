@@ -129,6 +129,8 @@ pub const GeoBufferSet = extern struct {
     }
 };
 
+pub const frame_mask: u32 = 0x7fff;
+
 pub const VertexCache = extern struct {
     current_frame: u32,
     list_num: u32,

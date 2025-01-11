@@ -86,11 +86,11 @@ pub const BindingLayoutType = enum(c_int) {
     HISTOGRAM,
     EXPOSURE,
 
-    NUM_BINDING_LAYOUTS,
-
     pub inline fn toIndex(e: BindingLayoutType) usize {
         return @intCast(@intFromEnum(e));
     }
+
+    pub const num = @typeInfo(BindingLayoutType).Enum.fields.len;
 };
 
 const max_entity_shader_params = @import("render_entity.zig").max_entity_shader_params;
@@ -151,7 +151,7 @@ pub const DrawSurface = extern struct {
     jointCache: VertexCacheHandle,
     space: ?*const ViewEntity,
     material: ?*const Material,
-    extraGLState: c_ulonglong,
+    extraGLState: u64,
     sort: f32,
     shaderRegisters: [*]const f32,
     nextOnLight: ?*DrawSurface,

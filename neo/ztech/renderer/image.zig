@@ -11,6 +11,7 @@ const frame_data = @import("frame_data.zig");
 const string = @import("../string.zig");
 const BinaryImage = @import("binary_image.zig").BinaryImage;
 const Allocator = std.mem.Allocator;
+const SamplerCache = @import("render_backend.zig").SamplerCache;
 
 pub const ImageGeneratorFunction = fn (*Image, ?*nvrhi.ICommandList) callconv(.C) void;
 
@@ -141,6 +142,18 @@ pub const Image = extern struct {
     sampler_desc: nvrhi.SamplerDesc = .{},
     image: vulkan.Image = .null_handle,
     allocation: c.VmaAllocation = null,
+
+    pub fn getSampler(
+        image: *Image,
+        cache: *SamplerCache,
+        allocator: Allocator,
+    ) Allocator.Error!*nvrhi.ISampler {
+        if (image.sampler.ptr_) |sampler| return sampler;
+
+        image.sampler = try cache.getOrCreateSampler(&image.sampler_desc, allocator);
+
+        return image.sampler.ptr_.?;
+    }
 
     pub fn reload(
         image: *Image,

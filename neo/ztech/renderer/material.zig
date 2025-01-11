@@ -467,6 +467,13 @@ pub const Material = extern struct {
 
     extern fn c_material_isLodVisibleForDistance(*const Material, f32, f32) bool;
 
+    pub fn getStages(material: *const Material) []const ShaderStage {
+        return if (material.stages) |stages|
+            stages[0..material.num_stages]
+        else
+            &.{};
+    }
+
     pub fn init(self: *Material) void {
         self.* = .{};
     }
@@ -531,21 +538,21 @@ pub const Material = extern struct {
         // automatically determine coverage if not explicitly set
         if (material.coverage == .bad) {
             const bits = material.pd.?.parse_stages[0].draw_state_bits;
+            const dst_blend_bits = bits & gl_state.GLS_DSTBLEND_BITS;
+            const src_blend_bits = bits & gl_state.GLS_SRCBLEND_BITS;
 
-            if (material.num_stages == 0) {
-                material.coverage = .translucent;
-            } else if (material.num_stages == material.num_ambient_stages) {
-                material.coverage = .@"opaque";
-            } else if ((bits & gl_state.GLS_DSTBLEND_BITS) != gl_state.GLS_DSTBLEND_ZERO or
-                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_DST_COLOR or
-                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_ONE_MINUS_DST_COLOR or
-                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_DST_ALPHA or
-                (bits & gl_state.GLS_SRCBLEND_BITS) == gl_state.GLS_SRCBLEND_ONE_MINUS_DST_ALPHA)
-            {
-                material.coverage = .translucent;
-            } else {
-                material.coverage = .@"opaque";
-            }
+            material.coverage = if (material.num_stages == 0)
+                .translucent
+            else if (material.num_stages != material.num_ambient_stages)
+                .@"opaque"
+            else if (dst_blend_bits != gl_state.GLS_DSTBLEND_ZERO or
+                src_blend_bits == gl_state.GLS_SRCBLEND_DST_COLOR or
+                src_blend_bits == gl_state.GLS_SRCBLEND_ONE_MINUS_DST_COLOR or
+                src_blend_bits == gl_state.GLS_SRCBLEND_DST_ALPHA or
+                src_blend_bits == gl_state.GLS_SRCBLEND_ONE_MINUS_DST_ALPHA)
+                .translucent
+            else
+                .@"opaque";
         }
 
         if (material.coverage == .translucent) {
@@ -557,13 +564,12 @@ pub const Material = extern struct {
         }
 
         if (material.sort == MaterialSort.bad) {
-            if (material.material_flags.polygonoffset) {
-                material.sort = MaterialSort.decal;
-            } else if (material.coverage == .translucent) {
-                material.sort = MaterialSort.medium;
-            } else {
-                material.sort = MaterialSort.@"opaque";
-            }
+            material.sort = if (material.material_flags.polygonoffset)
+                MaterialSort.decal
+            else if (material.coverage == .translucent)
+                MaterialSort.medium
+            else
+                MaterialSort.@"opaque";
         }
 
         for (0..material.num_stages) |i| stages: {
@@ -1245,6 +1251,8 @@ pub const Material = extern struct {
             .init(0) catch unreachable;
 
         var new_stage = std.mem.zeroes(NewShaderStage);
+        new_stage.fragment_program = -1;
+        new_stage.vertex_program = -1;
         new_stage.program = -1;
 
         var stencil_stage = std.mem.zeroes(StencilStage);

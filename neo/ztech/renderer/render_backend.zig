@@ -1,5 +1,6 @@
 //! @exportCVars
 const std = @import("std");
+const material = @import("material.zig");
 const Vec2 = @import("../math/vector.zig").Vec2;
 const Image = @import("image.zig");
 const RenderSystem = @import("render_system.zig");
@@ -17,11 +18,14 @@ const vulkan = @import("vulkan");
 const gl_state = @import("gl_state.zig");
 const Allocator = std.mem.Allocator;
 const DeviceManager = device_manager.DeviceManagerVulkan;
+const globalPointToLocal = @import("interaction.zig").globalPointToLocal;
 
 const cvar = @import("../framework/cvar_system.zig");
 const CVar = cvar.CVar;
 const CFlags = cvar.CVarFlags;
 
+const r_offset_factor = 0;
+const r_offset_units = -600;
 pub var r_vk_upload_buffer_size_mb = CVar.init(
     "r_vkUploadBufferSizeMB",
     "64",
@@ -63,6 +67,9 @@ pub const BackendCounters = extern struct {
     gpuMicroSec: c_ulonglong,
 };
 
+const TriIndex = @import("../sys/types.zig").TriIndex;
+const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
+const BindingLayoutType = @import("common.zig").BindingLayoutType;
 const DrawSurface = @import("common.zig").DrawSurface;
 const ViewDef = @import("common.zig").ViewDef;
 const ViewEntity = @import("common.zig").ViewEntity;
@@ -137,7 +144,7 @@ pub const BindingCache = extern struct {
     ) Allocator.Error!nvrhi.BindingSetHandle {
         var hash: usize = 0;
         desc.hashCombine(&hash);
-        nvrhi.hashCombinePtr(&hash, @ptrCast(layout));
+        nvrhi.hashCombine_ptr(&hash, @ptrCast(layout));
 
         const hash_u16: u16 = @truncate(hash);
 
@@ -176,10 +183,10 @@ pub const BindingCache = extern struct {
     }
 };
 
-const SamplerCache = extern struct {
+pub const SamplerCache = extern struct {
     device: ?*nvrhi.IDevice,
     samplers: idlib.List(nvrhi.SamplerHandle),
-    samplerHash: idlib.HashIndex,
+    hash: idlib.HashIndex,
     mutex: idlib.SysMutex,
 
     fn init(sampler_cache: *SamplerCache, device: *nvrhi.IDevice) void {
@@ -191,7 +198,51 @@ const SamplerCache = extern struct {
         defer sampler_cache.mutex.unlock();
 
         sampler_cache.samplers.clear(allocator);
-        sampler_cache.samplerHash.clear();
+        sampler_cache.hash.clear();
+    }
+
+    pub fn getOrCreateSampler(
+        sampler_cache: *SamplerCache,
+        desc: *const nvrhi.SamplerDesc,
+        allocator: Allocator,
+    ) Allocator.Error!nvrhi.SamplerHandle {
+        var hash: usize = 0;
+        desc.hashCombine(&hash);
+
+        const hash_u16: u16 = @truncate(hash);
+
+        var result: nvrhi.SamplerHandle = .{};
+        {
+            _ = sampler_cache.mutex.lockBlocking();
+            defer sampler_cache.mutex.unlock();
+
+            const samplers = sampler_cache.samplers.constSlice();
+            var i = sampler_cache.hash.first(hash_u16);
+            while (i != -1) : (i = sampler_cache.hash.next(@intCast(i))) {
+                const sampler = samplers[@intCast(i)].ptr_.?;
+                if (std.meta.eql(sampler.getDesc().*, desc.*)) {
+                    result = .{ .ptr_ = sampler };
+                    break;
+                }
+            }
+        }
+
+        if (result.ptr_ == null) {
+            _ = sampler_cache.mutex.lockBlocking();
+            defer sampler_cache.mutex.unlock();
+
+            const device = sampler_cache.device orelse @panic("device is not set");
+            result = device.createSampler(desc);
+
+            const entry_index = try sampler_cache.samplers.append(result, allocator);
+            try sampler_cache.hash.add(
+                hash_u16,
+                @intCast(entry_index),
+                allocator,
+            );
+        }
+
+        return result;
     }
 };
 
@@ -206,13 +257,13 @@ const PipelineCache = extern struct {
     const PipelineKey = extern struct {
         state: u64,
         program: c_int,
-        depthBias: c_int,
-        slopeBias: f32,
+        depth_bias: c_int,
+        slope_bias: f32,
         framebuffer: ?*Framebuffer,
     };
 
     device: nvrhi.DeviceHandle,
-    pipelineHash: idlib.HashIndex,
+    hash: idlib.HashIndex,
     pipelines: idlib.List(CppStdPair(PipelineKey, nvrhi.GraphicsPipelineHandle)),
 
     fn init(pipeline_cache: *PipelineCache, device: *nvrhi.IDevice) void {
@@ -224,50 +275,104 @@ const PipelineCache = extern struct {
     }
 
     fn clear(pipeline_cache: *PipelineCache, allocator: Allocator) void {
-        pipeline_cache.pipelineHash.clear();
+        pipeline_cache.hash.clear();
         pipeline_cache.pipelines.clear(allocator);
+    }
+
+    pub fn getOrCreatePipeline(
+        pipeline_cache: *PipelineCache,
+        key: *const PipelineKey,
+        prog_manager: *const RenderProgManager,
+        allocator: Allocator,
+    ) Allocator.Error!nvrhi.GraphicsPipelineHandle {
+        var hash: usize = 0;
+        nvrhi.hashCombine_u64(&hash, key.state);
+        nvrhi.hashCombine_int(&hash, key.program);
+        nvrhi.hashCombine_ptr(&hash, @ptrCast(key.framebuffer));
+        nvrhi.hashCombine_int(&hash, key.depth_bias);
+        nvrhi.hashCombine_float(&hash, key.slope_bias);
+
+        const hash_u16: u16 = @truncate(hash);
+
+        const pipelines = pipeline_cache.pipelines.constSlice();
+        var i = pipeline_cache.hash.first(hash_u16);
+        while (i != -1) : (i = pipeline_cache.hash.next(@intCast(i))) {
+            if (std.meta.eql(pipelines[@intCast(i)].first, key.*)) {
+                return pipelines[@intCast(i)].second;
+            }
+        }
+
+        var program_info = prog_manager.getProgramInfo(@intCast(key.program));
+        var pipeline_desc = nvrhi.GraphicsPipelineDesc{
+            .VS = program_info.vertex_shader,
+            .PS = program_info.pixel_shader,
+            .inputLayout = program_info.input_layout,
+            .primType = .TriangleList,
+            .renderState = .{
+                .rasterState = .{
+                    .scissorEnable = true,
+                },
+                .depthStencilState = .{
+                    .depthTestEnable = true,
+                    .depthWriteEnable = true,
+                },
+                .blendState = .{},
+            },
+        };
+
+        for (program_info.binding_layouts.constSlice()) |binding_layout| {
+            pipeline_desc.bindingLayouts.pushBack(binding_layout);
+        }
+
+        for (&pipeline_desc.renderState.blendState.targets) |*target| {
+            target.blendEnable = true;
+        }
+
+        getRenderState(key.state, key.*, &pipeline_desc.renderState);
+
+        const device = pipeline_cache.device.ptr_ orelse @panic("device is not set");
+        const pipeline = device.createGraphicsPipeline(
+            &pipeline_desc,
+            key.framebuffer.?.getApiObject(),
+        );
+
+        const entry_index = try pipeline_cache.pipelines.append(
+            .{ .first = key.*, .second = pipeline },
+            allocator,
+        );
+        try pipeline_cache.hash.add(
+            hash_u16,
+            @intCast(entry_index),
+            allocator,
+        );
+
+        return pipeline;
+    }
+
+    extern fn c_getRenderState(u64, PipelineKey, *nvrhi.RenderState) void;
+    fn getRenderState(state_bits: u64, key: PipelineKey, render_state: *nvrhi.RenderState) void {
+        c_getRenderState(state_bits, key, render_state);
     }
 };
 
-const BindingLayoutType = struct {
-    pub const BINDING_LAYOUT_DEFAULT: c_int = 0;
-    pub const BINDING_LAYOUT_DEFAULT_SKINNED: c_int = 1;
-    pub const BINDING_LAYOUT_CONSTANT_BUFFER_ONLY: c_int = 2;
-    pub const BINDING_LAYOUT_CONSTANT_BUFFER_ONLY_SKINNED: c_int = 3;
-    pub const BINDING_LAYOUT_AMBIENT_LIGHTING_IBL: c_int = 4;
-    pub const BINDING_LAYOUT_AMBIENT_LIGHTING_IBL_SKINNED: c_int = 5;
-    pub const BINDING_LAYOUT_DRAW_INTERACTION: c_int = 6;
-    pub const BINDING_LAYOUT_DRAW_INTERACTION_SKINNED: c_int = 7;
-    pub const BINDING_LAYOUT_DRAW_INTERACTION_SM: c_int = 8;
-    pub const BINDING_LAYOUT_DRAW_INTERACTION_SM_SKINNED: c_int = 9;
-    pub const BINDING_LAYOUT_FOG: c_int = 10;
-    pub const BINDING_LAYOUT_FOG_SKINNED: c_int = 11;
-    pub const BINDING_LAYOUT_BLENDLIGHT: c_int = 12;
-    pub const BINDING_LAYOUT_BLENDLIGHT_SKINNED: c_int = 13;
-    pub const BINDING_LAYOUT_NORMAL_CUBE: c_int = 14;
-    pub const BINDING_LAYOUT_NORMAL_CUBE_SKINNED: c_int = 15;
-    pub const BINDING_LAYOUT_POST_PROCESS_INGAME: c_int = 16;
-    pub const BINDING_LAYOUT_POST_PROCESS_FINAL: c_int = 17;
-    pub const BINDING_LAYOUT_POST_PROCESS_FINAL2: c_int = 18;
-    pub const BINDING_LAYOUT_POST_PROCESS_CRT: c_int = 19;
-    pub const BINDING_LAYOUT_BLIT: c_int = 20;
-    pub const BINDING_LAYOUT_DRAW_AO: c_int = 21;
-    pub const BINDING_LAYOUT_DRAW_AO1: c_int = 22;
-    pub const BINDING_LAYOUT_BINK_VIDEO: c_int = 23;
-    pub const BINDING_LAYOUT_TAA_MOTION_VECTORS: c_int = 24;
-    pub const BINDING_LAYOUT_TAA_RESOLVE: c_int = 25;
-    pub const BINDING_LAYOUT_TONEMAP: c_int = 26;
-    pub const BINDING_LAYOUT_HISTOGRAM: c_int = 27;
-    pub const BINDING_LAYOUT_EXPOSURE: c_int = 28;
-    pub const NUM_BINDING_LAYOUTS: c_int = 29;
-};
-
 const NvrhiContext = extern struct {
-    const MAX_IMAGE_PARMS = 16;
+    const MAX_IMAGE_PARAMS = 16;
 
-    currentImageParm: c_int = 0,
-    imageParms: [MAX_IMAGE_PARMS]?*Image.Image,
+    current_image_param: c_int = 0,
+    image_params: [MAX_IMAGE_PARAMS]?*Image.Image,
     scissor: ScreenRect,
+
+    pub fn eql(ctx: *const NvrhiContext, other: *const NvrhiContext) bool {
+        if (ctx == other) return true;
+        if (ctx.current_image_param != other.current_image_param) return false;
+        if (std.meta.eql(ctx.scissor, other.scissor)) return false;
+
+        for (&ctx.image_params, &other.image_params) |ctx_img, other_img| {
+            if (ctx_img != other_img) return false;
+        }
+
+        return true;
+    }
 };
 
 const nvrhi_context = @extern(*NvrhiContext, .{ .name = "context" });
@@ -279,12 +384,12 @@ pub const RenderBackend = extern struct {
     zeroOneCubeSurface: DrawSurface,
     zeroOneSphereSurface: DrawSurface,
     testImageSurface: DrawSurface,
-    slopeScaleBias: f32,
-    depthBias: f32,
-    glStateBits: c_ulonglong,
+    slope_scale_bias: f32,
+    depth_bias: f32,
+    gl_state_bits: u64,
     view_def: ?*const ViewDef,
-    currentSpace: ?*const ViewEntity,
-    currentScissor: ScreenRect,
+    current_space: ?*const ViewEntity,
+    current_scissor: ScreenRect,
     currentRenderCopied: bool,
     prevMVP: [2]RenderMatrix,
     prevViewsValid: bool,
@@ -294,37 +399,37 @@ pub const RenderBackend = extern struct {
     hdrKey: f32,
     // quad-tree for managing tiles within tiled shadow map
     tileMap: TileMap,
-    stateViewport: ScreenRect,
-    stateScissor: ScreenRect,
-    currentViewport: ScreenRect,
-    currentVertexBuffer: nvrhi.BufferHandle,
-    currentVertexOffset: c_uint,
-    currentIndexBuffer: nvrhi.BufferHandle,
-    currentIndexOffset: c_uint,
-    currentBindingLayout: nvrhi.BindingLayoutHandle,
-    currentJointBuffer: ?*nvrhi.IBuffer,
-    currentJointOffset: c_uint,
-    currentPipeline: nvrhi.GraphicsPipelineHandle,
-    currentBindingSets: idlib.StaticList(nvrhi.BindingSetHandle, nvrhi.c_MaxBindingLayouts),
-    pendingBindingSetDescs: idlib.StaticList(
+    state_viewport: ScreenRect,
+    state_scissor: ScreenRect,
+    current_viewport: ScreenRect,
+    current_vertex_buffer: nvrhi.BufferHandle,
+    current_vertex_offset: u32,
+    current_index_buffer: nvrhi.BufferHandle,
+    current_index_offset: u32,
+    current_binding_layout: nvrhi.BindingLayoutHandle,
+    current_joint_buffer: ?*nvrhi.IBuffer,
+    current_joint_offset: u32,
+    current_pipeline: nvrhi.GraphicsPipelineHandle,
+    current_binding_sets: idlib.StaticList(nvrhi.BindingSetHandle, nvrhi.c_MaxBindingLayouts),
+    pending_binding_sets: idlib.StaticList(
         idlib.StaticList(nvrhi.BindingSetDesc, nvrhi.c_MaxBindingLayouts),
-        BindingLayoutType.NUM_BINDING_LAYOUTS,
+        BindingLayoutType.num,
     ),
-    currentFramebuffer: *Framebuffer,
-    lastFramebuffer: *Framebuffer,
-    commandList: nvrhi.CommandListHandle,
-    commonPasses: Pass.CommonRenderPasses,
+    current_framebuffer: *Framebuffer,
+    last_framebuffer: *Framebuffer,
+    command_list: nvrhi.CommandListHandle,
+    common_passes: Pass.CommonRenderPasses,
     ssaoPass: ?*Pass.SsaoPass,
     hiZGenPass: ?*Pass.MipMapGenPass,
     toneMapPass: ?*Pass.TonemapPass,
     taaPass: ?*Pass.TemporalAntiAliasingPass,
-    bindingCache: BindingCache,
-    samplerCache: SamplerCache,
-    pipelineCache: PipelineCache,
+    binding_cache: BindingCache,
+    sampler_cache: SamplerCache,
+    pipeline_cache: PipelineCache,
     inputLayout: nvrhi.InputLayoutHandle,
     vertexShader: nvrhi.ShaderHandle,
     pixelShader: nvrhi.ShaderHandle,
-    prevBindingLayoutType: c_int,
+    prev_binding_layout_type: c_int,
 
     extern fn c_renderBackend_clearContext() void;
     extern fn c_renderBackend_checkCVars(*RenderBackend) void;
@@ -350,16 +455,16 @@ pub const RenderBackend = extern struct {
 
     pub fn shutdown(backend: *RenderBackend, allocator: Allocator) void {
         backend.clearCaches(allocator);
-        backend.pipelineCache.shutdown();
-        backend.commonPasses.shutdown();
+        backend.pipeline_cache.shutdown();
+        backend.common_passes.shutdown();
 
-        for (backend.currentBindingSets.slice()) |*binding_set| {
+        for (backend.current_binding_sets.slice()) |*binding_set| {
             _ = binding_set.reset();
         }
 
         render_prog_manager.instance.shutdown();
         render_log.instance.shutdown();
-        _ = backend.commandList.reset();
+        _ = backend.command_list.reset();
         ImmediateMode.shutdown();
         VKimp_Shutdown(true);
 
@@ -367,9 +472,9 @@ pub const RenderBackend = extern struct {
     }
 
     pub fn clearCaches(backend: *RenderBackend, allocator: Allocator) void {
-        backend.pipelineCache.clear(allocator);
-        backend.bindingCache.clear(allocator);
-        backend.samplerCache.clear(allocator);
+        backend.pipeline_cache.clear(allocator);
+        backend.binding_cache.clear(allocator);
+        backend.sampler_cache.clear(allocator);
 
         if (backend.hiZGenPass) |hiZGenPass| {
             hiZGenPass.destroy();
@@ -391,13 +496,13 @@ pub const RenderBackend = extern struct {
             backend.taaPass = null;
         }
 
-        backend.currentVertexBuffer.deinit();
-        backend.currentIndexBuffer.deinit();
-        backend.currentJointBuffer = null;
-        backend.currentIndexOffset = std.math.maxInt(c_uint);
-        backend.currentVertexOffset = std.math.maxInt(c_uint);
-        backend.currentBindingLayout.deinit();
-        backend.currentPipeline.deinit();
+        backend.current_vertex_buffer.deinit();
+        backend.current_index_buffer.deinit();
+        backend.current_joint_buffer = null;
+        backend.current_index_offset = std.math.maxInt(c_uint);
+        backend.current_vertex_offset = std.math.maxInt(c_uint);
+        backend.current_binding_layout.deinit();
+        backend.current_pipeline.deinit();
     }
 
     pub const InitError = Allocator.Error ||
@@ -432,10 +537,10 @@ pub const RenderBackend = extern struct {
         const r_shadowMapAtlasSize = 8192;
         backend.tileMap.init(r_shadowMapAtlasSize, MAX_TILE_RES, NUM_QUAD_TREE_LEVELS);
 
-        backend.bindingCache.init(device);
-        backend.samplerCache.init(device);
-        backend.pipelineCache.init(device);
-        try backend.commonPasses.init(device, render_prog_manager.instance, allocator);
+        backend.binding_cache.init(device);
+        backend.sampler_cache.init(device);
+        backend.pipeline_cache.init(device);
+        try backend.common_passes.init(device, render_prog_manager.instance, allocator);
         backend.hiZGenPass = null;
         backend.ssaoPass = null;
         backend.toneMapPass = null;
@@ -443,7 +548,7 @@ pub const RenderBackend = extern struct {
 
         RenderSystem.instance.backend_initialized = true;
 
-        const command_list_ptr = if (backend.commandList.ptr_) |ptr|
+        const command_list_ptr = if (backend.command_list.ptr_) |ptr|
             ptr
         else command_list: {
             const mb: u32 = @intCast(r_vk_upload_buffer_size_mb.integer_value);
@@ -451,7 +556,7 @@ pub const RenderBackend = extern struct {
                 // if api == VULKAN
                 .uploadChunkSize = mb * 1024 * 1024,
             });
-            backend.commandList = handle;
+            backend.command_list = handle;
 
             break :command_list handle.ptr_ orelse @panic("Fails to create command-list!");
         };
@@ -471,23 +576,23 @@ pub const RenderBackend = extern struct {
         // TODO: ImmediateMode.init(command_list_ptr);
 
         try FrameData.init(allocator);
-        backend.slopeScaleBias = 0;
-        backend.depthBias = 0;
+        backend.slope_scale_bias = 0;
+        backend.depth_bias = 0;
 
-        backend.currentBindingSets.setNum(backend.currentBindingSets.max());
-        backend.pendingBindingSetDescs.setNum(backend.pendingBindingSetDescs.max());
+        backend.current_binding_sets.setNum(backend.current_binding_sets.max());
+        backend.pending_binding_sets.setNum(backend.pending_binding_sets.max());
 
         backend.prevMVP[0] = RenderMatrixIdentity;
         backend.prevMVP[1] = RenderMatrixIdentity;
         backend.prevViewsValid = false;
 
-        backend.currentVertexBuffer = .{};
-        backend.currentIndexBuffer = .{};
-        backend.currentJointBuffer = null;
-        backend.currentVertexOffset = 0;
-        backend.currentIndexOffset = 0;
-        backend.currentJointOffset = 0;
-        backend.prevBindingLayoutType = -1;
+        backend.current_vertex_buffer = .{};
+        backend.current_index_buffer = .{};
+        backend.current_joint_buffer = null;
+        backend.current_vertex_offset = 0;
+        backend.current_index_offset = 0;
+        backend.current_joint_offset = 0;
+        backend.prev_binding_layout_type = -1;
 
         device.waitForIdle();
         device.runGarbageCollection();
@@ -536,14 +641,14 @@ pub const RenderBackend = extern struct {
 
         // RB: we need to load all images left before rendering
         // this can be expensive here because of the runtime image compression
-        // image_manager.instance.loadDeferredImages(backend.commandList.ptr_);
+        // image_manager.instance.loadDeferredImages(backend.command_list.ptr_);
         const device_manager_instance = device_manager.instance();
         _ = device_manager_instance.getDevice();
 
         if (backend.ssaoPass == null) {
             //backend.ssaoPass = Pass.SsaoPass.create(
             //    device,
-            //    &backend.commonPasses,
+            //    &backend.common_passes,
             //    global_images.currentDepthImage.?.getTexturePtr(),
             //    global_images.gbufferNormalsRoughnessImage.?.getTexturePtr(),
             //    global_images.ambientOcclusionImage[0].?.getTexturePtr(),
@@ -568,7 +673,7 @@ pub const RenderBackend = extern struct {
             //const pass = Pass.TonemapPass.create();
             //pass.init(
             //    device,
-            //    &backend.commonPasses,
+            //    &backend.common_passes,
             //    .{},
             //    global_framebuffers.ldrFBO.getApiObject(),
             //);
@@ -579,7 +684,7 @@ pub const RenderBackend = extern struct {
             //const pass = Pass.TemporalAntiAliasingPass.create();
             //pass.init(
             //    device,
-            //    &backend.commonPasses,
+            //    &backend.common_passes,
             //    null,
             //    .{
             //        .sourceDepth = global_images.currentDepthImage.?.getTexturePtr(),
@@ -681,7 +786,7 @@ pub const RenderBackend = extern struct {
         _: i32,
         allocator: Allocator,
     ) Allocator.Error!void {
-        const command_list = backend.commandList.ptr_ orelse @panic("command_list not set");
+        const command_list = backend.command_list.ptr_ orelse @panic("command_list not set");
 
         // resetViewportAndScissorToDefaultCamera
         {
@@ -690,9 +795,9 @@ pub const RenderBackend = extern struct {
             const y: f32 = @floatFromInt(view_def.viewport.y1);
             const w: f32 = @floatFromInt(view_def.viewport.x2 + 1 - view_def.viewport.x1);
             const h: f32 = @floatFromInt(view_def.viewport.y2 + 1 - view_def.viewport.y1);
-            backend.currentViewport.clear();
-            backend.currentViewport.addPoint(x, y);
-            backend.currentViewport.addPoint(x + w, y + h);
+            backend.current_viewport.clear();
+            backend.current_viewport.addPoint(x, y);
+            backend.current_viewport.addPoint(x + w, y + h);
         }
 
         {
@@ -703,7 +808,7 @@ pub const RenderBackend = extern struct {
             const h: u32 = @intCast(view_def.scissor.y2 + 1 - view_def.scissor.y1);
             backend.glScissor(x, y, w, h);
 
-            backend.currentScissor = backend.view_def.?.scissor;
+            backend.current_scissor = backend.view_def.?.scissor;
         }
 
         backend.glSetState(gl_state.GLS_DEFAULT | gl_state.GLS_CULL_FRONTSIDED);
@@ -748,26 +853,18 @@ pub const RenderBackend = extern struct {
             );
 
             const projection_matrix: *RenderMatrix = @ptrCast(&view_def.projectionMatrix);
-            const proj_transpose_matrix = projection_matrix.transpose().m;
-
-            for (0..4) |i| {
-                var param_index: u32 = @intFromEnum(render_prog_manager.RenderParam.projmatrix_x);
-                param_index += @intCast(i);
-                render_prog_manager.instance.setUniformValue(
-                    @enumFromInt(param_index),
-                    @ptrCast((proj_transpose_matrix[i * 4 ..][0..4]).ptr),
-                );
-            }
+            render_prog_manager.instance.setUniformValues(
+                .projmatrix_x,
+                4,
+                &projection_matrix.transpose().m,
+            );
         }
 
-        // const draw_surfs = &view_def.drawSurfs[0];
-        // const num_draw_surfs = view_def.numDrawSurfs;
-        // const processed = backend.drawShaderPasses(
-        //     draw_surfs,
-        //     num_draw_surfs,
-        //     guiScreenOffset,
-        //     stereoEye,
-        // );
+        try backend.drawShaderPasses(
+            command_list,
+            view_def.drawSurfs.?[0][0..view_def.numDrawSurfs],
+            allocator,
+        );
 
         // copy LDR result to swapchain image
         {
@@ -782,12 +879,541 @@ pub const RenderBackend = extern struct {
                 ),
             };
 
-            try backend.commonPasses.blitTexture(
+            try backend.common_passes.blitTexture(
                 command_list,
                 blit_params,
-                &backend.bindingCache,
+                &backend.binding_cache,
                 allocator,
             );
+        }
+    }
+
+    const zero: [4]f32 = .{ 0, 0, 0, 0 };
+    const one: [4]f32 = .{ 1, 1, 1, 1 };
+    const neg_one: [4]f32 = .{ -1, -1, -1, -1 };
+
+    fn drawShaderPasses(
+        backend: *RenderBackend,
+        command_list: *nvrhi.ICommandList,
+        draw_surfaces: []const DrawSurface,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const prog_manager = render_prog_manager.instance;
+
+        // select texture
+        nvrhi_context.current_image_param = 0;
+        defer {
+            prog_manager.setUniformValue(.color, &one);
+            backend.glSetState(gl_state.GLS_DEFAULT);
+            nvrhi_context.current_image_param = 0;
+        }
+
+        for (draw_surfaces) |*draw_surface| {
+            const cull_mode = gl_state.GLS_CULL_TWOSIDED;
+            const surface_gl_state = draw_surface.extraGLState | cull_mode;
+            const shader = draw_surface.material orelse continue;
+            const regs = draw_surface.shaderRegisters;
+
+            const current_space = if (draw_surface.space != backend.current_space) current_space: {
+                backend.current_space = draw_surface.space;
+
+                const space = backend.current_space.?;
+
+                // set eye position in local space
+                {
+                    const local_view_origin = globalPointToLocal(
+                        &space.modelMatrix,
+                        backend.view_def.?.renderView.view_origin.toVec3f(),
+                    );
+                    prog_manager.setUniformValue(.localvieworigin, &.{
+                        local_view_origin.v[0],
+                        local_view_origin.v[1],
+                        local_view_origin.v[2],
+                        1,
+                    });
+                }
+
+                // set model-view-porjection matrix
+                prog_manager.setUniformValues(.mvpmatrix_x, 4, &space.mvp.m);
+
+                // set model matrix
+                {
+                    const model_matrix: *const RenderMatrix = @ptrCast(&space.modelMatrix);
+                    prog_manager.setUniformValues(
+                        .modelmatrix_x,
+                        4,
+                        &model_matrix.transpose().m,
+                    );
+                }
+
+                // set model-view matrix
+                {
+                    const model_view_matrix: *const RenderMatrix = @ptrCast(&space.modelViewMatrix);
+                    prog_manager.setUniformValues(
+                        .modelviewmatrix_x,
+                        4,
+                        &model_view_matrix.transpose().m,
+                    );
+                }
+
+                break :current_space space;
+            } else backend.current_space.?;
+
+            for (shader.getStages()) |stage| {
+                var stage_gl_state = surface_gl_state;
+                if ((surface_gl_state & gl_state.GLS_OVERRIDE) == 0) {
+                    stage_gl_state |= stage.draw_state_bits;
+                }
+
+                if (stage.new_stage) |new_stage| {
+                    prog_manager.bindProgramIndex(
+                        @intCast(new_stage.program),
+                    );
+                    defer {
+                        nvrhi_context.current_image_param = 0;
+                        prog_manager.unbind();
+                    }
+
+                    for (new_stage.fragment_program_images[0..new_stage.num_fragment_program_images], 0..) |opt_image, texture_index| {
+                        if (opt_image) |image| {
+                            nvrhi_context.current_image_param = @intCast(texture_index);
+                            try setCurrentImage(image, command_list, allocator);
+                        }
+                    }
+
+                    try backend.drawElements(command_list, draw_surface, allocator);
+                } else {
+                    const color: [4]f32 = .{
+                        regs[stage.color.registers[0]],
+                        regs[stage.color.registers[1]],
+                        regs[stage.color.registers[2]],
+                        regs[stage.color.registers[3]],
+                    };
+
+                    prog_manager.setUniformValue(.color, &color);
+                    var stage_vertex_color = stage.vertex_color;
+
+                    if (current_space.isGuiSurface) {
+                        stage_vertex_color = .modulate;
+                    }
+
+                    prog_manager.bindProgramBuiltin(
+                        .TEXTURE_VERTEXCOLOR_SRGB,
+                    );
+
+                    switch (stage_vertex_color) {
+                        .ignore => {
+                            prog_manager.setUniformValue(.vertexcolor_modulate, &zero);
+                            prog_manager.setUniformValue(.vertexcolor_add, &one);
+                        },
+                        .modulate => {
+                            prog_manager.setUniformValue(.vertexcolor_modulate, &one);
+                            prog_manager.setUniformValue(.vertexcolor_add, &zero);
+                        },
+                        .inverse_modulate => {
+                            prog_manager.setUniformValue(.vertexcolor_modulate, &neg_one);
+                            prog_manager.setUniformValue(.vertexcolor_add, &one);
+                        },
+                    }
+
+                    try bindVariableStageImage(&stage.texture, command_list, allocator);
+
+                    if (stage.private_polygon_offset != 0) {
+                        backend.slope_scale_bias = r_offset_factor;
+                        backend.depth_bias = r_offset_units * stage.private_polygon_offset;
+                        stage_gl_state |= gl_state.GLS_POLYGON_OFFSET;
+                    }
+
+                    backend.glSetState(stage_gl_state);
+
+                    // TODO: texgen
+                    {
+                        const use_tex_gen_param: [4]f32 = .{ 0, 0, 0, 0 };
+                        const tex_s: [4]f32 = .{ 1, 0, 0, 0 };
+                        const tex_t: [4]f32 = .{ 0, 1, 0, 0 };
+
+                        prog_manager.setUniformValue(.texturematrix_s, &tex_s);
+                        prog_manager.setUniformValue(.texturematrix_t, &tex_t);
+                        prog_manager.setUniformValue(.texgen_0_enabled, &use_tex_gen_param);
+                    }
+
+                    try backend.drawElements(command_list, draw_surface, allocator);
+
+                    // reset polygon offset
+                    if (stage.private_polygon_offset != 0) {
+                        backend.slope_scale_bias = r_offset_factor;
+                        backend.depth_bias = r_offset_units * shader.polygon_offset;
+                    }
+                }
+            }
+        }
+    }
+
+    fn bindVariableStageImage(
+        texture_stage: *const material.TextureStage,
+        command_list: *nvrhi.ICommandList,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        if (texture_stage.cinematic) |_| {
+            @panic("not implemented");
+        } else {
+            if (texture_stage.image) |image| {
+                try setCurrentImage(image, command_list, allocator);
+            }
+        }
+    }
+
+    fn drawElements(
+        backend: *RenderBackend,
+        command_list: *nvrhi.ICommandList,
+        surface: *const DrawSurface,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const use_state_caching = true;
+        var change_state = false;
+
+        // set vertex_buffer
+        {
+            const vertex_buffer_handle = surface.ambientCache;
+            const vertex_buffer = if (vertex_buffer_handle.static)
+                &vertex_cache.instance.static_data.vertex_buffer
+            else vertex_buffer: {
+                const frame_num = vertex_buffer_handle.frame;
+                if (frame_num != ((vertex_cache.instance.current_frame - 1) & vertex_cache.frame_mask)) {
+                    @panic("[VERTEX_CACHE] vertex_buffer is null");
+                }
+
+                break :vertex_buffer &vertex_cache.instance.frame_data[vertex_cache.instance.draw_list_num].vertex_buffer;
+            };
+
+            if (backend.current_vertex_offset != vertex_buffer_handle.offset) {
+                backend.current_vertex_offset = vertex_buffer_handle.offset;
+            }
+
+            if (backend.current_vertex_buffer.ptr_ != vertex_buffer.getApiObject() or
+                !use_state_caching)
+            {
+                backend.current_vertex_buffer.ptr_ = vertex_buffer.getApiObject();
+                change_state = true;
+            }
+        }
+
+        // set index_buffer
+        {
+            const index_buffer_handle = surface.indexCache;
+            const index_buffer = if (index_buffer_handle.static)
+                &vertex_cache.instance.static_data.index_buffer
+            else index_buffer: {
+                const frame_num = index_buffer_handle.frame;
+                if (frame_num != ((vertex_cache.instance.current_frame - 1) & vertex_cache.frame_mask)) {
+                    @panic("[VERTEX_CACHE] index_buffer is null");
+                }
+
+                break :index_buffer &vertex_cache.instance.frame_data[vertex_cache.instance.draw_list_num].index_buffer;
+            };
+
+            if (backend.current_index_offset != index_buffer_handle.offset) {
+                backend.current_index_offset = index_buffer_handle.offset;
+            }
+
+            if (backend.current_index_buffer.ptr_ != index_buffer.getApiObject() or
+                !use_state_caching)
+            {
+                backend.current_index_buffer.ptr_ = index_buffer.getApiObject();
+                change_state = true;
+            }
+        }
+
+        // set joint_buffer
+        {
+            const joint_buffer_handle = surface.jointCache;
+            backend.current_joint_buffer = null;
+            backend.current_joint_offset = 0;
+
+            if (joint_buffer_handle.isDefined()) {
+                const joint_buffer = if (joint_buffer_handle.static)
+                    &vertex_cache.instance.static_data.joint_buffer
+                else joint_buffer: {
+                    const frame_num = joint_buffer_handle.frame;
+                    if (frame_num != ((vertex_cache.instance.current_frame - 1) & vertex_cache.frame_mask)) {
+                        @panic("[VERTEX_CACHE] joint_buffer is null");
+                    }
+
+                    break :joint_buffer &vertex_cache.instance.frame_data[vertex_cache.instance.draw_list_num].joint_buffer;
+                };
+
+                if (backend.current_joint_buffer != joint_buffer.getApiObject() or
+                    backend.current_joint_offset != joint_buffer_handle.offset)
+                {
+                    change_state = true;
+                }
+
+                backend.current_joint_buffer = joint_buffer.getApiObject();
+                backend.current_joint_offset = joint_buffer_handle.offset;
+            }
+        }
+
+        const prog_manager = render_prog_manager.instance;
+        const program = prog_manager.getCurrentProgram() orelse @panic("no current program");
+        const binding_layout_type = program.binding_layout_type;
+        const layouts = prog_manager.bindingLayouts.constSlice()[binding_layout_type.toIndex()].constSlice();
+
+        if (change_state or
+            @intFromEnum(binding_layout_type) != backend.prev_binding_layout_type or
+            !nvrhi_context.eql(prev_nvrhi_context))
+        {
+            try backend.setupPendingBindingLayout(
+                prog_manager,
+                binding_layout_type,
+                allocator,
+            );
+
+            for (layouts, 0..) |*layout, i| {
+                const current_binding_set = &backend.current_binding_sets.slice()[i];
+                const pending_binding_set_descs = backend.pending_binding_sets.constSlice();
+                const binding_set_desc = &pending_binding_set_descs[binding_layout_type.toIndex()].constSlice()[i];
+                if (current_binding_set.ptr_ == null or
+                    !current_binding_set.ptr_.?.getDesc().eql(binding_set_desc))
+                {
+                    current_binding_set.* = try backend.binding_cache.getOrCreateBindingSet(
+                        binding_set_desc,
+                        layout.ptr_.?,
+                        allocator,
+                    );
+
+                    change_state = true;
+                }
+            }
+        }
+
+        const pipeline = pipeline: {
+            const key = PipelineCache.PipelineKey{
+                .state = backend.gl_state_bits,
+                .program = prog_manager.currentIndex,
+                .depth_bias = @intFromFloat(backend.depth_bias),
+                .slope_bias = backend.slope_scale_bias,
+                .framebuffer = backend.current_framebuffer,
+            };
+
+            const pipeline = try backend.pipeline_cache.getOrCreatePipeline(
+                &key,
+                prog_manager,
+                allocator,
+            );
+
+            if (backend.current_pipeline.ptr_ != pipeline.ptr_) {
+                backend.current_pipeline = pipeline;
+                change_state = true;
+            }
+
+            break :pipeline pipeline;
+        };
+
+        if (!std.meta.eql(backend.current_viewport, backend.state_viewport)) {
+            backend.state_viewport = backend.current_viewport;
+            change_state = true;
+        }
+
+        if (!std.meta.eql(nvrhi_context.scissor, backend.state_scissor)) {
+            backend.state_scissor = nvrhi_context.scissor;
+        }
+
+        if (prog_manager.commitConstantBuffer(
+            command_list,
+            @intFromEnum(binding_layout_type) != backend.prev_binding_layout_type,
+        )) {
+            const api = nvrhi.GraphicsAPI.VULKAN;
+            if (api == .VULKAN) {
+                change_state = true;
+            }
+        }
+
+        if (change_state) {
+            const VertexBuffers = std.meta.FieldType(
+                nvrhi.GraphicsState,
+                .vertexBuffers,
+            );
+            var state: nvrhi.GraphicsState = .{
+                .pipeline = pipeline.ptr_.?,
+                .framebuffer = backend.current_framebuffer.getApiObject(),
+                .indexBuffer = .{
+                    .buffer = backend.current_index_buffer.ptr_,
+                    .format = .R16_UINT,
+                    .offset = 0,
+                },
+                .vertexBuffers = VertexBuffers.fromSlice(&.{
+                    .{
+                        .buffer = backend.current_vertex_buffer.ptr_,
+                        .slot = 0,
+                        .offset = 0,
+                    },
+                }),
+            };
+
+            for (layouts, 0..) |_, i| {
+                const current_binding_set = backend.current_binding_sets.slice()[i];
+                state.bindings.pushBack(current_binding_set.ptr_.?);
+            }
+
+            const viewport = nvrhi.Viewport{
+                .minX = @floatFromInt(backend.current_viewport.x1),
+                .maxX = @floatFromInt(backend.current_viewport.x2),
+                .minY = @floatFromInt(backend.current_viewport.y1),
+                .maxY = @floatFromInt(backend.current_viewport.y2),
+                .minZ = 0,
+                .maxZ = 1,
+            };
+
+            state.viewport.viewports.pushBack(viewport);
+
+            if (!nvrhi_context.scissor.isEmpty()) {
+                state.viewport.scissorRects.pushBack(.{
+                    .minX = nvrhi_context.scissor.x1,
+                    .maxX = nvrhi_context.scissor.x2,
+                    .minY = nvrhi_context.scissor.y1,
+                    .maxY = nvrhi_context.scissor.y2,
+                });
+            } else {
+                state.viewport.scissorRects.pushBack(
+                    nvrhi.Rect.fromViewport(&viewport),
+                );
+            }
+
+            command_list.setGraphicsState(&state);
+        }
+
+        command_list.drawIndexed(&.{
+            .startVertexLocation = backend.current_vertex_offset / @sizeOf(DrawVertex),
+            .startIndexLocation = backend.current_index_offset / @sizeOf(TriIndex),
+            .vertexCount = surface.numIndexes,
+        });
+
+        prev_nvrhi_context.* = nvrhi_context.*;
+        backend.prev_binding_layout_type = @intFromEnum(binding_layout_type);
+    }
+
+    fn setupPendingBindingLayout(
+        backend: *RenderBackend,
+        prog_manager: *RenderProgManager,
+        layout_type: BindingLayoutType,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const pending_binding_set_descs = backend.pending_binding_sets.slice();
+
+        if (pending_binding_set_descs[layout_type.toIndex()].num == 0) {
+            pending_binding_set_descs[layout_type.toIndex()].setNum(nvrhi.c_MaxBindingLayouts);
+        }
+
+        const descs = pending_binding_set_descs[layout_type.toIndex()].slice();
+        const Bindings = std.meta.FieldType(
+            nvrhi.BindingSetDesc,
+            .bindings,
+        );
+
+        const constant_buffer = prog_manager.constant_buffer.ptr_;
+        const range = nvrhi.EntireBuffer;
+
+        switch (layout_type) {
+            .DEFAULT => {
+                if (descs[0].bindings.current_size == 0) {
+                    descs[0].bindings = Bindings.fromSlice(&.{
+                        nvrhi.BindingSetItem.createConstantBuffer(
+                            0,
+                            constant_buffer,
+                            range,
+                        ),
+                    });
+                } else {
+                    const bindings = descs[0].bindings.slice();
+                    bindings[0].resourceHandle = @ptrCast(constant_buffer);
+                    bindings[0].unnamed_0.range = range;
+                }
+
+                if (descs[1].bindings.current_size == 0) {
+                    descs[1].bindings = Bindings.fromSlice(&.{
+                        nvrhi.BindingSetItem.createTextureSrv(
+                            0,
+                            nvrhi_context.image_params[0].?.texture.ptr_.?,
+                            .UNKNOWN,
+                            nvrhi.AllSubresources,
+                            .Unknown,
+                        ),
+                    });
+                } else {
+                    const bindings = descs[1].bindings.slice();
+                    bindings[0].resourceHandle = @ptrCast(nvrhi_context.image_params[0].?.texture.ptr_);
+                }
+
+                if (descs[2].bindings.current_size == 0) {
+                    descs[2].bindings = Bindings.fromSlice(&.{
+                        nvrhi.BindingSetItem.createSampler(
+                            0,
+                            try nvrhi_context.image_params[0].?.getSampler(
+                                &backend.sampler_cache,
+                                allocator,
+                            ),
+                        ),
+                    });
+                } else {
+                    const bindings = descs[2].bindings.slice();
+                    bindings[0].resourceHandle = @ptrCast(try nvrhi_context.image_params[0].?.getSampler(
+                        &backend.sampler_cache,
+                        allocator,
+                    ));
+                }
+            },
+            .POST_PROCESS_INGAME => {
+                if (descs[0].bindings.current_size == 0) {
+                    descs[0].bindings = Bindings.fromSlice(&.{
+                        nvrhi.BindingSetItem.createConstantBuffer(
+                            0,
+                            constant_buffer,
+                            range,
+                        ),
+                        nvrhi.BindingSetItem.createTextureSrv(
+                            0,
+                            nvrhi_context.image_params[0].?.texture.ptr_.?,
+                            .UNKNOWN,
+                            nvrhi.AllSubresources,
+                            .Unknown,
+                        ),
+                        nvrhi.BindingSetItem.createTextureSrv(
+                            1,
+                            nvrhi_context.image_params[1].?.texture.ptr_.?,
+                            .UNKNOWN,
+                            nvrhi.AllSubresources,
+                            .Unknown,
+                        ),
+                        nvrhi.BindingSetItem.createTextureSrv(
+                            2,
+                            nvrhi_context.image_params[2].?.texture.ptr_.?,
+                            .UNKNOWN,
+                            nvrhi.AllSubresources,
+                            .Unknown,
+                        ),
+                    });
+                } else {
+                    const bindings = descs[0].bindings.slice();
+                    bindings[0].resourceHandle = @ptrCast(constant_buffer);
+                    bindings[0].unnamed_0.range = range;
+                    bindings[1].resourceHandle = @ptrCast(nvrhi_context.image_params[0].?.texture.ptr_);
+                    bindings[2].resourceHandle = @ptrCast(nvrhi_context.image_params[1].?.texture.ptr_);
+                    bindings[3].resourceHandle = @ptrCast(nvrhi_context.image_params[2].?.texture.ptr_);
+                }
+
+                if (descs[1].bindings.current_size == 0) {
+                    descs[1].bindings = Bindings.fromSlice(&.{
+                        nvrhi.BindingSetItem.createSampler(
+                            0,
+                            backend.common_passes.linear_clamp_sampler.ptr_.?,
+                        ),
+                    });
+                } else {
+                    const bindings = descs[1].bindings.slice();
+                    bindings[0].resourceHandle = @ptrCast(backend.common_passes.linear_clamp_sampler.ptr_);
+                }
+            },
+            else => @panic("not implemented"),
         }
     }
 
@@ -799,8 +1425,8 @@ pub const RenderBackend = extern struct {
         stencil_value: u8,
         clear_hdr: bool,
     ) void {
-        const current_fb = backend.currentFramebuffer.getApiObject();
-        const command_list = backend.commandList.ptr_ orelse @panic("command_list not set");
+        const current_fb = backend.current_framebuffer.getApiObject();
+        const command_list = backend.command_list.ptr_ orelse @panic("command_list not set");
 
         if (color) {
             nvrhi.utils.clearColorAttachment(command_list, current_fb, 0, .{});
@@ -828,9 +1454,9 @@ pub const RenderBackend = extern struct {
 
     fn setBuffer(backend: *RenderBackend, _: *anyopaque) void {
         // TODO: render_log
-        backend.currentScissor.clear();
-        backend.currentScissor.addPoint(0, 0);
-        backend.currentScissor.addPoint(
+        backend.current_scissor.clear();
+        backend.current_scissor.addPoint(0, 0);
+        backend.current_scissor.addPoint(
             @floatFromInt(RenderSystem.instance.getWidth()),
             @floatFromInt(RenderSystem.instance.getHeight()),
         );
@@ -857,7 +1483,7 @@ pub const RenderBackend = extern struct {
 
     fn glSetDefaultState(backend: *RenderBackend) void {
         const GLS_DEFAULT: u64 = 0;
-        backend.glStateBits = 0;
+        backend.gl_state_bits = 0;
         backend.glSetState(GLS_DEFAULT);
         backend.glScissor(
             0,
@@ -884,10 +1510,10 @@ pub const RenderBackend = extern struct {
     }
 
     fn glSetState(backend: *RenderBackend, state_bits: u64) void {
-        backend.glStateBits = state_bits | (backend.glStateBits & gl_state.GLS_KEEP);
+        backend.gl_state_bits = state_bits | (backend.gl_state_bits & gl_state.GLS_KEEP);
         if (backend.view_def) |view_def| {
             if (view_def.isMirror) {
-                backend.glStateBits |= gl_state.GLS_MIRROR_VIEW;
+                backend.gl_state_bits |= gl_state.GLS_MIRROR_VIEW;
             }
         }
 
@@ -904,7 +1530,7 @@ pub const RenderBackend = extern struct {
         try device_manager.instance().beginFrame();
         Image.emptyGarbage();
 
-        const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
+        const command_list = backend.command_list.ptr_ orelse @panic("Not initialized");
         command_list.open();
 
         render_log.instance.startFrame(command_list);
@@ -917,7 +1543,7 @@ pub const RenderBackend = extern struct {
         RenderSystem.instance.omit_swap_buffers = false;
         render_log.instance.closeMainBlock(render_log.MRB_GPU_TIME);
 
-        const command_list = backend.commandList.ptr_ orelse @panic("Not initialized");
+        const command_list = backend.command_list.ptr_ orelse @panic("Not initialized");
         command_list.close();
 
         device_manager.instance().endFrame();
@@ -934,5 +1560,17 @@ pub const RenderBackend = extern struct {
             .height = @intCast(RenderSystem.gl_config.nativeScreenHeight),
             .multi_samples = @intCast(RenderSystem.gl_config.multisamples),
         }, allocator);
+    }
+
+    fn setCurrentImage(
+        image: *Image.Image,
+        command_list: *nvrhi.ICommandList,
+        allocator: Allocator,
+    ) Image.Image.ActuallyLoadImageError!void {
+        if (!image.is_loaded and !image.defaulted) {
+            try image.actuallyLoadImageOrDefault(command_list, allocator);
+        }
+
+        nvrhi_context.image_params[@intCast(nvrhi_context.current_image_param)] = image;
     }
 };

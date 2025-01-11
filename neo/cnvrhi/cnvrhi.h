@@ -127,6 +127,7 @@ void c_nvrhi_commandList_setPermanentBufferState(
 		nvrhi::ResourceStates stateBits);
 void c_nvrhi_commandList_commitBarriers(nvrhi::ICommandList* commandList);
 void c_nvrhi_commandList_draw(nvrhi::ICommandList* commandList, const nvrhi::DrawArguments* args);
+void c_nvrhi_commandList_drawIndexed(nvrhi::ICommandList* commandList, const nvrhi::DrawArguments* args);
 void c_nvrhi_commandList_setPushConstants(
 		nvrhi::ICommandList* commandList,
 		const void* data,
@@ -136,6 +137,10 @@ void c_nvrhi_commandList_setGraphicsState(
 		const nvrhi::GraphicsState* state);
 
 const nvrhi::TextureDesc* c_nvrhi_texture_getDesc(const nvrhi::ITexture* texture);
+const nvrhi::BufferDesc* c_nvrhi_buffer_getDesc(const nvrhi::IBuffer* buffer);
+const nvrhi::SamplerDesc* c_nvrhi_sampler_getDesc(const nvrhi::ISampler* sampler);
+
+void c_nvrhi_samplerDesc_hashCombine(const nvrhi::SamplerDesc* desc, size_t* seed);
 
 const nvrhi::BindingSetDesc* c_nvrhi_bindingSet_getDesc(const nvrhi::IBindingSet* set);
 bool c_nvrhi_bindingSetDesc_eql(
@@ -143,7 +148,10 @@ bool c_nvrhi_bindingSetDesc_eql(
 		const nvrhi::BindingSetDesc* b);
 void c_nvrhi_bindingSetDesc_hashCombine(const nvrhi::BindingSetDesc* desc, size_t* seed);
 
-void c_nvrhi_hashCombinePtr(size_t* seed, void* ptr);
+void c_nvrhi_hashCombine_ptr(size_t* seed, void* ptr);
+void c_nvrhi_hashCombine_u64(size_t* seed, uint64_t u);
+void c_nvrhi_hashCombine_float(size_t* seed, float f);
+void c_nvrhi_hashCombine_int(size_t* seed, int i);
 
 const nvrhi::FramebufferInfoEx* c_nvrhi_framebuffer_getFramebufferInfo(
 		const nvrhi::IFramebuffer* framebuffer);

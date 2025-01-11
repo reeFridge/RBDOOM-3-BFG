@@ -122,6 +122,11 @@ pub const BufferRange = extern struct {
     byteSize: u64,
 };
 
+pub const EntireBuffer = BufferRange{
+    .byteOffset = 0,
+    .byteSize = std.math.maxInt(u64),
+};
+
 pub const BindingSetItem = extern struct {
     resourceHandle: ?*IResource,
     slot: u32,
@@ -134,6 +139,29 @@ pub const BindingSetItem = extern struct {
         range: BufferRange,
         rawData: [2]u64,
     },
+
+    pub fn createConstantBuffer(
+        slot: u32,
+        opt_buffer: ?*IBuffer,
+        range: BufferRange,
+    ) BindingSetItem {
+        const is_volatile = if (opt_buffer) |buffer|
+            buffer.getDesc().isVolatile
+        else
+            false;
+
+        return .{
+            .slot = slot,
+            .type = if (is_volatile) .VolatileConstantBuffer else .ConstantBuffer,
+            .resourceHandle = @ptrCast(opt_buffer),
+            .format = .UNKNOWN,
+            .dimension = .Unknown,
+            .unnamed_0 = .{
+                .range = range,
+            },
+            .unused = 0,
+        };
+    }
 
     pub fn createTextureSrv(
         slot: u32,
@@ -191,41 +219,67 @@ pub fn static_vector(T: type, max_elements: u32) type {
         base: [max_elements]T = undefined,
         current_size: usize = 0,
 
-        pub fn fromSliceWithDefault(slice: []const T, default: T) Self {
+        pub fn pushBack(self: *Self, element: T) void {
+            std.debug.assert(self.current_size < max_elements);
+
+            self.base[self.current_size] = element;
+            self.current_size += 1;
+        }
+
+        pub fn slice(self: *Self) []T {
+            return self.base[0..self.current_size];
+        }
+
+        pub fn fromSliceWithDefault(init_slice: []const T, default: T) Self {
             var base: [max_elements]T = undefined;
-            for (base[0..slice.len], slice) |*item, in| {
+            for (base[0..init_slice.len], init_slice) |*item, in| {
                 item.* = in;
             }
 
-            if (base.len > slice.len) {
-                for (base[slice.len..]) |*item| {
+            if (base.len > init_slice.len) {
+                for (base[init_slice.len..]) |*item| {
                     item.* = default;
                 }
             }
 
             return .{
                 .base = base,
-                .current_size = slice.len,
+                .current_size = init_slice.len,
             };
         }
 
-        pub fn fromSlice(slice: []const T) Self {
+        pub fn fromSlice(init_slice: []const T) Self {
             var base: [max_elements]T = undefined;
-            for (base[0..slice.len], slice) |*item, in| {
+            for (base[0..init_slice.len], init_slice) |*item, in| {
                 item.* = in;
             }
 
             return .{
                 .base = base,
-                .current_size = slice.len,
+                .current_size = init_slice.len,
             };
         }
     };
 }
 
-extern fn c_nvrhi_hashCombinePtr(*usize, *anyopaque) void;
-pub fn hashCombinePtr(seed: *usize, ptr: *anyopaque) void {
-    c_nvrhi_hashCombinePtr(seed, ptr);
+extern fn c_nvrhi_hashCombine_ptr(*usize, *anyopaque) void;
+pub fn hashCombine_ptr(seed: *usize, ptr: *anyopaque) void {
+    c_nvrhi_hashCombine_ptr(seed, ptr);
+}
+
+extern fn c_nvrhi_hashCombine_u64(seed: *usize, u: u64) void;
+pub fn hashCombine_u64(seed: *usize, u: u64) void {
+    c_nvrhi_hashCombine_u64(seed, u);
+}
+
+extern fn c_nvrhi_hashCombine_int(seed: *usize, i: c_int) void;
+pub fn hashCombine_int(seed: *usize, i: c_int) void {
+    c_nvrhi_hashCombine_int(seed, i);
+}
+
+extern fn c_nvrhi_hashCombine_float(seed: *usize, f: f32) void;
+pub fn hashCombine_float(seed: *usize, f: f32) void {
+    c_nvrhi_hashCombine_float(seed, f);
 }
 
 pub const BindingSetDesc = extern struct {
@@ -309,6 +363,12 @@ pub const SamplerDesc = extern struct {
     addressV: SamplerAddressMode = .ClampToEdge,
     addressW: SamplerAddressMode = .ClampToEdge,
     reductionType: SamplerReductionType = .Standard,
+
+    extern fn c_nvrhi_samplerDesc_hashCombine(*const SamplerDesc, *usize) void;
+
+    pub fn hashCombine(desc: *const SamplerDesc, hash: *usize) void {
+        c_nvrhi_samplerDesc_hashCombine(desc, hash);
+    }
 };
 
 pub const TextureDimension = enum(u8) {
@@ -726,7 +786,14 @@ pub const ITexture = opaque {
     }
 };
 
-pub const ISampler = opaque {};
+pub const ISampler = opaque {
+    extern fn c_nvrhi_sampler_getDesc(*const ISampler) *const SamplerDesc;
+
+    pub fn getDesc(sampler: *const ISampler) *const SamplerDesc {
+        return c_nvrhi_sampler_getDesc(sampler);
+    }
+};
+
 pub const IShader = opaque {};
 
 pub const FramebufferInfo = extern struct {
@@ -955,7 +1022,13 @@ pub const GraphicsPipelineDesc = extern struct {
 pub const IGraphicsPipeline = opaque {};
 
 pub const IBindingLayout = opaque {};
-pub const IBuffer = opaque {};
+pub const IBuffer = opaque {
+    extern fn c_nvrhi_buffer_getDesc(*const IBuffer) *const BufferDesc;
+
+    pub fn getDesc(texture: *const IBuffer) *const BufferDesc {
+        return c_nvrhi_buffer_getDesc(texture);
+    }
+};
 pub const IDevice = opaque {
     extern fn c_nvrhi_device_createHandleForNativeTexture(
         *IDevice,
@@ -1247,6 +1320,7 @@ pub const DrawArguments = extern struct {
 pub const ICommandList = opaque {
     extern fn c_nvrhi_commandList_setGraphicsState(*ICommandList, *const GraphicsState) void;
     extern fn c_nvrhi_commandList_draw(*ICommandList, *const DrawArguments) void;
+    extern fn c_nvrhi_commandList_drawIndexed(*ICommandList, *const DrawArguments) void;
     extern fn c_nvrhi_commandList_setPushConstants(*ICommandList, *const anyopaque, usize) void;
     extern fn c_nvrhi_commandList_open(*ICommandList) void;
     extern fn c_nvrhi_commandList_close(*ICommandList) void;
@@ -1413,6 +1487,10 @@ pub const ICommandList = opaque {
 
     pub fn draw(command_list: *ICommandList, args: *const DrawArguments) void {
         c_nvrhi_commandList_draw(command_list, args);
+    }
+
+    pub fn drawIndexed(command_list: *ICommandList, args: *const DrawArguments) void {
+        c_nvrhi_commandList_drawIndexed(command_list, args);
     }
 
     pub fn setPushConstants(
