@@ -3,10 +3,11 @@ const global = @import("../global.zig");
 const idlib = @import("../idlib.zig");
 const cmd = @import("cmd_system.zig");
 const cvar = @import("cvar_system.zig");
+const user_cmd = @import("user_cmd.zig");
 const Allocator = std.mem.Allocator;
 
 fn cmd_unbindAll(_: *const cmd.CmdArgs) callconv(.C) void {
-    const size: usize = @intFromEnum(KeyNum.K_LAST_KEY);
+    const size: usize = @typeInfo(KeyNum).Enum.fields.len;
 
     const allocator = global.gpa.allocator();
     for (0..size) |i| {
@@ -339,7 +340,7 @@ var opt_keys: ?[]Key = null;
 
 pub fn init(allocator: Allocator) error{OutOfMemory}!void {
     shutdown(allocator);
-    const keys = try allocator.alloc(Key, @intFromEnum(KeyNum.K_LAST_KEY));
+    const keys = try allocator.alloc(Key, @intCast(@intFromEnum(KeyNum.last_key)));
 
     for (keys) |*key_ptr| {
         key_ptr.init();
@@ -405,7 +406,7 @@ pub fn setBinding(
 
     const index: usize = @intCast(keynum);
 
-    // TODO user_cmd_gen.instance.clear();
+    user_cmd.generator_instance.clear();
 
     try keys[index].binding.assignSlice(binding, allocator);
 
@@ -413,7 +414,16 @@ pub fn setBinding(
     cvar.instance.modifiedFlags |= cvar.CVarFlags.CVAR_ARCHIVE;
 }
 
-const KeyNum = enum(c_int) {
+pub const JoystickAxis = enum(c_int) {
+    left_x,
+    left_y,
+    right_x,
+    right_y,
+    left_trig,
+    right_trig,
+};
+
+pub const KeyNum = enum(c_int) {
     K_NONE,
     K_ESCAPE,
     K_1,
@@ -627,5 +637,5 @@ const KeyNum = enum(c_int) {
     K_MWHEELDOWN,
     K_MWHEELUP,
 
-    K_LAST_KEY,
+    last_key,
 };

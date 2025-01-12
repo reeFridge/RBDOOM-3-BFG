@@ -16,6 +16,14 @@ const Vec4 = @import("../math/vector.zig").Vec4;
 const Material = @import("../renderer/material.zig").Material;
 const Allocator = std.mem.Allocator;
 const RenderBackend = @import("../renderer/render_backend.zig").RenderBackend;
+const thread = @import("thread.zig");
+const user_cmd = @import("user_cmd.zig");
+const ui_manager = @import("../ui/manager.zig");
+
+fn runGameFrameAndDraw(game_thread: *thread.Thread) u8 {
+    std.debug.print("[THREAD:{s}] hello\n", .{game_thread.name.constSlice()});
+    return 0;
+}
 
 pub const Common = opaque {
     extern fn c_common_getRendererGPUMicroseconds(*const Common) callconv(.C) u64;
@@ -51,7 +59,6 @@ pub const Common = opaque {
         try RenderSystem.instance.initBackend(allocator);
         try sound_system.instance.init();
         try RenderSystem.instance.init(allocator);
-        try decl_manager.instance.postInit(allocator);
 
         try renderSplash(
             &RenderSystem.instance,
@@ -59,28 +66,54 @@ pub const Common = opaque {
             allocator,
         );
 
+        try decl_manager.instance.postInit(allocator);
+
         // TODO common.initLanguageDict();
-        // TODO ! game_thread.startWorkerThread("Game/Draw");
-        // TODO ! usercmd_gen.instance.init();
+
+        var game_thread = thread.Thread{ .payload_fn = runGameFrameAndDraw };
+        defer game_thread.deinit();
+
+        // prepare but not run now until common.frame()
+        _ = game_thread.spawnWorker("game_frame/draw", 0x100000);
+
+        user_cmd.generator_instance.init();
+
         // TODO system.setRumble(0, 0, 0);
-        // TODO ! ui_manager.instance.init();
-        // TODO common.initCommands();
+
+        try ui_manager.instance.init(
+            &RenderSystem.instance,
+            decl_manager.instance,
+            allocator,
+        );
+
+        // TODO common.initCommands(); // tools
+        //
         // TODO ! game.instance.init();
         // TODO ! fs.instance.unloadResourceContainer("_ordered");
         // TODO ! common.render_world = render_system.instance.allocRenderWorld();
+
         // TODO common.sound_world = sound_system.instance.allocSoundWorld();
         // TODO common.menu_sound_world = sound_system.instance.allocSoundWorld();
         // TODO common.menu_sound_world.placeListener(Vec3.origin, Mat3.identity, 0);
+
         // TODO ! session.instance.init();
+
         // TODO session.instance.initSoundRelatedSystems();
+
         // TODO ! common.createMainMenu();
         // TODO ! common.commonDialog.init();
+
         // TODO common.addStartupCommands();
+
         // TODO ! common.startMenu(true);
+
         // TODO common.printWarnings();
         // TODO console.instance.clearNotifyLines();
+
         // TODO ! common.checkStartupStorageRequirements();
+
         // TODO common.com_fullyInitialized = true;
+
         // TODO ! image_manager.instance.loadDeferredImages();
 
         // COMPLETE!

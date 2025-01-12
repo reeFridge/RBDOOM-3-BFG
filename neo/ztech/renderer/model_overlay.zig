@@ -179,7 +179,7 @@ pub const ModelOverlay = extern struct {
             const base_tri = base_surf.geometry orelse continue;
             if (overlay_.maxReferencedVertex >= base_tri.numVerts) {
                 // This can happen when playing a demofile and a model has been changed since it was recorded, so just issue a warning and go on.
-                std.debug.print("overlay vertex out of range.  Model has probably changed since generating the overlay.\n", .{});
+                std.debug.print("overlay vertex out of range. Model has probably changed since generating the overlay.\n", .{});
                 overlay.freeOverlay(overlay_);
                 if (i == overlay.firstOverlay) overlay.firstOverlay += 1;
                 continue;

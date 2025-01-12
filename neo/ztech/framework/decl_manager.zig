@@ -997,6 +997,18 @@ pub const DeclManager = extern struct {
         return try manager.prepareDecl(decl, allocator);
     }
 
+    pub fn findMaterialOrDefault(
+        manager: *DeclManager,
+        name: []const u8,
+        allocator: Allocator,
+    ) FindDeclError!*Material {
+        return @ptrCast(try manager.findTypeOrDefault(
+            .material,
+            name,
+            allocator,
+        ));
+    }
+
     fn prepareDecl(
         manager: *const DeclManager,
         decl: *DeclLocal,

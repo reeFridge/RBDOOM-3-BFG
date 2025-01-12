@@ -510,7 +510,7 @@ const pthread = @cImport(@cInclude("pthread.h"));
 pub const MutexHandle = pthread.pthread_mutex_t;
 
 pub const SysMutex = extern struct {
-    handle: MutexHandle,
+    handle: MutexHandle = std.mem.zeroes(MutexHandle),
 
     extern fn c_sysMutex_unlock(*MutexHandle) callconv(.C) void;
     extern fn c_sysMutex_lock(*MutexHandle, bool) callconv(.C) bool;
@@ -799,11 +799,12 @@ pub const PreloadManifest = extern struct {
 };
 
 const SignalHandle = @import("sys/threading.zig").SignalHandle;
-pub const SysThread = extern struct {
-    const SysSignal = extern struct {
-        handle: SignalHandle,
-    };
 
+pub const SysSignal = extern struct {
+    handle: SignalHandle = .{},
+};
+
+pub const SysThread = extern struct {
     vptr: *anyopaque,
     name: Str,
     thrad_handle: usize,

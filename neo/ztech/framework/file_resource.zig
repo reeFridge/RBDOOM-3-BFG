@@ -3,30 +3,7 @@ const idlib = @import("../idlib.zig");
 const fs = @import("file_system.zig");
 const global = @import("../global.zig");
 const Allocator = std.mem.Allocator;
-
-fn FixedBufferString(size: comptime_int) type {
-    return struct {
-        buffer: [size]u8 = undefined,
-        len: std.math.IntFittingRange(0, size - 1) = 0,
-
-        const Self = @This();
-
-        pub fn assignSlice(self: *Self, s: []const u8) error{OutOfMemory}!void {
-            if (s.len > size) return error.OutOfMemory;
-
-            std.mem.copyForwards(u8, &self.buffer, s);
-            self.len = @intCast(s.len);
-        }
-
-        pub fn constSlice(self: *const Self) []const u8 {
-            return self.buffer[0..self.len];
-        }
-
-        pub fn slice(self: *Self) []u8 {
-            return self.buffer[0..self.len];
-        }
-    };
-}
+const FixedBufferString = @import("../string.zig").FixedBufferString;
 
 pub const CacheEntry = struct {
     filename: FixedBufferString(256),
