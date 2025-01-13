@@ -2,6 +2,7 @@ const std = @import("std");
 const posix = std.posix;
 const common = @import("framework/common.zig");
 const cmd = @import("framework/cmd_system.zig");
+const console = @import("framework/console.zig");
 
 const c_string = @cImport(@cInclude("string.h"));
 const c_signal = @cImport(@cInclude("signal.h"));
@@ -155,7 +156,10 @@ pub fn main() !void {
 
     try common.instance.init(allocator);
 
+    // for debug
+    console.instance.open();
+
     //lateInit();
 
-    //while (true) common.instance.frame();
+    while (true) try common.instance.frame(allocator);
 }

@@ -587,11 +587,10 @@ pub fn init(
         allocator,
     ));
 
-    render_system.white_material = @ptrCast(try decl_manager.instance.findType(
-        .material,
+    render_system.white_material = try decl_manager.instance.findMaterialOrDefault(
         "_white",
         allocator,
-    ));
+    );
 
     render_system.char_set_material = @ptrCast(try decl_manager.instance.findType(
         .material,
@@ -954,31 +953,43 @@ pub fn clearViewDef(render_system: *RenderSystem) void {
     render_system.view_def = null;
 }
 
-pub fn drawStretchPictureScalars(
+pub fn drawFilled(
     render_system: *RenderSystem,
-    x: f32,
-    y: f32,
+    color: Vec4(f32),
+    params: PictureParams,
+) void {
+    render_system.setColor(color);
+    render_system.drawStretchPicture(params, render_system.white_material);
+}
+
+pub const PictureParams = struct {
+    x: f32 = 0,
+    y: f32 = 0,
     w: f32,
     h: f32,
-    s1: f32,
-    t1: f32,
-    s2: f32,
-    t2: f32,
+    s1: f32 = 0,
+    t1: f32 = 0,
+    s2: f32 = 1,
+    t2: f32 = 1,
+    z: f32 = 0,
+};
+pub fn drawStretchPicture(
+    render_system: *RenderSystem,
+    params: PictureParams,
     opt_material: ?*const Material,
-    z: f32,
 ) void {
-    render_system.drawStretchPicture(
-        .{ .v = .{ x, y, s1, t1 } },
-        .{ .v = .{ x + w, y, s2, t1 } },
-        .{ .v = .{ x + w, y + h, s2, t2 } },
-        .{ .v = .{ x, y + h, s1, t2 } },
+    render_system.drawStretchPictureVecs(
+        .{ .v = .{ params.x, params.y, params.s1, params.t1 } },
+        .{ .v = .{ params.x + params.w, params.y, params.s2, params.t1 } },
+        .{ .v = .{ params.x + params.w, params.y + params.h, params.s2, params.t2 } },
+        .{ .v = .{ params.x, params.y + params.h, params.s1, params.t2 } },
         opt_material,
-        z,
+        params.z,
     );
 }
 
 const quad_pic_indexes: [6]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
-pub fn drawStretchPicture(
+pub fn drawStretchPictureVecs(
     render_system: *RenderSystem,
     top_left: Vec4(f32),
     top_right: Vec4(f32),

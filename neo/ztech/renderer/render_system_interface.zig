@@ -34,7 +34,7 @@ export fn ztech_renderSystem_drawStretchPicture(
     opt_material: ?*const Material,
     z: f32,
 ) callconv(.C) void {
-    RenderSystem.instance.drawStretchPicture(
+    RenderSystem.instance.drawStretchPictureVecs(
         top_left.toVec4f(),
         top_right.toVec4f(),
         bottom_right.toVec4f(),

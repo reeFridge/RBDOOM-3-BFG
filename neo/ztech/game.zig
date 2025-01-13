@@ -73,7 +73,7 @@ pub const com_engineHz_latched: f32 = 60;
 pub const com_engineHz_numerator: u64 = 100 * 1000;
 pub const com_engineHz_denominator: u64 = 100 * 60;
 
-inline fn frameToMsec(frame: usize) usize {
+pub inline fn frameToMsec(frame: usize) usize {
     const numerator: f32 = @floatFromInt(frame * com_engineHz_numerator);
     const denominator: f32 = @floatFromInt(com_engineHz_denominator);
 

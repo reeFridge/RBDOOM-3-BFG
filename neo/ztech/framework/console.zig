@@ -1,4 +1,7 @@
+const std = @import("std");
+const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
 const idlib = @import("../idlib.zig");
+const Vec4 = @import("../math/vector.zig").Vec4;
 const CVec4 = @import("../math/vector.zig").CVec4;
 const EditField = @import("edit_field.zig").EditField;
 const RenderSystem = @import("../renderer/render_system.zig");
@@ -9,10 +12,10 @@ const COMMAND_HISTORY = 64;
 const CONSOLE_FIRSTREPEAT = 200;
 
 const Justify = enum(c_int) {
-    JUSTIFY_LEFT,
-    JUSTIFY_RIGHT,
-    JUSTIFY_CENTER_LEFT,
-    JUSTIFY_CENTER_RIGHT,
+    left,
+    right,
+    center_left,
+    center_right,
 };
 
 const OverlayText = extern struct {
@@ -25,62 +28,142 @@ const DebugGraph = opaque {};
 
 pub const Console = extern struct {
     vptr: *anyopaque,
-    LOCALSAFE_LEFT: u32,
-    LOCALSAFE_RIGHT: u32,
-    LOCALSAFE_TOP: u32,
-    LOCALSAFE_BOTTOM: u32,
-    LOCALSAFE_WIDTH: u32,
-    LOCALSAFE_HEIGHT: u32,
-    LINE_WIDTH: u32,
-    TOTAL_LINES: u32,
-    keyCatching: bool,
+    local_safe_left: u32,
+    local_safe_right: u32,
+    local_safe_top: u32,
+    local_safe_bottom: u32,
+    local_safe_width: u32,
+    local_safe_height: u32,
+    line_width: u32,
+    total_lines: u32,
+    key_catching: bool,
     text: [CON_TEXTSIZE]c_short,
     current: c_int, // line where next message will be printed
     x: c_int, // offset in current line for next print
     display: c_int, // bottom of console displays this line
-    lastKeyEvent: c_int, // time of last key event for scroll delay
-    nextKeyEvent: c_int, // keyboard repeat rate
-    displayFrac: f32, // approaches finalFrac at con_speed
-    finalFrac: f32, // 0.0 to 1.0 lines of console to display
-    fracTime: c_int, // time of last displayFrac update
+    last_key_event: c_int, // time of last key event for scroll delay
+    next_key_event: c_int, // keyboard repeat rate
+    display_frac: f32, // approaches finalFrac at con_speed
+    final_frac: f32, // 0.0 to 1.0 lines of console to display
+    frac_time: c_int, // time of last display_frac update
     vislines: c_int, // in scanlines
     times: [NUM_CON_TIMES]c_int, // cls.realtime time the line was generated
     color: CVec4,
-    historyEditLines: [COMMAND_HISTORY]EditField,
+    history_edit_lines: [COMMAND_HISTORY]EditField,
 
-    nextHistoryLine: c_int, // the last line in the history buffer, not masked
-    historyLine: c_int, // the line being displayed from history buffer
-    consoleField: EditField,
+    next_history_line: c_int, // the last line in the history buffer, not masked
+    history_line: c_int, // the line being displayed from history buffer
+    console_field: EditField,
 
-    overlayText: idlib.List(OverlayText),
-    debugGraphs: idlib.List(*DebugGraph),
+    overlay_text: idlib.List(OverlayText),
+    debug_graphs: idlib.List(*DebugGraph),
 
-    lastVirtualScreenWidth: c_int,
-    lastVirtualScreenHeight: c_int,
+    last_virtual_screen_width: c_int,
+    last_virtual_screen_height: c_int,
 
     pub fn init(console: *Console) void {
-        console.keyCatching = false;
+        console.key_catching = false;
 
-        console.LOCALSAFE_LEFT = 0;
-        console.LOCALSAFE_RIGHT = RenderSystem.SCREEN_WIDTH - console.LOCALSAFE_LEFT;
-        console.LOCALSAFE_TOP = 24;
-        console.LOCALSAFE_BOTTOM = RenderSystem.SCREEN_HEIGHT - console.LOCALSAFE_TOP;
-        console.LOCALSAFE_WIDTH = console.LOCALSAFE_RIGHT - console.LOCALSAFE_LEFT;
-        console.LOCALSAFE_HEIGHT = console.LOCALSAFE_BOTTOM - console.LOCALSAFE_TOP;
+        console.local_safe_left = 0;
+        console.local_safe_right = RenderSystem.SCREEN_WIDTH - console.local_safe_left;
+        console.local_safe_top = 24;
+        console.local_safe_bottom = RenderSystem.SCREEN_HEIGHT - console.local_safe_top;
+        console.local_safe_width = console.local_safe_right - console.local_safe_left;
+        console.local_safe_height = console.local_safe_bottom - console.local_safe_top;
 
-        console.LINE_WIDTH = @divTrunc(console.LOCALSAFE_WIDTH, RenderSystem.SMALLCHAR_WIDTH) - 2;
-        console.TOTAL_LINES = @divTrunc(CON_TEXTSIZE, console.LINE_WIDTH);
+        console.line_width = @divTrunc(console.local_safe_width, RenderSystem.SMALLCHAR_WIDTH) - 2;
+        console.total_lines = @divTrunc(CON_TEXTSIZE, console.line_width);
 
-        console.lastKeyEvent = -1;
-        console.nextKeyEvent = CONSOLE_FIRSTREPEAT;
+        console.last_key_event = -1;
+        console.next_key_event = CONSOLE_FIRSTREPEAT;
 
-        console.consoleField.clear();
-        console.consoleField.widthInChars = console.LINE_WIDTH;
+        console.console_field.clear();
+        console.console_field.width_in_chars = console.line_width;
 
-        for (&console.historyEditLines) |*line| {
+        for (&console.history_edit_lines) |*line| {
             line.clear();
-            line.widthInChars = console.LINE_WIDTH;
+            line.width_in_chars = console.line_width;
         }
+    }
+
+    fn setDisplayFraction(console: *Console, frac: f32) void {
+        console.final_frac = frac;
+        console.frac_time = getMilliseconds();
+    }
+
+    fn clearNotifyLines(console: *Console) void {
+        console.times = std.mem.zeroes([NUM_CON_TIMES]c_int);
+    }
+
+    fn updateDisplayFraction(console: *Console) void {
+        const speed: f32 = 3;
+
+        if (speed <= 0.1) {
+            console.frac_time = getMilliseconds();
+            console.display_frac = console.final_frac;
+            return;
+        }
+
+        const delta_time: f32 = @floatFromInt(getMilliseconds() - console.frac_time);
+        const translation = speed * delta_time * 0.001;
+        if (console.final_frac < console.display_frac) {
+            console.display_frac -= translation;
+            if (console.final_frac > console.display_frac) {
+                console.display_frac = console.final_frac;
+            }
+
+            console.frac_time = getMilliseconds();
+        } else if (console.final_frac > console.display_frac) {
+            console.display_frac += translation;
+            if (console.final_frac < console.display_frac) {
+                console.display_frac = console.final_frac;
+            }
+
+            console.frac_time = getMilliseconds();
+        }
+    }
+
+    pub fn draw(console: *Console) void {
+        console.updateDisplayFraction();
+
+        // draw console background and bottom-line
+        {
+            const render = &RenderSystem.instance;
+            const line_height: f32 = 2;
+            const line_color = Vec4(f32){ .v = .{ 0.97, 0.64, 0.11, 1 } };
+            const bg_color = Vec4(f32){ .v = .{ 0, 0, 0, 0.75 } };
+            const w = @as(f32, @floatFromInt(render.getVirtualWidth()));
+            const h = @as(f32, @floatFromInt(render.getVirtualHeight()));
+            var y = console.display_frac * h - line_height;
+            if (y < 1.0) {
+                y = 0;
+            } else {
+                render.drawFilled(
+                    bg_color,
+                    .{ .w = w, .h = y },
+                );
+            }
+
+            render.drawFilled(
+                line_color,
+                .{ .y = y, .w = w, .h = line_height },
+            );
+        }
+    }
+
+    pub fn open(console: *Console) void {
+        if (console.key_catching) return;
+
+        console.console_field.clear();
+        console.key_catching = true;
+        console.setDisplayFraction(0.5);
+    }
+
+    pub fn close(console: *Console) void {
+        console.key_catching = false;
+        console.setDisplayFraction(0);
+        console.display_frac = 0;
+        console.clearNotifyLines();
     }
 };
 

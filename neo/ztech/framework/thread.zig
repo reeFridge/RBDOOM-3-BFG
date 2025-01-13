@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const FixedBufferString = @import("../string.zig").FixedBufferString;
 
 pub const Signal = struct {
@@ -56,6 +57,7 @@ pub const Thread = struct {
     const PayloadFn = fn (*Thread) u8;
 
     name: FixedBufferString(256) = .{},
+    allocator: ?Allocator = null,
     sys_thread: ?std.Thread = null,
     is_worker: bool = false,
     is_running: bool = false,
