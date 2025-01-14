@@ -116,11 +116,12 @@ const TileMap = extern struct {
 
 pub const BindingCache = extern struct {
     device: ?*nvrhi.IDevice,
-    bindingSets: idlib.List(nvrhi.BindingSetHandle),
-    bindingHash: idlib.HashIndex,
+    binding_sets: idlib.List(nvrhi.BindingSetHandle),
+    hash: idlib.HashIndex,
     mutex: idlib.SysMutex,
 
     fn init(binding_cache: *BindingCache, device: *nvrhi.IDevice) void {
+        binding_cache.hash = .{};
         binding_cache.device = device;
     }
 
@@ -128,12 +129,12 @@ pub const BindingCache = extern struct {
         _ = binding_cache.mutex.lockBlocking();
         defer binding_cache.mutex.unlock();
 
-        for (binding_cache.bindingSets.slice()) |*binding_set| {
+        for (binding_cache.binding_sets.slice()) |*binding_set| {
             _ = binding_set.reset();
         }
 
-        binding_cache.bindingSets.clear(allocator);
-        binding_cache.bindingHash.clear();
+        binding_cache.binding_sets.clear(allocator);
+        binding_cache.hash.clear();
     }
 
     pub fn getOrCreateBindingSet(
@@ -153,12 +154,12 @@ pub const BindingCache = extern struct {
             _ = binding_cache.mutex.lockBlocking();
             defer binding_cache.mutex.unlock();
 
-            const binding_sets = binding_cache.bindingSets.constSlice();
-            var i = binding_cache.bindingHash.first(hash_u16);
-            while (i != -1) : (i = binding_cache.bindingHash.next(@intCast(i))) {
+            const binding_sets = binding_cache.binding_sets.constSlice();
+            var i = binding_cache.hash.first(hash_u16);
+            while (i != -1) : (i = binding_cache.hash.next(@intCast(i))) {
                 const binding_set = binding_sets[@intCast(i)].ptr_.?;
                 if (binding_set.getDesc().eql(desc)) {
-                    result = .{ .ptr_ = binding_set };
+                    result = nvrhi.BindingSetHandle.init(binding_set);
                     break;
                 }
             }
@@ -171,8 +172,8 @@ pub const BindingCache = extern struct {
             const device = binding_cache.device orelse @panic("device is not set");
             result = device.createBindingSet(desc, layout);
 
-            const entry_index = try binding_cache.bindingSets.append(result, allocator);
-            try binding_cache.bindingHash.add(
+            const entry_index = try binding_cache.binding_sets.append(result, allocator);
+            try binding_cache.hash.add(
                 hash_u16,
                 @intCast(entry_index),
                 allocator,
@@ -190,6 +191,7 @@ pub const SamplerCache = extern struct {
     mutex: idlib.SysMutex,
 
     fn init(sampler_cache: *SamplerCache, device: *nvrhi.IDevice) void {
+        sampler_cache.hash = .{};
         sampler_cache.device = device;
     }
 
@@ -221,7 +223,7 @@ pub const SamplerCache = extern struct {
             while (i != -1) : (i = sampler_cache.hash.next(@intCast(i))) {
                 const sampler = samplers[@intCast(i)].ptr_.?;
                 if (std.meta.eql(sampler.getDesc().*, desc.*)) {
-                    result = .{ .ptr_ = sampler };
+                    result = nvrhi.SamplerHandle.init(sampler);
                     break;
                 }
             }
@@ -267,6 +269,7 @@ const PipelineCache = extern struct {
     pipelines: idlib.List(CppStdPair(PipelineKey, nvrhi.GraphicsPipelineHandle)),
 
     fn init(pipeline_cache: *PipelineCache, device: *nvrhi.IDevice) void {
+        pipeline_cache.hash = .{};
         pipeline_cache.device = nvrhi.DeviceHandle.init(device);
     }
 
@@ -298,7 +301,9 @@ const PipelineCache = extern struct {
         var i = pipeline_cache.hash.first(hash_u16);
         while (i != -1) : (i = pipeline_cache.hash.next(@intCast(i))) {
             if (std.meta.eql(pipelines[@intCast(i)].first, key.*)) {
-                return pipelines[@intCast(i)].second;
+                return nvrhi.GraphicsPipelineHandle.init(
+                    pipelines[@intCast(i)].second.ptr_,
+                );
             }
         }
 
@@ -1186,7 +1191,7 @@ pub const RenderBackend = extern struct {
             }
         }
 
-        const pipeline = pipeline: {
+        var pipeline = pipeline: {
             const key = PipelineCache.PipelineKey{
                 .state = backend.gl_state_bits,
                 .program = prog_manager.currentIndex,
@@ -1208,6 +1213,7 @@ pub const RenderBackend = extern struct {
 
             break :pipeline pipeline;
         };
+        defer pipeline.deinit();
 
         if (!std.meta.eql(backend.current_viewport, backend.state_viewport)) {
             backend.state_viewport = backend.current_viewport;
