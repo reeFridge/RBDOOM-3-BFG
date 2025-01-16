@@ -5,6 +5,7 @@ const Vec4 = @import("../math/vector.zig").Vec4;
 const CVec4 = @import("../math/vector.zig").CVec4;
 const EditField = @import("edit_field.zig").EditField;
 const RenderSystem = @import("../renderer/render_system.zig");
+const Allocator = std.mem.Allocator;
 
 const CON_TEXTSIZE = 0x30000;
 const NUM_CON_TIMES = 4;
@@ -123,12 +124,12 @@ pub const Console = extern struct {
         }
     }
 
-    pub fn draw(console: *Console) void {
+    pub fn draw(console: *Console, allocator: Allocator) Allocator.Error!void {
         console.updateDisplayFraction();
+        const render = &RenderSystem.instance;
 
         // draw console background and bottom-line
         {
-            const render = &RenderSystem.instance;
             const line_height: f32 = 2;
             const line_color = Vec4(f32){ .v = .{ 0.97, 0.64, 0.11, 1 } };
             const bg_color = Vec4(f32){ .v = .{ 0, 0, 0, 0.75 } };
@@ -138,16 +139,30 @@ pub const Console = extern struct {
             if (y < 1.0) {
                 y = 0;
             } else {
-                render.drawFilled(
+                try render.drawFilled(
                     bg_color,
                     .{ .w = w, .h = y },
+                    allocator,
                 );
             }
 
-            render.drawFilled(
+            try render.drawFilled(
                 line_color,
                 .{ .y = y, .w = w, .h = line_height },
+                allocator,
             );
+        }
+
+        {
+            const str: []const u8 = "ztech [v0.0.1]";
+            for (str, 0..) |char, i| {
+                try render.drawSmallChar(
+                    @intCast(i * RenderSystem.SMALLCHAR_WIDTH + 10),
+                    10,
+                    char,
+                    allocator,
+                );
+            }
         }
     }
 

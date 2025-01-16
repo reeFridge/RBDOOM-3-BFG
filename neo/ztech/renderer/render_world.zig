@@ -541,17 +541,20 @@ const ViewLight = @import("common.zig").ViewLight;
 const ViewEnvprobe = @import("common.zig").ViewEnvprobe;
 const DrawSurface = @import("common.zig").DrawSurface;
 
-extern fn R_AddInGameGuis2([*][*]DrawSurface, c_int, *ViewDef, *GuiModel) void;
+extern fn R_AddInGameGuis2([*]*DrawSurface, c_int, *ViewDef, *GuiModel) void;
 extern fn R_OptimizeViewLightsList(*ViewDef) void;
-extern fn R_SortDrawSurfs([*][*]DrawSurface, c_int) void;
+extern fn R_SortDrawSurfs([*]*DrawSurface, c_int) void;
 
 pub const RenderSceneError = RenderViewError;
-pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) RenderSceneError!void {
+pub fn renderScene(
+    render_world: *RenderWorld,
+    render_view: RenderView,
+) RenderSceneError!void {
     if (!RenderSystem.instance.initialized) return;
 
     // close any gui drawing
-    RenderSystem.instance.gui_model.emitFullScreen(null);
-    RenderSystem.instance.gui_model.clear();
+    try RenderSystem.instance.gui_model.emitFullScreen(null, render_world.allocator);
+    try RenderSystem.instance.gui_model.clear(render_world.allocator);
 
     const r_skip_front_end = false;
 
@@ -565,7 +568,11 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) RenderSc
     var window_height = RenderSystem.instance.getHeight();
 
     RenderSystem.instance.performResolutionScaling(&window_width, &window_height);
-    RenderSystem.instance.cropRenderSize(window_width, window_height);
+    try RenderSystem.instance.cropRenderSize(
+        window_width,
+        window_height,
+        render_world.allocator,
+    );
     view_def.viewport = RenderSystem.instance.getCroppedViewport();
 
     view_def.scissor.x1 = 0;
@@ -588,8 +595,8 @@ pub fn renderScene(render_world: *RenderWorld, render_view: RenderView) RenderSc
     try render_world.renderView(view_def);
     renderPostProcess(view_def);
 
-    RenderSystem.instance.uncrop();
-    RenderSystem.instance.gui_model.clear();
+    try RenderSystem.instance.uncrop(render_world.allocator);
+    try RenderSystem.instance.gui_model.clear(render_world.allocator);
 }
 
 const RenderViewError = Material.EvaluateRegistersError;
@@ -702,12 +709,11 @@ fn findClosestEnvironmentProbes(_: RenderWorld, view_def: *ViewDef) void {
 /// It is important to do this after all drawSurfs for the current
 /// view have been generated, because it may create a subview which
 /// would change tr.viewCount.
-fn generateSubviews(_: *RenderWorld, draw_surfs: [][*]const DrawSurface) void {
+fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
     const skip_subviews = false;
     if (skip_subviews) return;
 
-    for (draw_surfs, 0..) |surf_array_ptr, i| {
-        const surf_ptr = surf_array_ptr[i];
+    for (draw_surfs) |surf_ptr| {
         const surf_material = surf_ptr.material orelse continue;
         if (!surf_material.has_subview) continue;
 

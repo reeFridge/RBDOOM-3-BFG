@@ -41,7 +41,8 @@ export fn ztech_renderSystem_drawStretchPicture(
         bottom_left.toVec4f(),
         opt_material,
         z,
-    );
+        global.gpa.allocator(),
+    ) catch unreachable;
 }
 
 export fn ztech_renderSystem_setColor(color: CVec4) callconv(.C) void {
@@ -84,7 +85,9 @@ export fn ztech_renderSystem_invalidateSwapBuffers() callconv(.C) void {
 }
 
 export fn ztech_renderSystem_swapCommandBuffers() callconv(.C) ?*FrameData.EmptyCommand {
-    return RenderSystem.instance.swapCommandBuffers() catch @panic("swap buffers");
+    return RenderSystem.instance.swapCommandBuffers(
+        global.gpa.allocator(),
+    ) catch @panic("swap buffers");
 }
 
 export fn ztech_renderSystem_finishRendering() callconv(.C) void {
@@ -96,7 +99,9 @@ export fn ztech_renderSystem_getShaderTime() callconv(.C) f32 {
 }
 
 export fn ztech_renderSystem_finishCommandBuffers() callconv(.C) ?*FrameData.EmptyCommand {
-    return RenderSystem.instance.finishCommandBuffers();
+    return RenderSystem.instance.finishCommandBuffers(
+        global.gpa.allocator(),
+    ) catch unreachable;
 }
 
 export fn ztech_renderSystem_initBackend() callconv(.C) void {

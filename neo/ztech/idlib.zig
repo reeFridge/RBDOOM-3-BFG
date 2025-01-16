@@ -297,6 +297,11 @@ pub fn List(T: type) type {
             return new_item;
         }
 
+        pub fn setNumAssureSize(self: *Self, num: usize) void {
+            std.debug.assert(num <= self.size);
+            self.num = @intCast(num);
+        }
+
         pub fn setNum(
             self: *Self,
             num: usize,
@@ -689,8 +694,6 @@ pub const HashIndex = extern struct {
         const index_chain = try allocator.alloc(i32, new_size);
         @memcpy(index_chain[0..old_index_size], old_index_chain);
         @memset(index_chain[old_index_size..new_size], null_index);
-
-        std.debug.print("old_index_size = {}\n", .{old_index_size});
 
         allocator.free(old_index_chain);
         hash_index.index_chain = index_chain.ptr;

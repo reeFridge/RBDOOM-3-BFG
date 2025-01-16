@@ -156,7 +156,7 @@ pub const SoundWindow = extern struct {
     base: Cinematic,
     show_waveform: bool,
 
-    pub fn create(allocator: std.mem.Allocator) std.mem.Allocator.Error!*SoundWindow {
+    pub fn create(allocator: Allocator) Allocator.Error!*SoundWindow {
         const ptr = try allocator.create(SoundWindow);
         ptr.show_waveform = false;
         // TODO: init base
@@ -480,7 +480,7 @@ pub const Material = extern struct {
 
     pub const ParseError =
         EvaluateRegistersError ||
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         ParseMaterialError ||
         Lexer.LoadMemoryError;
 
@@ -488,7 +488,7 @@ pub const Material = extern struct {
         material: *Material,
         definition_text: []const u8,
         allow_binary_version: bool,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) ParseError!void {
         _ = allow_binary_version;
 
@@ -715,14 +715,14 @@ pub const Material = extern struct {
 
     fn makeDefault(
         material: *Material,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) DeclLocal.MakeDefaultError!void {
         const decl_local = material.base.base.?;
         const rt_decl_type = decl.instance.getRuntimeType(decl_local.decl_type);
         try decl_local.makeDefault(rt_decl_type, allocator);
     }
 
-    fn checkForConstantRegisters(material: *Material, allocator: std.mem.Allocator) EvaluateRegistersError!void {
+    fn checkForConstantRegisters(material: *Material, allocator: Allocator) EvaluateRegistersError!void {
         std.debug.assert(material.constant_registers == null);
 
         if (!material.pd.?.registers_are_constant) return;
@@ -753,10 +753,18 @@ pub const Material = extern struct {
     fn parseMaterial(
         material: *Material,
         lexer: *Lexer,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) ParseMaterialError!void {
         var token = Token{};
         defer token.deinit(allocator);
+
+        material.num_ops = 0;
+        material.num_registers = ExpRegisters.num_predefined;
+        for (0..ExpRegisters.num_predefined) |i| {
+            material.pd.?.register_is_temporary[i] = true;
+        }
+        material.num_stages = 0;
+        material.pd.?.registers_are_constant = true;
 
         var trp_default: TextureRepeat = .repeat;
 
@@ -950,8 +958,8 @@ pub const Material = extern struct {
 
     pub fn setDefaultText(
         material: *Material,
-        allocator: std.mem.Allocator,
-    ) std.mem.Allocator.Error!void {
+        allocator: Allocator,
+    ) Allocator.Error!void {
         const decl_local = material.base.base orelse @panic("uninitialized material");
 
         var buffer: [2048]u8 = undefined;
@@ -982,7 +990,7 @@ pub const Material = extern struct {
         try decl_local.setText(generated_text, allocator);
     }
 
-    pub fn freeData(material: *Material, allocator: std.mem.Allocator) void {
+    pub fn freeData(material: *Material, allocator: Allocator) void {
         if (material.stages) |stages| {
             const slice = stages[0..material.num_stages];
             for (slice) |*stage| {
@@ -1056,7 +1064,7 @@ pub const Material = extern struct {
             null;
     }
 
-    pub const EvaluateRegistersError = std.mem.Allocator.Error || decl.DeclTable.ParseError;
+    pub const EvaluateRegistersError = Allocator.Error || decl.DeclTable.ParseError;
     pub fn evaluateRegisters(
         material: *const Material,
         registers: []f32,
@@ -1064,10 +1072,13 @@ pub const Material = extern struct {
         global_params: []const f32,
         time: f32,
         sound_emitter: ?*anyopaque,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) EvaluateRegistersError!void {
-        for (ExpRegisters.num_predefined..material.num_registers) |i| {
-            registers[i] = material.expression_registers.?[i];
+        {
+            var i = ExpRegisters.num_predefined;
+            while (i < material.num_registers) : (i += 1) {
+                registers[i] = material.expression_registers.?[i];
+            }
         }
 
         // copy the local and global parameters
@@ -1093,7 +1104,8 @@ pub const Material = extern struct {
         registers[@intFromEnum(ExpRegisters.global6)] = global_params[6];
         registers[@intFromEnum(ExpRegisters.global7)] = global_params[7];
 
-        for (material.ops.?[0..material.num_ops]) |op| {
+        const ops = if (material.ops) |ops_ptr| ops_ptr[0..material.num_ops] else return;
+        for (ops) |op| {
             switch (op.op_type) {
                 .add => {
                     registers[op.c] = registers[op.a] + registers[op.b];
@@ -1229,7 +1241,7 @@ pub const Material = extern struct {
         material: *Material,
         lexer: *Lexer,
         trp_default: TextureRepeat,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) ParseStageError!void {
         if (material.num_stages >= max_shader_stages) {
             material.material_flags.defaulted = true;
@@ -1867,13 +1879,13 @@ pub const Material = extern struct {
     }
 
     const AddImplicitStagesError =
-        std.mem.Allocator.Error ||
+        Allocator.Error ||
         ParseStageError ||
         Lexer.LoadMemoryError;
     fn addImplicitStages(
         material: *Material,
         trp_default: TextureRepeat,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
     ) AddImplicitStagesError!void {
         var has_bump = false;
         var has_diffuse = false;

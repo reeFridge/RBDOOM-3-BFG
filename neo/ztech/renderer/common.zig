@@ -31,6 +31,8 @@ const RenderWorld = @import("render_world.zig");
 const Decl = @import("../framework/decl_manager.zig").Decl;
 const DeclType = @import("../framework/decl_manager.zig").DeclType;
 
+pub const initial_draw_surfaces = 2048;
+
 pub const VertexLayoutType = enum(c_int) {
     UNKNOWN = 0, // RB: TODO -1
     DRAW_VERT,
@@ -373,7 +375,7 @@ pub const ViewDef = extern struct {
     scissor: ScreenRect,
     superView: ?*ViewDef,
     subviewSurface: ?*const DrawSurface,
-    drawSurfs: ?[*][*]DrawSurface,
+    drawSurfs: ?[*]*DrawSurface,
     numDrawSurfs: u32,
     maxDrawSurfs: u32,
     viewLights: ?*ViewLight,
@@ -399,6 +401,12 @@ pub const ViewDef = extern struct {
         0,  1, 0,  0,
         0,  0, 0,  1,
     };
+
+    pub fn addDrawCommand(view_def: *ViewDef, gui_only: bool) void {
+        var cmd = FrameData.createCommand(FrameData.DrawSurfacesCommand);
+        cmd.commandId = if (gui_only) .RC_DRAW_VIEW_GUI else .RC_DRAW_VIEW_3D;
+        cmd.viewDef = view_def;
+    }
 
     pub fn setupUnprojection(view_def: *ViewDef) void {
         render_matrix.fullInverseSlice(

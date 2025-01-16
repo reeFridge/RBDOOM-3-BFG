@@ -23,9 +23,10 @@ const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
 const frameToMsec = @import("../game.zig").frameToMsec;
 
 fn runGameFrameAndDraw(self: *thread.Thread) u8 {
-    _ = self;
+    if (self.allocator) |allocator| {
+        console.instance.draw(allocator) catch return 1;
+    }
 
-    console.instance.draw();
     return 0;
 }
 
@@ -48,7 +49,7 @@ pub const Common = opaque {
     ) void;
 
     pub fn frame(_: *Common, allocator: Allocator) !void {
-        const render_commands = try RenderSystem.instance.swapCommandBuffers();
+        const render_commands = try RenderSystem.instance.swapCommandBuffers(allocator);
 
         // how many frames to run
         var num_frames: u32 = 0;
@@ -182,6 +183,7 @@ pub const Common = opaque {
     }
 
     const RenderError =
+        RenderSystem.SwapCommandBuffersError ||
         DeclManager.FindDeclError ||
         RenderBackend.ExecuteCommandsError ||
         RenderBackend.SwapBuffersError;
@@ -224,7 +226,7 @@ pub const Common = opaque {
         const color_black = Vec4(f32){ .v = .{ 0, 0, 0, 1 } };
         if (bar_height > 0.0) {
             rs.setColor(color_black);
-            rs.drawStretchPicture(
+            try rs.drawStretchPicture(
                 .{
                     .x = 0,
                     .y = 0,
@@ -232,8 +234,9 @@ pub const Common = opaque {
                     .h = bar_height,
                 },
                 white_material,
+                allocator,
             );
-            rs.drawStretchPicture(
+            try rs.drawStretchPicture(
                 .{
                     .x = 0,
                     .y = virtual_height_f - bar_height,
@@ -241,12 +244,13 @@ pub const Common = opaque {
                     .h = bar_height,
                 },
                 white_material,
+                allocator,
             );
         }
 
         if (bar_width > 0.0) {
             rs.setColor(color_black);
-            rs.drawStretchPicture(
+            try rs.drawStretchPicture(
                 .{
                     .x = 0,
                     .y = 0,
@@ -254,8 +258,9 @@ pub const Common = opaque {
                     .h = virtual_height_f,
                 },
                 white_material,
+                allocator,
             );
-            rs.drawStretchPicture(
+            try rs.drawStretchPicture(
                 .{
                     .x = virtual_width_f - bar_width,
                     .y = 0,
@@ -263,11 +268,12 @@ pub const Common = opaque {
                     .h = virtual_height_f,
                 },
                 white_material,
+                allocator,
             );
         }
 
         rs.setColor(.{ .v = .{ 1, 1, 1, 1 } });
-        rs.drawStretchPicture(
+        try rs.drawStretchPicture(
             .{
                 .x = bar_width,
                 .y = bar_height,
@@ -275,10 +281,11 @@ pub const Common = opaque {
                 .h = virtual_height_f - bar_height * 2.0,
             },
             splash_screen,
+            allocator,
         );
 
         try rs.renderCommandBuffers(
-            try rs.swapCommandBuffers(),
+            try rs.swapCommandBuffers(allocator),
             allocator,
         );
 

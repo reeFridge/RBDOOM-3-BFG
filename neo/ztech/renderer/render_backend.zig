@@ -867,7 +867,7 @@ pub const RenderBackend = extern struct {
 
         try backend.drawShaderPasses(
             command_list,
-            view_def.drawSurfs.?[0][0..view_def.numDrawSurfs],
+            view_def.drawSurfs.?[0..view_def.numDrawSurfs],
             allocator,
         );
 
@@ -900,7 +900,7 @@ pub const RenderBackend = extern struct {
     fn drawShaderPasses(
         backend: *RenderBackend,
         command_list: *nvrhi.ICommandList,
-        draw_surfaces: []const DrawSurface,
+        draw_surfaces: []*const DrawSurface,
         allocator: Allocator,
     ) Allocator.Error!void {
         const prog_manager = render_prog_manager.instance;
@@ -913,7 +913,7 @@ pub const RenderBackend = extern struct {
             nvrhi_context.current_image_param = 0;
         }
 
-        for (draw_surfaces) |*draw_surface| {
+        for (draw_surfaces) |draw_surface| {
             const cull_mode = gl_state.GLS_CULL_TWOSIDED;
             const surface_gl_state = draw_surface.extraGLState | cull_mode;
             const shader = draw_surface.material orelse continue;

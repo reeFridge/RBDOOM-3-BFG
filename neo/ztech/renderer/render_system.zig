@@ -14,10 +14,10 @@ const vulkan_impl = @import("../sys/sdl/vulkan.zig");
 const Image = @import("image.zig").Image;
 const Allocator = std.mem.Allocator;
 
-pub const SMALLCHAR_WIDTH: c_int = 8;
-pub const SMALLCHAR_HEIGHT: c_int = 16;
-pub const BIGCHAR_WIDTH: c_int = 16;
-pub const BIGCHAR_HEIGHT: c_int = 16;
+pub const SMALLCHAR_WIDTH: u32 = 8;
+pub const SMALLCHAR_HEIGHT: u32 = 16;
+pub const BIGCHAR_WIDTH: u32 = 16;
+pub const BIGCHAR_HEIGHT: u32 = 16;
 
 // all drawing is done to a 640 x 480 virtual screen size
 // and will be automatically scaled to the real resolution
@@ -45,11 +45,12 @@ pub const Stereo3DMode = enum(c_int) {
     HDMI_720,
 };
 
-pub const STEREO_DEPTH_TYPE_NONE: c_int = 0;
-pub const STEREO_DEPTH_TYPE_NEAR: c_int = 1;
-pub const STEREO_DEPTH_TYPE_MID: c_int = 2;
-pub const STEREO_DEPTH_TYPE_FAR: c_int = 3;
-pub const sereoDepthType_t = c_int;
+pub const StereoDepthType = enum(c_int) {
+    none,
+    near,
+    mid,
+    far,
+};
 
 pub const glconfig_t = extern struct {
     vendor: graphicsVendor_t,
@@ -147,7 +148,7 @@ const TestImageTris = struct {
     const num_indexes = 6;
     const num_verts = 4;
 
-    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeVerts(tri: *SurfaceTriangles, allocator: Allocator) void {
         const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
@@ -171,7 +172,7 @@ const TestImageTris = struct {
         }
     }
 
-    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: Allocator) void {
         const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         const indexes_: [num_indexes]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
@@ -185,7 +186,7 @@ const FullScreenTris = struct {
     const num_indexes = 6;
     const num_verts = 4;
 
-    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeVerts(tri: *SurfaceTriangles, allocator: Allocator) void {
         const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
@@ -213,7 +214,7 @@ const FullScreenTris = struct {
         }
     }
 
-    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: Allocator) void {
         const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         const indexes_: [num_indexes]sys_types.TriIndex = .{ 3, 0, 2, 2, 0, 1 };
@@ -227,7 +228,7 @@ const ZeroOneCubeTris = struct {
     const num_indexes = 36;
     const num_verts = 8;
 
-    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeVerts(tri: *SurfaceTriangles, allocator: Allocator) void {
         const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
@@ -259,7 +260,7 @@ const ZeroOneCubeTris = struct {
         }
     }
 
-    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: Allocator) void {
         const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         for (indexes) |*index| {
@@ -318,7 +319,7 @@ const ZeroOneSphereTris = struct {
     const num_verts = rings * sectors;
     const num_indexes = ((rings - 1) * sectors) * 6;
 
-    fn makeIndexes(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeIndexes(tri: *SurfaceTriangles, allocator: Allocator) void {
         const indexes = tri.allocIndexes(allocator, num_indexes) catch unreachable;
 
         for (indexes) |*index| {
@@ -349,7 +350,7 @@ const ZeroOneSphereTris = struct {
         }
     }
 
-    fn makeVerts(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+    fn makeVerts(tri: *SurfaceTriangles, allocator: Allocator) void {
         const verts = tri.allocVertices(allocator, num_verts) catch unreachable;
 
         for (verts) |*vert| {
@@ -384,7 +385,7 @@ const ZeroOneSphereTris = struct {
     }
 };
 
-fn initGlobalTris(params: anytype, allocator: std.mem.Allocator) *SurfaceTriangles {
+fn initGlobalTris(params: anytype, allocator: Allocator) *SurfaceTriangles {
     var tri = SurfaceTriangles.create(allocator) catch unreachable;
     tri.numVerts = params.num_verts;
     tri.numIndexes = params.num_indexes;
@@ -394,7 +395,7 @@ fn initGlobalTris(params: anytype, allocator: std.mem.Allocator) *SurfaceTriangl
     return tri;
 }
 
-fn deinitGlobalTris(tri: *SurfaceTriangles, allocator: std.mem.Allocator) void {
+fn deinitGlobalTris(tri: *SurfaceTriangles, allocator: Allocator) void {
     tri.deinit(allocator);
 }
 
@@ -475,7 +476,7 @@ const global = @import("../global.zig");
 pub const InitBackendError = RenderBackend.InitError || Image.ActuallyLoadImageError;
 pub fn initBackend(
     render_system: *RenderSystem,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
 ) InitBackendError!void {
     if (render_system.initialized) return;
     // also inits frame_data
@@ -502,7 +503,7 @@ extern fn c_renderSystem_initColorMappings(f32, f32, [*]c_ushort) void;
 extern fn c_renderSystem_initImgui(?*const Material) void;
 const framebuffer = @import("framebuffer.zig");
 
-pub fn createRenderWorld(render_system: *RenderSystem, allocator: std.mem.Allocator) !*RenderWorld {
+pub fn createRenderWorld(render_system: *RenderSystem, allocator: Allocator) !*RenderWorld {
     if (!render_system.initialized) unreachable;
 
     const render_world_ptr = try allocator.create(RenderWorld);
@@ -517,7 +518,7 @@ pub fn createRenderWorld(render_system: *RenderSystem, allocator: std.mem.Alloca
 
 pub fn destroyRenderWorld(
     render_system: *RenderSystem,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     world: *RenderWorld,
 ) void {
     if (!render_system.initialized) unreachable;
@@ -535,12 +536,13 @@ pub fn destroyRenderWorld(
 }
 
 pub const InitError =
+    SwapCommandBuffersError ||
     RenderBackend.SwapBuffersError ||
-    std.mem.Allocator.Error ||
+    Allocator.Error ||
     decl_manager.DeclManager.FindDeclError;
 pub fn init(
     render_system: *RenderSystem,
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
 ) InitError!void {
     render_system.view_count = 1;
     render_system.worlds = std.ArrayList(*RenderWorld).init(allocator);
@@ -557,8 +559,8 @@ pub fn init(
     // TODO: UpdateStereo3DMode();
     // TODO: idCinematic::InitCinematic();
     try frame_data.init(allocator);
-    var gui_model = GuiModel.heapCreate();
-    gui_model.clear();
+    var gui_model = try GuiModel.create(allocator);
+    try gui_model.clear(allocator);
     render_system.gui_model = gui_model;
 
     try image_manager.instance.init(allocator);
@@ -647,10 +649,10 @@ pub fn init(
 
     // For VULKAN only!
     render_system.omit_swap_buffers = true;
-    _ = try render_system.swapCommandBuffers();
+    _ = try render_system.swapCommandBuffers(allocator);
 }
 
-pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
+pub fn deinit(render_system: *RenderSystem, allocator: Allocator) void {
     for (render_system.worlds.items) |world_ptr| {
         world_ptr.deinit();
         allocator.destroy(world_ptr);
@@ -670,7 +672,7 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     render_model_manager.instance.shutdown(allocator);
     image_manager.instance.shutdown(allocator);
     framebuffer.shutdown(allocator);
-    render_system.gui_model.heapDestroy();
+    render_system.gui_model.destroy(allocator);
     frame_data.shutdown(allocator);
 
     const device = device_manager.instance().getDevice();
@@ -688,10 +690,16 @@ pub fn deinit(render_system: *RenderSystem, allocator: std.mem.Allocator) void {
     render_system.* = RenderSystem{};
 }
 
-pub fn swapCommandBuffers(render_system: *RenderSystem) RenderBackend.SwapBuffersError!?*frame_data.EmptyCommand {
+pub const SwapCommandBuffersError =
+    FinishCommandBuffersError ||
+    RenderBackend.SwapBuffersError;
+pub fn swapCommandBuffers(
+    render_system: *RenderSystem,
+    allocator: Allocator,
+) SwapCommandBuffersError!?*frame_data.EmptyCommand {
     try render_system.finishRendering();
 
-    return render_system.finishCommandBuffers();
+    return try render_system.finishCommandBuffers(allocator);
 }
 
 pub fn finishRendering(
@@ -717,11 +725,15 @@ extern fn R_InitDrawSurfFromTri(
     *nvrhi.ICommandList,
 ) void;
 
-pub fn finishCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyCommand {
+pub const FinishCommandBuffersError = Allocator.Error || GuiModel.EmitSurfacesError;
+pub fn finishCommandBuffers(
+    render_system: *RenderSystem,
+    allocator: Allocator,
+) FinishCommandBuffersError!?*frame_data.EmptyCommand {
     if (!render_system.initialized) return null;
 
-    render_system.gui_model.emitFullScreen(null);
-    render_system.gui_model.clear();
+    try render_system.gui_model.emitFullScreen(null, allocator);
+    try render_system.gui_model.clear(allocator);
 
     // unmap the buffer objects so they can be used by the GPU
     vertex_cache.instance.beginBackend();
@@ -746,7 +758,7 @@ pub fn finishCommandBuffers(render_system: *RenderSystem) ?*frame_data.EmptyComm
     // possibly change the stereo3D mode
     // TODO: UpdateStereo3DMode();
 
-    render_system.gui_model.beginFrame();
+    try render_system.gui_model.beginFrame(allocator);
 
     // Make sure that geometry used by code is present in the buffer cache.
     // These use frame buffer cache (not static) because they may be used during
@@ -849,14 +861,18 @@ pub fn performResolutionScaling(
     height.* = @intFromFloat(fheight * y_scale);
 }
 
-pub fn uncrop(render_system: *RenderSystem) void {
+pub const UncropError = Allocator.Error || GuiModel.EmitSurfacesError;
+pub fn uncrop(
+    render_system: *RenderSystem,
+    allocator: Allocator,
+) UncropError!void {
     if (!render_system.initialized) return;
 
     if (render_system.current_render_crop < 1)
         unreachable;
 
-    render_system.gui_model.emitFullScreen(null);
-    render_system.gui_model.clear();
+    try render_system.gui_model.emitFullScreen(null, allocator);
+    try render_system.gui_model.clear(allocator);
 
     render_system.current_render_crop -= 1;
 }
@@ -865,11 +881,17 @@ pub fn getCroppedViewport(render_system: *const RenderSystem) ScreenRect {
     return render_system.render_crops[render_system.current_render_crop];
 }
 
-pub fn cropRenderSize(render_system: *RenderSystem, width: u32, height: u32) void {
+pub const CropRenderSizeError = Allocator.Error || GuiModel.EmitSurfacesError;
+pub fn cropRenderSize(
+    render_system: *RenderSystem,
+    width: u32,
+    height: u32,
+    allocator: Allocator,
+) CropRenderSizeError!void {
     if (!render_system.initialized) return;
 
-    render_system.gui_model.emitFullScreen(null);
-    render_system.gui_model.clear();
+    try render_system.gui_model.emitFullScreen(null, allocator);
+    try render_system.gui_model.clear(allocator);
 
     if (width < 1 or height < 1)
         unreachable;
@@ -957,9 +979,44 @@ pub fn drawFilled(
     render_system: *RenderSystem,
     color: Vec4(f32),
     params: PictureParams,
-) void {
+    allocator: Allocator,
+) Allocator.Error!void {
     render_system.setColor(color);
-    render_system.drawStretchPicture(params, render_system.white_material);
+    try render_system.drawStretchPicture(
+        params,
+        render_system.white_material,
+        allocator,
+    );
+}
+
+pub fn drawSmallChar(
+    render_system: *RenderSystem,
+    x: i32,
+    y: i32,
+    char: u8,
+    allocator: Allocator,
+) Allocator.Error!void {
+    if (char == ' ') return;
+    if (y < -@as(i32, @intCast(SMALLCHAR_HEIGHT))) return;
+
+    const size = 0.0625;
+    const row = @as(f32, @floatFromInt(char >> 4)) * size;
+    const col = @as(f32, @floatFromInt(char & 15)) * size;
+
+    try render_system.drawStretchPicture(
+        .{
+            .x = @floatFromInt(x),
+            .y = @floatFromInt(y),
+            .w = @floatFromInt(SMALLCHAR_WIDTH),
+            .h = @floatFromInt(SMALLCHAR_HEIGHT),
+            .s1 = col,
+            .t1 = row,
+            .s2 = col + size,
+            .t2 = row + size,
+        },
+        render_system.char_set_material,
+        allocator,
+    );
 }
 
 pub const PictureParams = struct {
@@ -977,14 +1034,16 @@ pub fn drawStretchPicture(
     render_system: *RenderSystem,
     params: PictureParams,
     opt_material: ?*const Material,
-) void {
-    render_system.drawStretchPictureVecs(
+    allocator: Allocator,
+) Allocator.Error!void {
+    try render_system.drawStretchPictureVecs(
         .{ .v = .{ params.x, params.y, params.s1, params.t1 } },
         .{ .v = .{ params.x + params.w, params.y, params.s2, params.t1 } },
         .{ .v = .{ params.x + params.w, params.y + params.h, params.s2, params.t2 } },
         .{ .v = .{ params.x, params.y + params.h, params.s1, params.t2 } },
         opt_material,
         params.z,
+        allocator,
     );
 }
 
@@ -997,15 +1056,17 @@ pub fn drawStretchPictureVecs(
     bottom_left: Vec4(f32),
     opt_material: ?*const Material,
     z: f32,
-) void {
+    allocator: Allocator,
+) Allocator.Error!void {
     if (!render_system.initialized) return;
     const material = opt_material orelse return;
-    const verts = render_system.gui_model.allocTris(
+    const verts = try render_system.gui_model.allocTris(
         4,
         &quad_pic_indexes,
         material,
         render_system.current_gl_state,
-        STEREO_DEPTH_TYPE_NONE,
+        .none,
+        allocator,
     ) orelse return;
 
     var local_verts: [4]DrawVertex align(16) = std.mem.zeroes([4]DrawVertex);
