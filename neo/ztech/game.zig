@@ -7,6 +7,8 @@ const Player = @import("entity_types/player.zig");
 const idlib = @import("idlib.zig");
 const Decl = @import("framework/decl_manager.zig").Decl;
 const DeclType = @import("framework/decl_manager.zig").DeclType;
+const ztech_lib = @import("lib.zig");
+const Allocator = std.mem.Allocator;
 
 const cmd = @import("framework/cmd_system.zig");
 const CmdDecl = cmd.CmdDecl;
@@ -17,7 +19,7 @@ fn cmd_printCurrentTime(_: *const cmd.CmdArgs) callconv(.C) void {
 pub const print_current_time: CmdDecl = .{
     .name = "printCurrentTime",
     .function = cmd_printCurrentTime,
-    .flags = cmd.CmdFlags.CMD_FL_GAME,
+    .flags = cmd.CmdFlags.game,
     .description = "prints current game time in microsec",
     .arg_completion = null,
 };
@@ -28,7 +30,7 @@ fn cmd_printCurrentFrame(_: *const cmd.CmdArgs) callconv(.C) void {
 pub const print_current_frame = CmdDecl{
     .name = "printCurrentFrame",
     .function = cmd_printCurrentFrame,
-    .flags = cmd.CmdFlags.CMD_FL_GAME,
+    .flags = cmd.CmdFlags.game,
     .description = "prints current game frame",
     .arg_completion = null,
 };
@@ -65,9 +67,6 @@ pub extern fn c_declIndex(*const anyopaque) callconv(.C) c_int;
 
 const pvs = @import("pvs.zig");
 
-extern fn c_getClientPvs([*]c_int, usize) callconv(.C) pvs.Handle;
-extern fn c_freeClientPvs(pvs.Handle) callconv(.C) void;
-
 // Latched version of cvar, updated between map loads
 pub const com_engineHz_latched: f32 = 60;
 pub const com_engineHz_numerator: u64 = 100 * 1000;
@@ -83,6 +82,7 @@ pub inline fn frameToMsec(frame: usize) usize {
 num_clients: usize = 0,
 frame: usize = 0,
 render_world: ?*RenderWorld = null,
+pvs: pvs.PotentialVisibleSet = .{},
 // merged pvs of all players
 player_pvs: pvs.Handle = .{},
 // all areas connected to any player area
@@ -105,8 +105,23 @@ pub fn draw(game: *Game) DrawError!void {
     try render_world.renderScene(player_view.render_view);
 }
 
-pub fn initFromMap(game: *Game, render_world: *RenderWorld) void {
+pub fn init(game: *Game) void {
+    _ = game;
+    ztech_lib.ztech_init();
+}
+
+pub fn initForMap(
+    game: *Game,
+    map_name: []const u8,
+    render_world: *RenderWorld,
+    allocator: Allocator,
+) Allocator.Error!void {
     game.render_world = render_world;
+
+    _ = map_name;
+    try game.pvs.init(render_world, allocator);
+    // load map_file and parse it
+    // populate entities from map_file
 }
 
 pub const MS2SEC: f32 = 0.001;
@@ -120,7 +135,7 @@ pub fn deltaTimeMs(game: Game) usize {
 }
 
 pub fn runFrame(game: *Game) void {
-    if (game.render_world == null) return;
+    const render_world = game.render_world orelse return;
     game.prev_time = frameToMsec(game.frame);
     game.frame += 1;
     game.time = frameToMsec(game.frame);
@@ -131,7 +146,7 @@ pub fn runFrame(game: *Game) void {
         const player_view = &players.items(.view)[0];
         RenderSystem.instance.primary_render_view = player_view.render_view;
 
-        game.setupPlayerPvs(&players.items(.pvs_areas)[0]);
+        game.setupPlayerPvs(&players.items(.pvs_areas)[0], render_world);
     }
 
     game.processEntities();
@@ -139,20 +154,32 @@ pub fn runFrame(game: *Game) void {
     game.freePlayerPvs();
 }
 
-fn setupPlayerPvs(game: *Game, player_areas: *Player.PVSAreas) void {
-    game.player_pvs = c_getClientPvs(&player_areas.ids, player_areas.len);
-    game.player_connected_areas = c_getClientPvs(&player_areas.ids, player_areas.len);
+fn setupPlayerPvs(
+    game: *Game,
+    player_areas: *Player.PVSAreas,
+    render_world: *const RenderWorld,
+) void {
+    game.player_pvs = game.pvs.setupCurrentPVS(
+        &player_areas.ids,
+        .normal,
+        render_world,
+    );
+    game.player_connected_areas = game.pvs.setupCurrentPVS(
+        &player_areas.ids,
+        .normal,
+        render_world,
+    );
 }
 
 fn freePlayerPvs(game: *Game) void {
-    if (game.player_pvs.i != -1) {
-        c_freeClientPvs(game.player_pvs);
-        game.player_pvs.i = -1;
+    if (game.player_pvs.index != -1) {
+        game.pvs.freeCurrentPVS(game.player_pvs);
+        game.player_pvs.index = -1;
     }
 
-    if (game.player_connected_areas.i != -1) {
-        c_freeClientPvs(game.player_connected_areas);
-        game.player_connected_areas.i = -1;
+    if (game.player_connected_areas.index != -1) {
+        game.pvs.freeCurrentPVS(game.player_connected_areas);
+        game.player_connected_areas.index = -1;
     }
 }
 

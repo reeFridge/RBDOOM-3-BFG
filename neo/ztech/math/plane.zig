@@ -1,10 +1,10 @@
 const Vec3 = @import("vector.zig").Vec3;
 
 pub const Plane = extern struct {
-    a: f32,
-    b: f32,
-    c: f32,
-    d: f32,
+    a: f32 = 0,
+    b: f32 = 0,
+    c: f32 = 0,
+    d: f32 = 0,
 
     pub fn fromSlice(slice: []f32) Plane {
         return .{

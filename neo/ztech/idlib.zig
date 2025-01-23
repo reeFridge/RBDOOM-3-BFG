@@ -254,7 +254,7 @@ pub fn List(T: type) type {
             std.debug.assert(index < self.num);
 
             self.num -= 1;
-            for (index..@intCast(self.num)) |i| {
+            for (index..self.num) |i| {
                 self.list.?[i] = self.list.?[i + 1];
             }
         }

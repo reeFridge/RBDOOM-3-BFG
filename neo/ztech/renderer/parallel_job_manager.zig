@@ -24,7 +24,7 @@ const NUM_JOB_THREADS = "2";
 pub var jobs_num_threads: CVar = CVar.initMinMax(
     "jobs_numThreads",
     NUM_JOB_THREADS,
-    cvar.CVarFlags.CVAR_INTEGER | cvar.CVarFlags.CVAR_NOCHEAT,
+    cvar.CVarFlags.integer | cvar.CVarFlags.nocheat,
     "number of threads used to crunch through jobs",
     0,
     MAX_JOB_THREADS,

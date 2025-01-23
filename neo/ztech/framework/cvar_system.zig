@@ -6,27 +6,27 @@ const global = @import("../global.zig");
 const Allocator = std.mem.Allocator;
 
 pub const CVarFlags = struct {
-    pub const CVAR_ALL: c_int = -1; // all flags
-    pub const CVAR_BOOL: c_int = bit(0); // variable is a boolean
-    pub const CVAR_INTEGER: c_int = bit(1); // variable is an integer
-    pub const CVAR_FLOAT: c_int = bit(2); // variable is a float
-    pub const CVAR_SYSTEM: c_int = bit(3); // system variable
-    pub const CVAR_RENDERER: c_int = bit(4); // renderer variable
-    pub const CVAR_SOUND: c_int = bit(5); // sound variable
-    pub const CVAR_GUI: c_int = bit(6); // gui variable
-    pub const CVAR_GAME: c_int = bit(7); // game variable
-    pub const CVAR_TOOL: c_int = bit(8); // tool variable
+    pub const all: c_int = -1; // all flags
+    pub const @"bool": c_int = bit(0); // variable is a boolean
+    pub const integer: c_int = bit(1); // variable is an integer
+    pub const float: c_int = bit(2); // variable is a float
+    pub const system: c_int = bit(3); // system variable
+    pub const renderer: c_int = bit(4); // renderer variable
+    pub const sound: c_int = bit(5); // sound variable
+    pub const gui: c_int = bit(6); // gui variable
+    pub const game: c_int = bit(7); // game variable
+    pub const tool: c_int = bit(8); // tool variable
     // original doom3 used to have CVAR_USERINFO ("sent to servers; available to menu") here
-    pub const CVAR_SERVERINFO: c_int = bit(10); // sent from servers; available to menu
-    pub const CVAR_NETWORKSYNC: c_int = bit(11); // cvar is synced from the server to clients
-    pub const CVAR_STATIC: c_int = bit(12); // statically declared; not user created
-    pub const CVAR_CHEAT: c_int = bit(13); // variable is considered a cheat
-    pub const CVAR_NOCHEAT: c_int = bit(14); // variable is not considered a cheat
-    pub const CVAR_INIT: c_int = bit(15); // can only be set from the command-line
-    pub const CVAR_ROM: c_int = bit(16); // display only; cannot be set by user at all
-    pub const CVAR_ARCHIVE: c_int = bit(17); // set to cause it to be saved to a config file
-    pub const CVAR_MODIFIED: c_int = bit(18); // set when the variable is modified
-    pub const CVAR_NEW: c_int = bit(19); // added for RBDoom
+    pub const serverinfo: c_int = bit(10); // sent from servers; available to menu
+    pub const networksync: c_int = bit(11); // cvar is synced from the server to clients
+    pub const static: c_int = bit(12); // statically declared; not user created
+    pub const cheat: c_int = bit(13); // variable is considered a cheat
+    pub const nocheat: c_int = bit(14); // variable is not considered a cheat
+    pub const init: c_int = bit(15); // can only be set from the command-line
+    pub const rom: c_int = bit(16); // display only; cannot be set by user at all
+    pub const archive: c_int = bit(17); // set to cause it to be saved to a config file
+    pub const modified: c_int = bit(18); // set when the variable is modified
+    pub const new: c_int = bit(19); // added for RBDoom
 };
 
 fn is_numeric(str: []const u8) bool {
@@ -54,16 +54,16 @@ pub const CVar = extern struct {
     flags: c_int,
     value_min: f32,
     value_max: f32,
-    valueStrings: ?[*]?[*:0]const u8,
-    valueCompletion: ?*const cmd.ArgCompletionFn,
+    value_strings: ?[*]?[*:0]const u8,
+    value_completion: ?*const cmd.ArgCompletionFn,
     integer_value: i32,
     float_value: f32,
-    internalVar: ?*CVar,
+    internal_var: ?*CVar,
     next: ?*CVar,
-    nameString: idlib.Str,
-    resetString: idlib.Str,
-    valueString: idlib.Str,
-    descriptionString: idlib.Str,
+    name_string: idlib.Str,
+    reset_string: idlib.Str,
+    value_string: idlib.Str,
+    description_string: idlib.Str,
 
     pub fn init(
         name: [:0]const u8,
@@ -78,16 +78,16 @@ pub const CVar = extern struct {
             .description = desc.ptr,
             .value_min = 0,
             .value_max = 0,
-            .valueCompletion = null,
-            .valueStrings = null,
+            .value_completion = null,
+            .value_strings = null,
             .integer_value = 0,
             .float_value = 0,
-            .internalVar = null,
+            .internal_var = null,
             .next = null,
-            .nameString = idlib.Str{},
-            .resetString = idlib.Str{},
-            .valueString = idlib.Str{},
-            .descriptionString = idlib.Str{},
+            .name_string = idlib.Str{},
+            .reset_string = idlib.Str{},
+            .value_string = idlib.Str{},
+            .description_string = idlib.Str{},
         };
     }
 
@@ -111,18 +111,18 @@ pub const CVar = extern struct {
     }
 
     pub fn setup(cvar: *CVar, allocator: Allocator) Allocator.Error!void {
-        try cvar.nameString.assignSliceZ(std.mem.span(cvar.name), allocator);
-        cvar.name = cvar.nameString.constSliceZ();
-        try cvar.valueString.assignSliceZ(std.mem.span(cvar.value), allocator);
-        cvar.value = cvar.valueString.constSliceZ();
-        try cvar.resetString.assignSliceZ(cvar.nameString.constSlice(), allocator);
-        try cvar.descriptionString.assignSliceZ(std.mem.span(cvar.description), allocator);
-        cvar.flags |= CVarFlags.CVAR_MODIFIED;
+        try cvar.name_string.assignSliceZ(std.mem.span(cvar.name), allocator);
+        cvar.name = cvar.name_string.constSliceZ();
+        try cvar.value_string.assignSliceZ(std.mem.span(cvar.value), allocator);
+        cvar.value = cvar.value_string.constSliceZ();
+        try cvar.reset_string.assignSliceZ(cvar.name_string.constSlice(), allocator);
+        try cvar.description_string.assignSliceZ(std.mem.span(cvar.description), allocator);
+        cvar.flags |= CVarFlags.modified;
         try cvar.updateValue(allocator);
         cvar.updateCheat();
 
         // TODO: remove
-        cvar.internalVar = cvar;
+        cvar.internal_var = cvar;
     }
 
     pub fn setString(cvar: *CVar, value: []const u8, allocator: Allocator) Allocator.Error!void {
@@ -137,18 +137,18 @@ pub const CVar = extern struct {
     }
 
     pub fn set(cvar: *CVar, value: ?[]const u8, force: bool, allocator: Allocator) Allocator.Error!void {
-        const new_value = value orelse cvar.resetString.constSlice();
+        const new_value = value orelse cvar.reset_string.constSlice();
         if (!force) {
-            if ((cvar.flags & CVarFlags.CVAR_ROM) != 0) return;
-            if ((cvar.flags & CVarFlags.CVAR_INIT) != 0) return;
+            if ((cvar.flags & CVarFlags.rom) != 0) return;
+            if ((cvar.flags & CVarFlags.init) != 0) return;
         }
 
-        if (std.mem.eql(u8, cvar.valueString.constSlice(), new_value)) return;
+        if (std.mem.eql(u8, cvar.value_string.constSlice(), new_value)) return;
 
-        try cvar.valueString.assignSliceZ(new_value, allocator);
-        cvar.value = cvar.valueString.constSliceZ();
+        try cvar.value_string.assignSliceZ(new_value, allocator);
+        cvar.value = cvar.value_string.constSliceZ();
         try cvar.updateValue(allocator);
-        cvar.flags |= CVarFlags.CVAR_MODIFIED;
+        cvar.flags |= CVarFlags.modified;
         instance.modifiedFlags |= cvar.flags;
     }
 
@@ -156,7 +156,7 @@ pub const CVar = extern struct {
         var clamped = false;
 
         const value_str = std.mem.span(cvar.value);
-        if ((cvar.flags & CVarFlags.CVAR_BOOL) != 0) {
+        if ((cvar.flags & CVarFlags.bool) != 0) {
             const int = std.fmt.parseInt(i32, value_str, 10) catch |err| {
                 std.debug.print("[CVAR] Parse value error: {s}\n", .{@errorName(err)});
                 return;
@@ -165,10 +165,10 @@ pub const CVar = extern struct {
             cvar.float_value = @floatFromInt(cvar.integer_value);
 
             if (!std.mem.eql(u8, "0", value_str) and !std.mem.eql(u8, "1", value_str)) {
-                try cvar.valueString.assignSliceZ(if (int != 0) "1" else "0", allocator);
-                cvar.value = cvar.valueString.constSliceZ();
+                try cvar.value_string.assignSliceZ(if (int != 0) "1" else "0", allocator);
+                cvar.value = cvar.value_string.constSliceZ();
             }
-        } else if ((cvar.flags & CVarFlags.CVAR_INTEGER) != 0) {
+        } else if ((cvar.flags & CVarFlags.integer) != 0) {
             const int = std.fmt.parseInt(i32, value_str, 10) catch |err| {
                 std.debug.print("[CVAR] Parse value error: {s}\n", .{@errorName(err)});
                 return;
@@ -190,11 +190,11 @@ pub const CVar = extern struct {
                 !is_numeric(value_str) or
                 std.mem.indexOfScalar(u8, value_str, '.') != null)
             {
-                try cvar.valueString.assignSlice(value_str, allocator);
-                cvar.value = cvar.valueString.constSliceZ();
+                try cvar.value_string.assignSlice(value_str, allocator);
+                cvar.value = cvar.value_string.constSliceZ();
             }
             cvar.float_value = @floatFromInt(int);
-        } else if ((cvar.flags & CVarFlags.CVAR_FLOAT) != 0) {
+        } else if ((cvar.flags & CVarFlags.float) != 0) {
             const float = std.fmt.parseFloat(f32, value_str) catch |err| {
                 std.debug.print("[CVAR] Parse value error: {s}\n", .{@errorName(err)});
                 return;
@@ -212,18 +212,18 @@ pub const CVar = extern struct {
             }
 
             if (clamped or !is_numeric(value_str)) {
-                try cvar.valueString.assignSliceZ(value_str, allocator);
-                cvar.value = cvar.valueString.constSliceZ();
+                try cvar.value_string.assignSliceZ(value_str, allocator);
+                cvar.value = cvar.value_string.constSliceZ();
             }
             cvar.integer_value = @intFromFloat(float);
         } else {
-            const has_value_strings = if (cvar.valueStrings) |value_strings|
+            const has_value_strings = if (cvar.value_strings) |value_strings|
                 value_strings[0] != null
             else
                 false;
 
             if (has_value_strings) {
-                const value_strings = cvar.valueStrings orelse unreachable;
+                const value_strings = cvar.value_strings orelse unreachable;
                 cvar.integer_value = 0;
                 var i: usize = 0;
                 var opt_variant_ptr = value_strings[i];
@@ -233,7 +233,7 @@ pub const CVar = extern struct {
                 }) {
                     if (std.mem.eql(
                         u8,
-                        cvar.valueString.constSlice(),
+                        cvar.value_string.constSlice(),
                         std.mem.span(variant_ptr),
                     )) {
                         cvar.integer_value = @intCast(i);
@@ -242,10 +242,10 @@ pub const CVar = extern struct {
                 }
 
                 const variant_ptr = value_strings[@intCast(cvar.integer_value)] orelse unreachable;
-                try cvar.valueString.assignSliceZ(std.mem.span(variant_ptr), allocator);
-                cvar.value = cvar.valueString.constSliceZ();
+                try cvar.value_string.assignSliceZ(std.mem.span(variant_ptr), allocator);
+                cvar.value = cvar.value_string.constSliceZ();
                 cvar.float_value = @floatFromInt(cvar.integer_value);
-            } else if (cvar.valueString.len < 32) {
+            } else if (cvar.value_string.len < 32) {
                 const float = std.fmt.parseFloat(f32, value_str) catch 0;
 
                 cvar.float_value = float;
@@ -259,17 +259,17 @@ pub const CVar = extern struct {
 
     pub fn updateCheat(cvar: *CVar) void {
         const cheat_mask =
-            CVarFlags.CVAR_NOCHEAT |
-            CVarFlags.CVAR_INIT |
-            CVarFlags.CVAR_ROM |
-            CVarFlags.CVAR_ARCHIVE |
-            CVarFlags.CVAR_SERVERINFO |
-            CVarFlags.CVAR_NETWORKSYNC;
+            CVarFlags.nocheat |
+            CVarFlags.init |
+            CVarFlags.rom |
+            CVarFlags.archive |
+            CVarFlags.serverinfo |
+            CVarFlags.networksync;
 
         if ((cvar.flags & cheat_mask) != 0) {
-            cvar.flags &= ~CVarFlags.CVAR_CHEAT;
+            cvar.flags &= ~CVarFlags.cheat;
         } else {
-            cvar.flags |= CVarFlags.CVAR_CHEAT;
+            cvar.flags |= CVarFlags.cheat;
         }
     }
 };
@@ -367,7 +367,7 @@ pub const CVarSystem = extern struct {
     ) Allocator.Error!void {
         if (cvar_system.findByName(name)) |cvar| {
             try cvar.set(value, true, allocator);
-            cvar.flags |= flags & ~CVarFlags.CVAR_STATIC;
+            cvar.flags |= flags & ~CVarFlags.static;
             cvar.updateCheat();
         } else {
             const cvar = try allocator.create(CVar);
@@ -385,7 +385,7 @@ pub const CVarSystem = extern struct {
         while (i != -1) : (i = cvar_system.cvarHash.next(@intCast(i))) {
             const cvars = cvar_system.cvars.slice();
             const cvar_ptr = if (i < cvars.len) cvars[@intCast(i)] else continue;
-            if (std.mem.eql(u8, name, cvar_ptr.nameString.constSlice())) {
+            if (std.mem.eql(u8, name, cvar_ptr.name_string.constSlice())) {
                 return cvar_ptr;
             }
         }

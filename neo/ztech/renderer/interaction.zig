@@ -185,7 +185,7 @@ pub const Interaction = extern struct {
         inter.staticInteraction = true;
 
         const render_model = if (entity_def.parms.hModel) |model_ptr| render_model: {
-            if (model_ptr.numSurfaces() <= 0 or model_ptr.isDynamicModel() != .DM_STATIC) {
+            if (model_ptr.surfaces.num <= 0 or model_ptr.dynamicModelType() != .static) {
                 inter.makeEmpty();
                 return;
             }
@@ -205,7 +205,7 @@ pub const Interaction = extern struct {
         }
 
         // create slots for each of the model's surfaces
-        inter.numSurfaces = render_model.numSurfaces();
+        inter.numSurfaces = @intCast(render_model.surfaces.num);
         const surfaces = try surface_allocator.alloc(SurfaceInteraction, @intCast(inter.numSurfaces));
         for (surfaces) |*surface| surface.* = std.mem.zeroes(SurfaceInteraction);
 
@@ -222,8 +222,8 @@ pub const Interaction = extern struct {
 
         // check each surface in the model
 
-        for (0..@intCast(render_model.numSurfaces())) |c| {
-            const surf = render_model.getSurface(c) orelse continue;
+        for (0..render_model.surfaces.num) |c| {
+            const surf = &render_model.surfaces.constSlice()[c];
             const tri = surf.geometry orelse continue;
             const shader_ptr = surf.shader orelse continue;
 

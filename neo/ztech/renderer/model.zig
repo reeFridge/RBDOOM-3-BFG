@@ -21,7 +21,7 @@ const CFlags = cvar.CVarFlags;
 pub var r_use_sil_remap = CVar.init(
     "r_useSilRemap",
     "1",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_BOOL,
+    CFlags.renderer | CFlags.bool,
     "consider verts with the same XYZ, but different ST the same for shadows",
 );
 
@@ -895,9 +895,9 @@ const RenderWorld = @import("render_world.zig");
 const RenderEntity = @import("render_entity.zig").RenderEntity;
 
 pub const DynamicModelType = enum(c_int) {
-    DM_STATIC, // never creates a dynamic model
-    DM_CACHED, // once created, stays constant until the entity is updated (animating characters)
-    DM_CONTINUOUS, // must be recreated for every single view (time dependent things like particles)
+    static, // never creates a dynamic model
+    cached, // once created, stays constant until the entity is updated (animating characters)
+    continuous, // must be recreated for every single view (time dependent things like particles)
 };
 
 pub const RenderModel = opaque {
@@ -1026,6 +1026,27 @@ pub const RenderModelStatic = extern struct {
     has_interacting_surfaces: bool = true,
     has_shadow_casting_surfaces: bool = true,
     timestamp: idlib.Time = 0,
+
+    pub fn reset(model: *RenderModelStatic) void {
+        _ = model;
+    }
+
+    pub fn getJointHandle(model: *const RenderModelStatic, joint_name: []const u8) ?JointHandle {
+        _ = model;
+        _ = joint_name;
+
+        return null;
+    }
+
+    pub fn boundsFromDef(model: *const RenderModelStatic, render_entity: *const RenderEntity) CBounds {
+        _ = render_entity;
+        return model.bounds;
+    }
+
+    pub fn dynamicModelType(model: *const RenderModelStatic) DynamicModelType {
+        _ = model;
+        return .static;
+    }
 
     pub fn initEmpty(
         model: *RenderModelStatic,
@@ -1164,7 +1185,7 @@ pub const RenderModelStatic = extern struct {
         try model.finishSurfaces(use_mikktspace, allocator);
     }
 
-    fn addSurface(
+    pub fn addSurface(
         model: *RenderModelStatic,
         surface: ModelSurface,
         allocator: Allocator,
@@ -1178,7 +1199,7 @@ pub const RenderModelStatic = extern struct {
         }
     }
 
-    fn finishSurfaces(
+    pub fn finishSurfaces(
         model: *RenderModelStatic,
         use_mikktspace: bool,
         allocator: Allocator,

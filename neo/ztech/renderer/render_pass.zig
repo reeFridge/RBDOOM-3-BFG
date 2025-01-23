@@ -541,17 +541,18 @@ pub const CommonRenderPasses = extern struct {
             };
         };
 
-        var source_binding_set = if (opt_binding_cache) |binding_cache|
-            try binding_cache.getOrCreateBindingSet(
+        var source_binding_set = if (opt_binding_cache) |binding_cache| handle: {
+            const handle = try binding_cache.getOrCreateBindingSet(
                 &binding_set_desc,
                 common_pass.blit_binding_layout.ptr_.?,
                 allocator,
-            )
-        else
-            common_pass.device_handle.ptr_.?.createBindingSet(
-                &binding_set_desc,
-                common_pass.blit_binding_layout.ptr_.?,
             );
+
+            break :handle nvrhi.BindingSetHandle.init(handle.ptr_);
+        } else common_pass.device_handle.ptr_.?.createBindingSet(
+            &binding_set_desc,
+            common_pass.blit_binding_layout.ptr_.?,
+        );
         defer source_binding_set.deinit();
 
         const target_viewport = if (blit_params.target_viewport.width() == 0 and
@@ -660,10 +661,10 @@ pub const SsaoPass = opaque {
 
 pub const MipMapGenPass = opaque {
     pub const Mode = enum(u8) {
-        MODE_COLOR = 0, // bilinear reduction of RGB channels
-        MODE_MIN = 1, // min() reduction of R channel
-        MODE_MAX = 2, // max() reduction of R channel
-        MODE_MINMAX = 3, // min() and max() reductions of R channel into RG channels
+        color = 0, // bilinear reduction of RGB channels
+        min = 1, // min() reduction of R channel
+        max = 2, // max() reduction of R channel
+        minmax = 3, // min() and max() reductions of R channel into RG channels
     };
 
     extern fn c_mipMapGenPass_delete(*MipMapGenPass) callconv(.C) void;

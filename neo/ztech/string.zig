@@ -24,6 +24,14 @@ pub fn FixedBufferString(size: comptime_int) type {
     };
 }
 
+pub fn toLowerCase(str: []u8) []u8 {
+    for (str) |*char| {
+        char.* = std.ascii.toLower(char.*);
+    }
+
+    return str;
+}
+
 pub fn icontains(haystack: []const u8, needle: []const u8) ?usize {
     if (needle.len > haystack.len) return null;
     var i: usize = 0;

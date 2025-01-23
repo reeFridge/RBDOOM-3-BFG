@@ -1,7 +1,9 @@
 const std = @import("std");
+const str_utils = @import("../string.zig");
 const nvrhi = @import("nvrhi.zig");
 const idlib = @import("../idlib.zig");
 const backend = @import("render_backend.zig");
+const fs = @import("../framework/file_system.zig");
 const RenderModel = @import("model.zig").RenderModel;
 const RenderModelStatic = @import("model.zig").RenderModelStatic;
 const Allocator = std.mem.Allocator;
@@ -13,8 +15,8 @@ pub const RenderModelManager = extern struct {
     extern fn c_renderModelManager_findModel(
         *RenderModelManager,
         [*:0]const u8,
-    ) ?*RenderModel;
-    extern fn c_renderModelManager_defaultModel(*RenderModelManager) ?*RenderModel;
+    ) ?*RenderModelStatic;
+    extern fn c_renderModelManager_defaultModel(*RenderModelManager) ?*RenderModelStatic;
 
     vptr: *anyopaque = undefined,
     models: idlib.List(*RenderModelStatic) = .{},
@@ -108,14 +110,37 @@ pub const RenderModelManager = extern struct {
         }
     }
 
-    pub fn findModel(manager: *RenderModelManager, model_name: [*:0]const u8) GetModelError!*RenderModel {
-        return if (c_renderModelManager_findModel(manager, model_name)) |ptr|
-            ptr
-        else
-            error.ModelNotFound;
+    pub fn findModel(manager: *RenderModelManager, model_name: []const u8) GetModelError!*RenderModelStatic {
+        var str_buffer: [fs.max_os_path]u8 = undefined;
+        @memcpy(str_buffer[0..model_name.len], model_name);
+        const adjusted_name = str_utils.toLowerCase(
+            str_buffer[0..model_name.len],
+        );
+        const ext = std.fs.path.extension(adjusted_name);
+        const basename = adjusted_name[0 .. adjusted_name.len - ext.len];
+
+        const key = manager.hash.generateKey(basename, false);
+        var i = manager.hash.first(key);
+        while (i != -1) : (i = manager.hash.next(@intCast(i))) {
+            const model = manager.models.slice()[@intCast(i)];
+            if (std.ascii.eqlIgnoreCase(model.name.constSlice(), basename)) {
+                if (model.purged) {
+                    // TODO: reload
+                    unreachable;
+                } else if (manager.inside_level_load and !model.level_load_referenced) {
+                    // TODO: model.touchData();
+                    unreachable;
+                }
+
+                model.level_load_referenced = true;
+                return model;
+            }
+        }
+
+        return error.ModelNotFound;
     }
 
-    pub fn defaultModel(manager: *RenderModelManager) GetModelError!*RenderModel {
+    pub fn defaultModel(manager: *RenderModelManager) GetModelError!*RenderModelStatic {
         return if (c_renderModelManager_defaultModel(manager)) |ptr|
             ptr
         else

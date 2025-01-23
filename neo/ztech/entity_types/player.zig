@@ -9,6 +9,7 @@ const Angles = @import("../math/angles.zig");
 const pvs = @import("../pvs.zig");
 const Bounds = @import("../bounding_volume/bounds.zig");
 const Game = @import("../game.zig");
+const common = @import("../framework/common.zig");
 
 extern fn c_calculateRenderView(*RenderView, f32) void;
 
@@ -31,18 +32,20 @@ pub const PlayerSpawnError = error{
     PlayerSpawnNotFound,
 };
 
-const MAX_PVS_AREAS: usize = 4;
+const max_pvs_areas: usize = 4;
 
 pub const PVSAreas = struct {
     updated: bool,
     len: usize,
-    ids: [MAX_PVS_AREAS]c_int,
+    ids: [max_pvs_areas]u32,
 
     pub fn update(self: *PVSAreas, position: Vec3(f32)) void {
-        var count = pvs.getPVSAreas(Bounds.fromVec3(position), &self.ids);
+        var render_world = common.render_world orelse return;
+
+        var count = render_world.boundsInAreas(Bounds.fromVec3(position), &self.ids);
         self.len = count;
 
-        while (count < MAX_PVS_AREAS) {
+        while (count < max_pvs_areas) {
             self.ids[count] = 0;
             count += 1;
         }

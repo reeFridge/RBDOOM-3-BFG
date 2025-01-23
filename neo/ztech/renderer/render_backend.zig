@@ -29,7 +29,7 @@ const r_offset_units = -600;
 pub var r_vk_upload_buffer_size_mb = CVar.init(
     "r_vkUploadBufferSizeMB",
     "64",
-    CFlags.CVAR_INTEGER | CFlags.CVAR_INIT | CFlags.CVAR_NEW,
+    CFlags.integer | CFlags.init | CFlags.new,
     "Size of gpu upload buffer (Vulkan only)",
 );
 
@@ -632,7 +632,7 @@ pub const RenderBackend = extern struct {
         );
         try backend.resizeImages(allocator);
 
-        if (cmd_head.commandId == .RC_NOP and cmd_head.next == null) return;
+        if (cmd_head.command_id == .nop and cmd_head.next == null) return;
 
         if (RenderSystem.gl_config.stereo3Dmode != .OFF) {
             backend.stereoRenderExecuteBackendCommands(cmd_head);
@@ -670,7 +670,7 @@ pub const RenderBackend = extern struct {
             //backend.hiZGenPass = Pass.MipMapGenPass.create(
             //    device,
             //    global_images.hierarchicalZBufferImage.?.getTexturePtr(),
-            //    .MODE_MAX,
+            //    .max,
             //);
         }
 
@@ -711,9 +711,9 @@ pub const RenderBackend = extern struct {
         var draw_view_3d = false;
         var opt_cmd: ?*FrameData.EmptyCommand = cmd_head;
         while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
-            switch (cmd.commandId) {
-                .RC_NOP => {},
-                .RC_DRAW_VIEW_GUI => {
+            switch (cmd.command_id) {
+                .nop => {},
+                .draw_view_gui => {
                     if (draw_view_3d) {
                         render_log.instance.openMainBlock(render_log.MRB_DRAW_GUI);
                         defer render_log.instance.closeMainBlock(render_log.MRB_DRAW_GUI);
@@ -727,20 +727,20 @@ pub const RenderBackend = extern struct {
                         try backend.drawView(@ptrCast(cmd), 0, allocator);
                     }
                 },
-                .RC_DRAW_VIEW_3D => {
+                .draw_view_3d => {
                     draw_view_3d = true;
                     try backend.drawView(@ptrCast(cmd), 0, allocator);
                 },
-                .RC_SET_BUFFER => {
+                .set_buffer => {
                     backend.setBuffer(@ptrCast(cmd));
                 },
-                .RC_COPY_RENDER => {
+                .copy_render => {
                     backend.copyRender(@ptrCast(cmd));
                 },
-                .RC_POST_PROCESS => {
+                .post_process => {
                     backend.postProcess(@ptrCast(cmd));
                 },
-                .RC_CRT_POST_PROCESS => {
+                .crt_post_process => {
                     backend.crtPostProcess();
                 },
             }
@@ -755,7 +755,7 @@ pub const RenderBackend = extern struct {
         stereo_eye: i32,
         allocator: Allocator,
     ) Allocator.Error!void {
-        const view_def = cmd.viewDef orelse return;
+        const view_def = cmd.view_def orelse return;
         backend.view_def = view_def;
 
         if (view_def.numDrawSurfs == 0) {
@@ -1207,7 +1207,7 @@ pub const RenderBackend = extern struct {
             );
 
             if (backend.current_pipeline.ptr_ != pipeline.ptr_) {
-                backend.current_pipeline = pipeline;
+                backend.current_pipeline = nvrhi.GraphicsPipelineHandle.init(pipeline.ptr_);
                 change_state = true;
             }
 

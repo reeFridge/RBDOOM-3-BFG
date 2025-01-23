@@ -4,6 +4,7 @@ const Transform = @import("../physics/physics.zig").Transform;
 const CMat3 = @import("../math/matrix.zig").CMat3;
 const CVec3 = @import("../math/vector.zig").CVec3;
 const RenderWorld = @import("../renderer/render_world.zig");
+const common = @import("../framework/common.zig");
 
 pub fn fromTransform(comptime T: type, list: anytype) void {
     if (comptime !assertFields(struct {
@@ -27,7 +28,7 @@ pub fn present(comptime T: type, list: anytype) void {
         render_light: RenderLight,
     }, T)) return;
 
-    var render_world = RenderWorld.instance();
+    var render_world = common.render_world orelse return;
 
     var list_slice = list.slice();
     for (

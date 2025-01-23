@@ -32,7 +32,7 @@ const CFlags = cvar.CVarFlags;
 pub var r_use_constant_materials = CVar.init(
     "r_useConstantMaterials",
     "1",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_BOOL,
+    CFlags.renderer | CFlags.bool,
     "use pre-calculated material registers if possible",
 );
 
@@ -896,13 +896,105 @@ pub const Material = extern struct {
             } else if (token.ieql("renderbump")) {
                 try lexer.parseRestOfLine(&material.render_bump, allocator);
             } else if (token.ieql("diffusemap") or token.ieql("basecolormap")) {
-                @panic("not implemented");
+                const str = try image_program.parse(lexer, allocator);
+                // TODO: free str
+                var temp_lexer = Lexer{
+                    .flags = .{
+                        .no_fatal_errors = true,
+                        .no_string_concat = true,
+                        .no_string_escape_chars = true,
+                        .allow_path_names = true,
+                    },
+                };
+                defer temp_lexer.deinit(allocator);
+
+                var buffer: [1024]u8 = undefined;
+                const fmt = "blend diffusemap\nmap {s}\n}}\n";
+                const definition_text = std.fmt.bufPrint(&buffer, fmt, .{str}) catch unreachable;
+
+                try temp_lexer.loadMemory(
+                    definition_text,
+                    "diffusemap",
+                    0,
+                    allocator,
+                );
+
+                try material.parseStage(&temp_lexer, trp_default, allocator);
             } else if (token.ieql("specularmap")) {
-                @panic("not implemented");
+                const str = try image_program.parse(lexer, allocator);
+                // TODO: free str
+                var temp_lexer = Lexer{
+                    .flags = .{
+                        .no_fatal_errors = true,
+                        .no_string_concat = true,
+                        .no_string_escape_chars = true,
+                        .allow_path_names = true,
+                    },
+                };
+                defer temp_lexer.deinit(allocator);
+
+                var buffer: [1024]u8 = undefined;
+                const fmt = "blend specularmap\nmap {s}\n}}\n";
+                const definition_text = std.fmt.bufPrint(&buffer, fmt, .{str}) catch unreachable;
+
+                try temp_lexer.loadMemory(
+                    definition_text,
+                    "specularmap",
+                    0,
+                    allocator,
+                );
+
+                try material.parseStage(&temp_lexer, trp_default, allocator);
             } else if (token.ieql("rmaomap") or token.ieql("reflectionmap") or token.ieql("pbrmap")) {
-                @panic("not implemented");
+                const str = try image_program.parse(lexer, allocator);
+                // TODO: free str
+                var temp_lexer = Lexer{
+                    .flags = .{
+                        .no_fatal_errors = true,
+                        .no_string_concat = true,
+                        .no_string_escape_chars = true,
+                        .allow_path_names = true,
+                    },
+                };
+                defer temp_lexer.deinit(allocator);
+
+                var buffer: [1024]u8 = undefined;
+                const fmt = "blend rmaomap\nmap {s}\n}}\n";
+                const definition_text = std.fmt.bufPrint(&buffer, fmt, .{str}) catch unreachable;
+
+                try temp_lexer.loadMemory(
+                    definition_text,
+                    "rmaomap",
+                    0,
+                    allocator,
+                );
+
+                try material.parseStage(&temp_lexer, trp_default, allocator);
             } else if (token.ieql("bumpmap") or token.ieql("normalmap")) {
-                @panic("not implemented");
+                const str = try image_program.parse(lexer, allocator);
+                // TODO: free str
+                var temp_lexer = Lexer{
+                    .flags = .{
+                        .no_fatal_errors = true,
+                        .no_string_concat = true,
+                        .no_string_escape_chars = true,
+                        .allow_path_names = true,
+                    },
+                };
+                defer temp_lexer.deinit(allocator);
+
+                var buffer: [1024]u8 = undefined;
+                const fmt = "blend bumpmap\nmap {s}\n}}\n";
+                const definition_text = std.fmt.bufPrint(&buffer, fmt, .{str}) catch unreachable;
+
+                try temp_lexer.loadMemory(
+                    definition_text,
+                    "blendmap",
+                    0,
+                    allocator,
+                );
+
+                try material.parseStage(&temp_lexer, trp_default, allocator);
             } else if (token.ieql("DECAL_MACRO")) {
                 @panic("not implemented");
             } else if (token.ieql("lod1")) {

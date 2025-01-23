@@ -70,7 +70,7 @@ export fn ztech_renderWorld_boundsInAreas(
 ) callconv(.C) usize {
     const render_world: *RenderWorld = @alignCast(@ptrCast(rw));
 
-    return render_world.boundsInAreas(bounds.toBounds(), areas[0..max_areas]);
+    return render_world.boundsInAreas(bounds.toBounds(), @ptrCast(areas[0..max_areas]));
 }
 
 export fn ztech_renderWorld_renderScene(

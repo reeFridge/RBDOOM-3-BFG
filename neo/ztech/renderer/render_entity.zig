@@ -6,7 +6,7 @@ const Bounds = @import("../bounding_volume/bounds.zig");
 const ModelDecal = @import("model_decal.zig").ModelDecal;
 const ModelOverlay = @import("model_overlay.zig").ModelOverlay;
 const RenderWorld = @import("render_world.zig");
-const RenderModel = @import("model.zig").RenderModel;
+const RenderModelStatic = @import("model.zig").RenderModelStatic;
 const Material = @import("material.zig").Material;
 const DeclSkin = @import("common.zig").DeclSkin;
 const ViewDef = @import("common.zig").ViewDef;
@@ -25,7 +25,7 @@ extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *RenderEntity) callconv(.C)
 
 pub const RenderEntity = extern struct {
     // this can only be null if callback is set
-    hModel: ?*RenderModel = null,
+    hModel: ?*RenderModelStatic = null,
     entityNum: c_int = -1,
     bodyId: c_int = -1,
 
@@ -146,11 +146,11 @@ pub const RenderEntityLocal = extern struct {
     // in the cached memory
     lastModifiedFrameNum: c_int = 0,
     // if parms.model->IsDynamicModel(), this is the generated data
-    dynamicModel: ?*RenderModel = null,
+    dynamicModel: ?*RenderModelStatic = null,
     // continuously animating dynamic models will recreate
     dynamicModelFrameCount: c_int = 0,
     // dynamicModel if this doesn't == tr.viewCount
-    cachedDynamicModel: ?*RenderModel = null,
+    cachedDynamicModel: ?*RenderModelStatic = null,
     // the local bounds used to place entityRefs, either from parms for dynamic entities, or a model bounds
     localReferenceBounds: CBounds = .{},
     // axis aligned bounding box in world space, derived from refernceBounds and
@@ -176,11 +176,11 @@ pub const RenderEntityLocal = extern struct {
     extern fn c_renderEntity_getDynamicModelForFrame(
         *RenderEntityLocal,
         *ViewDef,
-    ) ?*RenderModel;
+    ) ?*RenderModelStatic;
     pub fn getDynamicModelForFrame(
         entity: *RenderEntityLocal,
         view_def: *ViewDef,
-    ) ?*RenderModel {
+    ) ?*RenderModelStatic {
         return c_renderEntity_getDynamicModelForFrame(entity, view_def);
     }
 
@@ -320,7 +320,7 @@ pub const RenderEntityLocal = extern struct {
 
         if (!keep_cached_dynamic_model) {
             if (entity.cachedDynamicModel) |model_ptr| {
-                model_ptr.deinit(render_world);
+                model_ptr.deinit(render_world.allocator);
             }
             entity.cachedDynamicModel = null;
         }

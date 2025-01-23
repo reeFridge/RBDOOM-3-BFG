@@ -53,129 +53,133 @@ pub const Signal = struct {
     }
 };
 
-pub const Thread = struct {
-    const PayloadFn = fn (*Thread) u8;
+pub fn ThreadWithArgs(Args: type) type {
+    return struct {
+        const Thread = @This();
+        const PayloadFn = fn (*Thread) u8;
 
-    name: FixedBufferString(256) = .{},
-    allocator: ?Allocator = null,
-    sys_thread: ?std.Thread = null,
-    is_worker: bool = false,
-    is_running: bool = false,
-    is_terminating: bool = false,
-    more_work_to_do: bool = false,
-    signal_worker_done: Signal = .{ .manual_reset = true },
-    signal_more_work_to_do: Signal = .{},
-    signal_mutex: std.Thread.Mutex = .{},
-    payload_fn: *const PayloadFn,
+        name: FixedBufferString(256) = .{},
+        allocator: ?Allocator = null,
+        sys_thread: ?std.Thread = null,
+        is_worker: bool = false,
+        is_running: bool = false,
+        is_terminating: bool = false,
+        more_work_to_do: bool = false,
+        signal_worker_done: Signal = .{ .manual_reset = true },
+        signal_more_work_to_do: Signal = .{},
+        signal_mutex: std.Thread.Mutex = .{},
+        payload_fn: *const PayloadFn,
+        args: Args,
 
-    pub fn deinit(thread: *Thread) void {
-        thread.stop();
-        thread.wait();
+        pub fn deinit(thread: *Thread) void {
+            thread.stop();
+            thread.wait();
 
-        if (thread.sys_thread) |sys_thread| {
-            sys_thread.join();
-            thread.sys_thread = null;
+            if (thread.sys_thread) |sys_thread| {
+                sys_thread.join();
+                thread.sys_thread = null;
+            }
         }
-    }
 
-    pub fn spawn(thread: *Thread, name: []const u8, stack_size: usize) bool {
-        if (thread.is_running) return false;
+        pub fn spawn(thread: *Thread, name: []const u8, stack_size: usize) bool {
+            if (thread.is_running) return false;
 
-        if (thread.sys_thread) |sys_thread| sys_thread.join();
-
-        thread.name.assignSlice(name) catch @panic("thread name is too long");
-
-        const sys_thread = std.Thread.spawn(
-            .{ .stack_size = stack_size },
-            threadProc,
-            .{thread},
-        ) catch |err| {
-            std.debug.print("[THREAD] error: {s}\n", .{@errorName(err)});
-            @panic("can't spawn thread");
-        };
-
-        thread.sys_thread = sys_thread;
-        thread.is_running = true;
-
-        return true;
-    }
-
-    /// do nothing until signalWork fn would be called
-    pub fn spawnWorker(thread: *Thread, name: []const u8, stack_size: usize) bool {
-        if (thread.is_running) return false;
-
-        thread.is_worker = true;
-
-        const result = thread.spawn(name, stack_size);
-        thread.signal_worker_done.waitUntilUnlock();
-
-        return result;
-    }
-
-    pub fn signalWork(thread: *Thread) void {
-        if (thread.is_worker) {
-            thread.signal_mutex.lock();
-            thread.more_work_to_do = true;
-            thread.signal_worker_done.clear();
-            thread.signal_more_work_to_do.raise();
-            thread.signal_mutex.unlock();
-        }
-    }
-
-    pub fn stop(thread: *Thread) void {
-        if (!thread.is_running) return;
-
-        if (thread.is_worker) {
-            thread.signal_mutex.lock();
-            thread.more_work_to_do = true;
-            thread.signal_worker_done.clear();
-            thread.is_terminating = true;
-            thread.signal_more_work_to_do.raise();
-            thread.signal_mutex.unlock();
-        } else {
-            thread.is_terminating = true;
-        }
-    }
-
-    pub fn wait(thread: *Thread) void {
-        if (thread.is_worker) {
-            thread.signal_worker_done.waitUntilUnlock();
-        } else if (thread.is_running) {
             if (thread.sys_thread) |sys_thread| sys_thread.join();
-            thread.sys_thread = null;
+
+            thread.name.assignSlice(name) catch @panic("thread name is too long");
+
+            const sys_thread = std.Thread.spawn(
+                .{ .stack_size = stack_size },
+                threadProc,
+                .{thread},
+            ) catch |err| {
+                std.debug.print("[THREAD] error: {s}\n", .{@errorName(err)});
+                @panic("can't spawn thread");
+            };
+
+            thread.sys_thread = sys_thread;
+            thread.is_running = true;
+
+            return true;
         }
-    }
 
-    fn threadProc(thread: *Thread) u8 {
-        var return_code: u8 = 0;
+        /// do nothing until signalWork fn would be called
+        pub fn spawnWorker(thread: *Thread, name: []const u8, stack_size: usize) bool {
+            if (thread.is_running) return false;
 
-        if (thread.is_worker) {
-            while (true) {
+            thread.is_worker = true;
+
+            const result = thread.spawn(name, stack_size);
+            thread.signal_worker_done.waitUntilUnlock();
+
+            return result;
+        }
+
+        pub fn signalWork(thread: *Thread) void {
+            if (thread.is_worker) {
                 thread.signal_mutex.lock();
-                if (thread.more_work_to_do) {
-                    thread.more_work_to_do = false;
-                    thread.signal_more_work_to_do.clear();
-                    thread.signal_mutex.unlock();
-                } else {
-                    thread.signal_worker_done.raise();
-                    thread.signal_mutex.unlock();
-                    thread.signal_more_work_to_do.waitUntilUnlock();
-                    continue;
-                }
+                thread.more_work_to_do = true;
+                thread.signal_worker_done.clear();
+                thread.signal_more_work_to_do.raise();
+                thread.signal_mutex.unlock();
+            }
+        }
 
-                if (thread.is_terminating) {
-                    break;
-                }
+        pub fn stop(thread: *Thread) void {
+            if (!thread.is_running) return;
 
+            if (thread.is_worker) {
+                thread.signal_mutex.lock();
+                thread.more_work_to_do = true;
+                thread.signal_worker_done.clear();
+                thread.is_terminating = true;
+                thread.signal_more_work_to_do.raise();
+                thread.signal_mutex.unlock();
+            } else {
+                thread.is_terminating = true;
+            }
+        }
+
+        pub fn wait(thread: *Thread) void {
+            if (thread.is_worker) {
+                thread.signal_worker_done.waitUntilUnlock();
+            } else if (thread.is_running) {
+                if (thread.sys_thread) |sys_thread| sys_thread.join();
+                thread.sys_thread = null;
+            }
+        }
+
+        fn threadProc(thread: *Thread) u8 {
+            var return_code: u8 = 0;
+
+            if (thread.is_worker) {
+                while (true) {
+                    thread.signal_mutex.lock();
+                    if (thread.more_work_to_do) {
+                        thread.more_work_to_do = false;
+                        thread.signal_more_work_to_do.clear();
+                        thread.signal_mutex.unlock();
+                    } else {
+                        thread.signal_worker_done.raise();
+                        thread.signal_mutex.unlock();
+                        thread.signal_more_work_to_do.waitUntilUnlock();
+                        continue;
+                    }
+
+                    if (thread.is_terminating) {
+                        break;
+                    }
+
+                    return_code = thread.payload_fn(thread);
+                }
+                thread.signal_worker_done.raise();
+            } else {
                 return_code = thread.payload_fn(thread);
             }
-            thread.signal_worker_done.raise();
-        } else {
-            return_code = thread.payload_fn(thread);
+
+            thread.is_running = false;
+
+            return return_code;
         }
-
-        thread.is_running = false;
-
-        return return_code;
-    }
-};
+    };
+}

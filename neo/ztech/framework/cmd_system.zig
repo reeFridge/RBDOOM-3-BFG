@@ -23,35 +23,36 @@ pub const CmdDecl = struct {
 pub const CallbackFn = fn () callconv(.C) void;
 
 pub const CmdExecution = enum(c_int) {
-    CMD_EXEC_NOW,
-    CMD_EXEC_INSERT,
-    CMD_EXEC_APPEND,
+    now,
+    insert,
+    append,
 };
 
 pub const CmdFlags = struct {
-    pub const CMD_FL_ALL: c_int = -1;
-    pub const CMD_FL_CHEAT: c_int = bit(0); // command is considered a cheat
-    pub const CMD_FL_SYSTEM: c_int = bit(1); // system command
-    pub const CMD_FL_RENDERER: c_int = bit(2); // renderer command
-    pub const CMD_FL_SOUND: c_int = bit(3); // sound command
-    pub const CMD_FL_GAME: c_int = bit(4); // game command
-    pub const CMD_FL_TOOL: c_int = bit(5); // tool command
+    pub const all: c_int = -1;
+    pub const cheat: c_int = bit(0); // command is considered a cheat
+    pub const system: c_int = bit(1); // system command
+    pub const renderer: c_int = bit(2); // renderer command
+    pub const sound: c_int = bit(3); // sound command
+    pub const game: c_int = bit(4); // game command
+    pub const tool: c_int = bit(5); // tool command
 };
 
 pub const CmdArgs = extern struct {
-    pub const MAX_COMMAND_ARGS: usize = 64;
-    pub const MAX_STRING_CHARS: usize = 1024;
-    pub const MAX_COMMAND_STRING: usize = MAX_STRING_CHARS * 2;
+    pub const max_command_args: usize = 64;
+    pub const max_string_chars: usize = 1024;
+    pub const max_command_string: usize = max_string_chars * 2;
 
-    argc: c_int = 0,
-    argv: [MAX_COMMAND_ARGS][*:0]u8 = undefined, // points into tokenized
-    tokenized: [MAX_COMMAND_STRING]u8 = undefined,
+    argc: u32 = 0,
+    argv: [max_command_args][*:0]u8 = undefined, // points into tokenized
+    tokenized: [max_command_string]u8 = undefined,
     // WARN: @sizeOf([max:0]u8) != @sizeOf([max]u8)
 
-    pub fn copy(args: *CmdArgs, other: *const CmdArgs) void {
+    pub fn copyFrom(args: *CmdArgs, other: *const CmdArgs) void {
         args.argc = other.argc;
         args.tokenized = other.tokenized;
-        for (0..@intCast(args.argc)) |i| {
+
+        for (0..args.argc) |i| {
             const tok_addr = @intFromPtr(&args.tokenized);
             const other_tok_addr = @intFromPtr(&other.tokenized);
             const argv_addr = @intFromPtr(other.argv[i]);
@@ -89,7 +90,7 @@ pub const CmdArgs = extern struct {
         var total_len: usize = 0;
 
         while (true) {
-            if (args.argc == CmdArgs.MAX_COMMAND_ARGS) break;
+            if (args.argc == CmdArgs.max_command_args) break;
             lexer.readToken(&token, allocator) catch break;
 
             if (std.mem.eql(u8, token.slice(), "-")) {
@@ -113,7 +114,7 @@ pub const CmdArgs = extern struct {
 
             const len = token.slice().len;
 
-            if (total_len + len + 1 > MAX_COMMAND_STRING) break;
+            if (total_len + len + 1 > max_command_string) break;
 
             args.appendArg(token.slice());
             total_len += len + 1;
@@ -121,7 +122,7 @@ pub const CmdArgs = extern struct {
     }
 
     pub fn appendArg(cmd_args: *CmdArgs, text: []const u8) void {
-        if (cmd_args.argc >= MAX_COMMAND_ARGS) return;
+        if (cmd_args.argc >= max_command_args) return;
 
         const argc: usize = @intCast(cmd_args.argc);
 
@@ -151,7 +152,7 @@ pub const CommandDef = extern struct {
     next: ?*CommandDef,
     name: [*:0]u8,
     function: *const CmdFn,
-    argCompletion: ?*const ArgCompletionFn,
+    arg_completion: ?*const ArgCompletionFn,
     flags: c_int,
     description: [*:0]u8,
 };
@@ -162,18 +163,18 @@ pub const CmdSystem = extern struct {
     vptr: *anyopaque,
     commands: ?*CommandDef, // linked list
     wait: c_int,
-    textLength: c_int,
-    textBuf: [MAX_CMD_BUFFER]u8,
-    completionString: idlib.Str,
-    completionParms: idlib.List(idlib.Str),
-    tokenizedCmds: idlib.List(CmdArgs),
-    postReload: CmdArgs,
+    text_length: c_int,
+    text_buffer: [MAX_CMD_BUFFER]u8,
+    completion_string: idlib.Str,
+    completion_params: idlib.List(idlib.Str),
+    tokenized_cmds: idlib.List(CmdArgs),
+    post_reload: CmdArgs,
 
     pub fn init(cmd_system: *CmdSystem, allocator: Allocator) Allocator.Error!void {
         try cmd_system.addCommand(
             "listCmds",
             cmd_listAllCommands,
-            CmdFlags.CMD_FL_SYSTEM,
+            CmdFlags.system,
             "list commands",
             null,
             allocator,
@@ -182,7 +183,7 @@ pub const CmdSystem = extern struct {
         try cmd_system.addCommand(
             "exec",
             cmd_execFile,
-            CmdFlags.CMD_FL_SYSTEM,
+            CmdFlags.system,
             "executes a config file",
             null,
             allocator,
@@ -225,8 +226,8 @@ pub const CmdSystem = extern struct {
             );
         }
 
-        try cmd_system.completionString.assignSlice("*", allocator);
-        cmd_system.textLength = 0;
+        try cmd_system.completion_string.assignSlice("*", allocator);
+        cmd_system.text_length = 0;
     }
 
     pub fn executeTokenizedString(
@@ -294,7 +295,7 @@ pub const CmdSystem = extern struct {
 
         cmd.name = cmd_name.ptr;
         cmd.function = function;
-        cmd.argCompletion = arg_completion;
+        cmd.arg_completion = arg_completion;
         cmd.flags = flags;
         cmd.description = cmd_desc.ptr;
         cmd.next = cmd_system.commands;
@@ -325,15 +326,32 @@ pub const CmdSystem = extern struct {
         );
     }
 
-    pub fn bufferCommandText(cmd_system: *CmdSystem, exec: CmdExecution, text: []const u8) error{OutOfMemory}!void {
+    pub fn appendTokenizedString(
+        cmd_system: *CmdSystem,
+        args: *const CmdArgs,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        cmd_system.appendCommandText("_execTokenized\n");
+        const args_copy = try cmd_system.tokenized_cmds.allocOne(allocator);
+        args_copy.copyFrom(args);
+    }
+
+    pub fn bufferCommandText(
+        cmd_system: *CmdSystem,
+        exec: CmdExecution,
+        text: []const u8,
+    ) error{OutOfMemory}!void {
         switch (exec) {
-            .CMD_EXEC_NOW => try cmd_system.executeCommandText(text),
-            .CMD_EXEC_INSERT => cmd_system.insertCommandText(text),
-            .CMD_EXEC_APPEND => cmd_system.appendCommandText(text),
+            .now => try cmd_system.executeCommandText(text),
+            .insert => cmd_system.insertCommandText(text),
+            .append => cmd_system.appendCommandText(text),
         }
     }
 
-    pub fn executeCommandText(cmd_system: *CmdSystem, text: []const u8) error{OutOfMemory}!void {
+    pub fn executeCommandText(
+        cmd_system: *CmdSystem,
+        text: []const u8,
+    ) error{OutOfMemory}!void {
         var args: CmdArgs = .{};
         try args.tokenizeString(text);
 
@@ -341,14 +359,15 @@ pub const CmdSystem = extern struct {
     }
 
     pub fn executeCommandBuffer(cmd_system: *CmdSystem) error{OutOfMemory}!void {
-        while (cmd_system.textLength != 0) {
+        var free_tokenized_cmds: u32 = 0;
+        while (cmd_system.text_length != 0) {
             if (cmd_system.wait != 0) {
                 cmd_system.wait -= 1;
                 break;
             }
 
             var quotes: usize = 0;
-            const text = cmd_system.textBuf[0..@intCast(cmd_system.textLength)];
+            const text = cmd_system.text_buffer[0..@intCast(cmd_system.text_length)];
             const line = for (text, 0..) |char, i| {
                 switch (char) {
                     '"' => quotes += 1,
@@ -360,8 +379,8 @@ pub const CmdSystem = extern struct {
 
             var args: CmdArgs = .{};
             if (std.mem.eql(u8, line, "_execTokenized")) {
-                args.copy(&(cmd_system.tokenizedCmds.constSlice()[0]));
-                cmd_system.tokenizedCmds.removeIndex(0);
+                args.copyFrom(&(cmd_system.tokenized_cmds.constSlice()[free_tokenized_cmds]));
+                free_tokenized_cmds += 1;
             } else {
                 try args.tokenizeString(line);
             }
@@ -370,21 +389,30 @@ pub const CmdSystem = extern struct {
             // this is necessary because commands (exec) can insert data at the
             // beginning of the text buffer
             if (line.len == text.len) {
-                cmd_system.textLength = 0;
+                cmd_system.text_length = 0;
             } else {
                 const line_len_with_delimiter = line.len + 1;
-                const old_len: usize = @intCast(cmd_system.textLength);
+                const old_len: usize = @intCast(cmd_system.text_length);
                 const len: usize = old_len - line_len_with_delimiter;
 
                 std.mem.copyForwards(
                     u8,
-                    cmd_system.textBuf[0..len],
-                    cmd_system.textBuf[line_len_with_delimiter..old_len],
+                    cmd_system.text_buffer[0..len],
+                    cmd_system.text_buffer[line_len_with_delimiter..old_len],
                 );
-                cmd_system.textLength = @intCast(len);
+                cmd_system.text_length = @intCast(len);
             }
 
             cmd_system.executeTokenizedString(&args);
+        }
+
+        // remove cmds from queue
+        for (0..free_tokenized_cmds) |_| {
+            var cmds = &cmd_system.tokenized_cmds;
+            cmds.num -= 1;
+            for (0..cmds.num) |i| {
+                cmds.list.?[i].copyFrom(&cmds.list.?[i + 1]);
+            }
         }
     }
 
@@ -392,7 +420,7 @@ pub const CmdSystem = extern struct {
     /// Adds a \n to the text
     pub fn insertCommandText(cmd_system: *CmdSystem, text: []const u8) void {
         const len = text.len + 1;
-        const current_len: usize = @intCast(cmd_system.textLength);
+        const current_len: usize = @intCast(cmd_system.text_length);
         if (len + current_len > MAX_CMD_BUFFER) {
             std.debug.print("[CMD][ERR] cmd_buffer overflow\n", .{});
             return;
@@ -402,30 +430,30 @@ pub const CmdSystem = extern struct {
         var i = @as(i32, @intCast(current_len)) - 1;
         while (i >= 0) : (i -= 1) {
             const index: usize = @intCast(i);
-            cmd_system.textBuf[index + len] = cmd_system.textBuf[index];
+            cmd_system.text_buffer[index + len] = cmd_system.text_buffer[index];
         }
 
         // copy the new text in
-        @memcpy(cmd_system.textBuf[0 .. len - 1], text);
+        @memcpy(cmd_system.text_buffer[0 .. len - 1], text);
 
         // add a \n
-        cmd_system.textBuf[len - 1] = '\n';
+        cmd_system.text_buffer[len - 1] = '\n';
 
-        cmd_system.textLength += @intCast(len);
+        cmd_system.text_length += @intCast(len);
     }
 
     /// Adds command text at the end of the buffer, does NOT add a final \n
     pub fn appendCommandText(cmd_system: *CmdSystem, text: []const u8) void {
         const len = text.len;
-        const current_len: usize = @intCast(cmd_system.textLength);
+        const current_len: usize = @intCast(cmd_system.text_length);
         if (len + current_len > MAX_CMD_BUFFER) {
             std.debug.print("[CMD][ERR] cmd_buffer overflow\n", .{});
             return;
         }
 
-        @memcpy(cmd_system.textBuf[current_len..][0..len], text);
+        @memcpy(cmd_system.text_buffer[current_len..][0..len], text);
 
-        cmd_system.textLength += @intCast(len);
+        cmd_system.text_length += @intCast(len);
     }
 };
 
@@ -446,7 +474,7 @@ pub fn listCommandsByFlags(flags: c_int) void {
 }
 
 pub fn cmd_listAllCommands(_: *const CmdArgs) callconv(.C) void {
-    listCommandsByFlags(CmdFlags.CMD_FL_ALL);
+    listCommandsByFlags(CmdFlags.all);
 }
 
 pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
@@ -469,5 +497,5 @@ pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
 
     std.debug.print("[CMD] Execing file: {s}\n", .{filename});
 
-    instance.bufferCommandText(.CMD_EXEC_INSERT, buffer) catch unreachable;
+    instance.bufferCommandText(.insert, buffer) catch unreachable;
 }

@@ -15,7 +15,7 @@ usingnamespace @import("renderer/render_system_interface.zig");
 usingnamespace @import("renderer/render_world_interface.zig");
 usingnamespace @import("renderer/frame_data_interface.zig");
 
-export fn ztech_init() callconv(.C) void {
+pub export fn ztech_init() callconv(.C) void {
     const global_allocator = global.gpa.allocator();
 
     global.entities = global.Entities.init(global_allocator);

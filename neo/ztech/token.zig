@@ -46,8 +46,6 @@ pub const Token = extern struct {
     white_space_end_p: ?[*]const u8 = null,
     next: ?*Token = null,
 
-    extern fn c_token_calculateNumberValue(*Token) void;
-
     pub fn deinit(token: *Token, allocator: Allocator) void {
         token.str.deinit(allocator);
     }
@@ -91,7 +89,7 @@ pub const Token = extern struct {
         if (token.type != .number) return 0;
 
         if (!token.subtype.values_valid)
-            c_token_calculateNumberValue(token);
+            token.calculateNumberValue();
 
         return token.int_value;
     }
@@ -100,7 +98,7 @@ pub const Token = extern struct {
         if (token.type != .number) return 0;
 
         if (!token.subtype.values_valid)
-            c_token_calculateNumberValue(token);
+            token.calculateNumberValue();
 
         return token.float_value;
     }
@@ -119,5 +117,108 @@ pub const Token = extern struct {
 
     pub fn getSubtype(token: *const Token) Subtype {
         return token.subtype;
+    }
+
+    fn calculateNumberValue(token: *Token) void {
+        std.debug.assert(token.type == .number);
+        const str = token.slice();
+        token.float_value = 0;
+        token.int_value = 0;
+
+        if (token.subtype.float) {
+            if (token.subtype.infinite or
+                token.subtype.indefinite or
+                token.subtype.nan)
+            {
+                if (token.subtype.infinite) {
+                    var inf: u32 = 0x7f800000;
+                    token.float_value = @floatCast(@as([*c]f32, @ptrCast(@alignCast(&inf))).*);
+                } else if (token.subtype.indefinite) {
+                    var ind: u32 = 0xffc00000;
+                    token.float_value = @floatCast(@as([*c]f32, @ptrCast(@alignCast(&ind))).*);
+                } else if (token.subtype.nan) {
+                    var nan: u32 = 0x7fc00000;
+                    token.float_value = @floatCast(@as([*c]f32, @ptrCast(@alignCast(&nan))).*);
+                }
+            } else {
+                var index: u32 = 0;
+                while (index < str.len) : (index += 1) {
+                    const char = str[index];
+                    if (char == '.' or char == 'e') break;
+
+                    token.float_value = token.float_value * 10 + @as(f64, @floatFromInt(char - '0'));
+                }
+
+                if (index < str.len and str[index] == '.') {
+                    index += 1;
+
+                    var m: f64 = 0.1;
+                    while (index < str.len) : (index += 1) {
+                        const char = str[index];
+                        if (char == 'e') break;
+
+                        token.float_value = token.float_value + @as(f64, @floatFromInt(char - '0')) * m;
+                        m *= 0.1;
+                    }
+                }
+
+                if (index < str.len and str[index] == 'e') {
+                    index += 1;
+
+                    var div: bool = false;
+                    if (index < str.len and str[index] == '-') {
+                        div = true;
+                        index += 1;
+                    } else if (index < str.len and str[index] == '+') {
+                        div = false;
+                        index += 1;
+                    } else {
+                        div = false;
+                    }
+
+                    var pow: u32 = 0;
+
+                    while (index < str.len) : (index += 1) {
+                        pow = pow * 10 + (str[index] - '0');
+                    }
+                    var m: f64 = 1.0;
+                    for (0..pow) |_| {
+                        m *= 10;
+                    }
+
+                    if (div)
+                        token.float_value /= m
+                    else
+                        token.float_value *= m;
+                }
+            }
+
+            token.int_value = @intFromFloat(token.float_value);
+        } else if (token.subtype.decimal) {
+            for (str) |char| {
+                token.int_value = token.int_value * 10 + (char - '0');
+            }
+
+            token.float_value = @floatFromInt(token.int_value);
+        } else if (token.subtype.ip_address) {
+            // TODO
+            unreachable;
+        } else if (token.subtype.octal) {
+            // first is zero
+            var index: u32 = 1;
+            while (index < str.len) : (index += 1) {
+                token.int_value = (token.int_value << 3) + (str[index] - '0');
+            }
+
+            token.float_value = @floatFromInt(token.int_value);
+        } else if (token.subtype.hex) {
+            // TODO
+            unreachable;
+        } else if (token.subtype.binary) {
+            // TODO
+            unreachable;
+        }
+
+        token.subtype.values_valid = true;
     }
 };

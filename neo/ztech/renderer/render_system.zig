@@ -740,7 +740,7 @@ pub fn finishCommandBuffers(
 
     // save off this command buffer
     const command_buffer_head = if (frame_data.frame_data) |data|
-        data.cmdHead
+        data.cmd_head
     else
         null;
 
@@ -808,7 +808,7 @@ pub fn finishCommandBuffers(
     render_system.frame_shader_time = @as(f32, @floatFromInt(getMilliseconds())) * 0.001;
 
     var cmd2 = frame_data.createCommand(frame_data.SetBufferCommand);
-    cmd2.commandId = .RC_SET_BUFFER;
+    cmd2.command_id = .set_buffer;
     cmd2.buffer = 0;
 
     // the old command buffer can now be rendered, while the new one can
@@ -826,7 +826,7 @@ pub fn renderCommandBuffers(
 
     // execute backend commands only if view_3d or view_gui are present
     while (opt_cmd) |cmd| : (opt_cmd = @ptrCast(@alignCast(cmd.next))) {
-        if (cmd.commandId == .RC_DRAW_VIEW_3D or cmd.commandId == .RC_DRAW_VIEW_GUI)
+        if (cmd.command_id == .draw_view_3d or cmd.command_id == .draw_view_gui)
             break;
     } else return;
 
@@ -1141,7 +1141,7 @@ const CFlags = cvar.CVarFlags;
 pub var r_gamma = CVar.initMinMax(
     "r_gamma",
     "1.0",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_FLOAT,
+    CFlags.renderer | CFlags.archive | CFlags.float,
     "changes gamma tables",
     0.5,
     3.0,
@@ -1150,7 +1150,7 @@ pub var r_gamma = CVar.initMinMax(
 pub var r_brightness = CVar.initMinMax(
     "r_brightness",
     "1",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_FLOAT,
+    CFlags.renderer | CFlags.archive | CFlags.float,
     "changes gamma tables",
     0.5,
     2.0,
@@ -1159,21 +1159,21 @@ pub var r_brightness = CVar.initMinMax(
 pub var stereo_render_enable = CVar.init(
     "stereoRender_enable",
     "0",
-    CFlags.CVAR_INTEGER | CFlags.CVAR_ARCHIVE,
+    CFlags.integer | CFlags.archive,
     "1 = side-by-side compressed, 2 = top and bottom compressed, 3 = side-by-side, 4 = 720 frame packed, 5 = interlaced, 6 = OpenGL quad buffer",
 );
 
 pub var r_fullscreen = CVar.init(
     "r_fullscreen",
     "0",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "-2 = borderless fullscreen, -1 = borderless window, 0 = windowed, 1 = full screen on monitor 1, 2 = full screen on monitor 2, etc",
 );
 
 pub var r_anti_aliasing = CVar.initMinMax(
     "r_antiAliasing",
     "1",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER | CFlags.CVAR_NEW,
+    CFlags.renderer | CFlags.archive | CFlags.integer | CFlags.new,
     " 0 = None\n 1 = TAA 1x",
     0,
     @intFromEnum(AntiAliasingMode.TAA),
@@ -1182,14 +1182,14 @@ pub var r_anti_aliasing = CVar.initMinMax(
 pub var r_video_mode = CVar.init(
     "r_vidMode",
     "0",
-    CFlags.CVAR_ARCHIVE | CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER,
+    CFlags.archive | CFlags.renderer | CFlags.integer,
     "fullscreen video mode number",
 );
 
 pub var r_display_refresh = CVar.initMinMax(
     "r_displayRefresh",
     "0",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER | CFlags.CVAR_NOCHEAT,
+    CFlags.renderer | CFlags.integer | CFlags.nocheat,
     "optional display refresh rate option for vid mode",
     0,
     240,
@@ -1198,49 +1198,49 @@ pub var r_display_refresh = CVar.initMinMax(
 pub var r_custom_width = CVar.init(
     "r_customWidth",
     "1280",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "custom screen width. set r_vidMode to -1 to activate",
 );
 
 pub var r_custom_height = CVar.init(
     "r_customHeight",
     "720",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "custom screen height. set r_vidMode to -1 to activate",
 );
 
 pub var r_window_x = CVar.init(
     "r_windowX",
     "0",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "Non-fullscreen parameter",
 );
 
 pub var r_window_y = CVar.init(
     "r_windowY",
     "0",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "Non-fullscreen parameter",
 );
 
 pub var r_window_width = CVar.init(
     "r_windowWidth",
     "1280",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "Non-fullscreen parameter",
 );
 
 pub var r_window_height = CVar.init(
     "r_windowHeight",
     "720",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_INTEGER,
+    CFlags.renderer | CFlags.archive | CFlags.integer,
     "Non-fullscreen parameter",
 );
 
 pub var r_shadow_map_atlas_size = CVar.init(
     "r_shadowMapAtlasSize",
     "8192",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_INTEGER | CFlags.CVAR_ROM | CFlags.CVAR_NEW,
+    CFlags.renderer | CFlags.integer | CFlags.rom | CFlags.new,
     "size of the shadowmap atlas",
 );
 

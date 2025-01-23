@@ -20,7 +20,7 @@ pub const not_found_time: idlib.Time = -1;
 pub var fs_basepath: CVar = CVar.init(
     "fs_basepath",
     "",
-    cvar.CVarFlags.CVAR_SYSTEM | cvar.CVarFlags.CVAR_INIT,
+    cvar.CVarFlags.system | cvar.CVarFlags.init,
     "",
 );
 
@@ -85,7 +85,7 @@ pub const FileSystem = extern struct {
         try cmd.instance.addCommand(
             "path",
             cmd_printSearchPaths,
-            cmd.CmdFlags.CMD_FL_SYSTEM,
+            cmd.CmdFlags.system,
             "lists search paths",
             null,
             allocator,

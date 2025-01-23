@@ -2300,30 +2300,6 @@ pvsHandle_t idGameLocal::GetClientPVS( idPlayer* player, pvsType_t type )
 	}
 }
 
-extern "C" pvsHandle_t c_getClientPvs(int* areas, size_t num) {
-	return gameLocal.pvs.SetupCurrentPVS(areas, static_cast<int>(num));
-}
-
-extern "C" void c_freeClientPvs(pvsHandle_t handle) {
-	gameLocal.pvs.FreeCurrentPVS(handle);
-}
-
-extern "C" void c_game_updateTime(int framenum) {
-	gameLocal.framenum = framenum;
-	gameLocal.fast.previousTime = FRAME_TO_MSEC( framenum - 1 );
-	gameLocal.fast.time = FRAME_TO_MSEC( framenum );
-	gameLocal.fast.realClientTime = gameLocal.fast.time;
-	gameLocal.SetServerGameTimeMs( gameLocal.fast.time );
-
-	gameLocal.ComputeSlowScale();
-
-	gameLocal.slow.previousTime = gameLocal.slow.time;
-	gameLocal.slow.time += idMath::Ftoi( ( gameLocal.fast.time - gameLocal.fast.previousTime ) * gameLocal.slowmoScale );
-	gameLocal.slow.realClientTime = gameLocal.slow.time;
-
-	gameLocal.SelectTimeGroup( false );
-}
-
 /*
 ================
 idGameLocal::SetupPlayerPVS

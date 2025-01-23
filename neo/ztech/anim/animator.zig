@@ -7,7 +7,7 @@ const Vec3 = @import("../math/vector.zig").Vec3;
 const Quat = @import("../math/quat.zig").Quat;
 const Bounds = @import("../bounding_volume/bounds.zig");
 const idList = @import("../idlib.zig").idList;
-const RenderModel = @import("../renderer/model.zig").RenderModel;
+const RenderModelStatic = @import("../renderer/model.zig").RenderModelStatic;
 const decl_manager = @import("../framework/decl_manager.zig");
 const Transform = @import("../physics/physics.zig").Transform;
 const DeclSkin = @import("../renderer/common.zig").DeclSkin;
@@ -409,7 +409,7 @@ const DeclModelDef = extern struct {
     joints: idlib.List(JointInfo),
     joint_parents: idlib.List(c_int),
     channel_joints: [num_anim_channels]idlib.List(c_int),
-    model_handle: ?*RenderModel,
+    model_handle: ?*RenderModelStatic,
     anims: idlib.List(*Anim),
     skin: ?*const DeclSkin,
 
@@ -419,7 +419,7 @@ const DeclModelDef = extern struct {
     extern fn c_declModelDef_getJointsList(*const DeclModelDef) *idList(JointInfo);
     extern fn c_declModelDef_getVisualOffset(*const DeclModelDef) CVec3;
     extern fn c_declModelDef_jointParents(*const DeclModelDef, *usize) [*]const c_int;
-    extern fn c_declModelDef_modelHandle(*const DeclModelDef) ?*RenderModel;
+    extern fn c_declModelDef_modelHandle(*const DeclModelDef) ?*RenderModelStatic;
     extern fn c_declModelDef_touch(*const DeclModelDef) void;
     extern fn c_declModelDef_hasAnim(*const DeclModelDef, c_int) bool;
     extern fn c_declModelDef_getAnim(*const DeclModelDef, [*]const u8) c_int;
@@ -460,7 +460,7 @@ const DeclModelDef = extern struct {
         return c_declModelDef_hasAnim(def, @intCast(index));
     }
 
-    pub fn modelHandle(def: *const DeclModelDef) ?*RenderModel {
+    pub fn modelHandle(def: *const DeclModelDef) ?*RenderModelStatic {
         return def.model_handle;
     }
 
@@ -555,7 +555,7 @@ fn freeData(animator: *Animator) void {
 pub const SetModelError =
     error{OutOfMemory} ||
     decl_manager.DeclManager.FindDeclError;
-pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*RenderModel {
+pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*RenderModelStatic {
     animator.freeData();
 
     const model_decl: *DeclModelDef = @ptrCast(try decl_manager.instance.findType(
@@ -563,13 +563,13 @@ pub fn setModel(animator: *Animator, model_name: []const u8) SetModelError!?*Ren
         model_name,
         animator.allocator,
     ) orelse return null);
-    const render_model: *RenderModel = model_decl.modelHandle() orelse return null;
+    const render_model: *RenderModelStatic = model_decl.modelHandle() orelse return null;
 
     animator.model_def = model_decl;
 
     model_decl.touch();
     try animator.setupJoints(model_decl);
-    animator.frame_bounds = render_model.bounds().toBounds();
+    animator.frame_bounds = render_model.bounds.toBounds();
     render_model.reset();
 
     for (0..num_anim_channels) |i| {
@@ -758,7 +758,7 @@ pub fn printAnims(animator: *const Animator) void {
 
 pub fn getJointHandle(animator: *const Animator, joint_name: []const u8) ?JointHandle {
     const model_def = animator.model_def orelse return null;
-    const render_model: *RenderModel = model_def.modelHandle() orelse return null;
+    const render_model: *RenderModelStatic = model_def.modelHandle() orelse return null;
 
     return render_model.getJointHandle(joint_name);
 }

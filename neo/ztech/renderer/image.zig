@@ -119,8 +119,8 @@ const c = @import("../sys/c_import.zig").c;
 
 pub const Image = extern struct {
     var garbage_index: usize = 0;
-    var image_garbage: [frame_data.NUM_FRAME_DATA]idlib.List(vulkan.Image) = undefined;
-    var allocation_garbage: [frame_data.NUM_FRAME_DATA]idlib.List(c.VmaAllocation) = undefined;
+    var image_garbage: [frame_data.num_frame_data]idlib.List(vulkan.Image) = undefined;
+    var allocation_garbage: [frame_data.num_frame_data]idlib.List(c.VmaAllocation) = undefined;
 
     name: idlib.Str = .{},
     cube_files: CubeFiles = .@"2d",

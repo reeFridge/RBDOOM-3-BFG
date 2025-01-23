@@ -20,14 +20,14 @@ const CFlags = cvar.CVarFlags;
 pub var r_vma_device_local_memory_mb = CVar.init(
     "r_vmaDeviceLocalMemoryMB",
     "256",
-    CFlags.CVAR_INTEGER | CFlags.CVAR_INIT | CFlags.CVAR_NEW,
+    CFlags.integer | CFlags.init | CFlags.new,
     "Size of VMA allocation block for gpu memory.",
 );
 
 pub var r_vk_prefer_fast_sync = CVar.init(
     "r_vkPreferFastSync",
     "1",
-    CFlags.CVAR_RENDERER | CFlags.CVAR_ARCHIVE | CFlags.CVAR_BOOL | CFlags.CVAR_NEW,
+    CFlags.renderer | CFlags.archive | CFlags.bool | CFlags.new,
     "Prefer Fast Sync/no-tearing in place of VSync off/tearing",
 );
 
@@ -133,7 +133,7 @@ pub const DeviceCreationParams = struct {
     back_buffer_height: u32 = 720,
     back_buffer_sample_count: u32 = 1, // optional HDR Framebuffer MSAA
     refresh_rate: u32 = 0,
-    swapchain_buffer_count: u32 = FrameData.NUM_FRAME_DATA,
+    swapchain_buffer_count: u32 = FrameData.num_frame_data,
     swapchain_format: nvrhi.Format = .RGBA8_UNORM,
     swapchain_sample_count: u32 = 1,
     swapchain_sample_quality: u32 = 0,

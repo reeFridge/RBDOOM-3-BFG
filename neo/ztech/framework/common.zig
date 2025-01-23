@@ -1,3 +1,4 @@
+//! @exportConsoleCommands
 const std = @import("std");
 const cmd = @import("cmd_system.zig");
 const cvar = @import("cvar_system.zig");
@@ -8,6 +9,7 @@ const network = @import("../sys/network.zig");
 const localization = @import("../sys/localization.zig");
 const decl_manager = @import("decl_manager.zig");
 const DeclManager = decl_manager.DeclManager;
+const sys_event = @import("../sys/event.zig");
 const event_loop = @import("event_loop.zig");
 const parallel_job_manager = @import("../renderer/parallel_job_manager.zig");
 const RenderSystem = @import("../renderer/render_system.zig");
@@ -20,9 +22,48 @@ const thread = @import("thread.zig");
 const user_cmd = @import("user_cmd.zig");
 const ui_manager = @import("../ui/manager.zig");
 const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
+const exit = @import("../main.zig").exit;
 const frameToMsec = @import("../game.zig").frameToMsec;
+const RenderWorld = @import("../renderer/render_world.zig");
+const Game = @import("../game.zig");
 
-fn runGameFrameAndDraw(self: *thread.Thread) u8 {
+fn cmd_quit(_: *const cmd.CmdArgs) callconv(.C) void {
+    instance.quit();
+}
+pub const quit_command: cmd.CmdDecl = .{
+    .name = "quit",
+    .function = cmd_quit,
+    .flags = cmd.CmdFlags.game,
+    .description = "quits the game",
+    .arg_completion = null,
+};
+
+fn cmd_map(_: *const cmd.CmdArgs) callconv(.C) void {
+    loadMap("maps/fridge/zig.map") catch |err| {
+        std.debug.print("err while map loading: {s}\n", .{@errorName(err)});
+    };
+}
+pub const map_command: cmd.CmdDecl = .{
+    .name = "map",
+    .function = cmd_map,
+    .flags = cmd.CmdFlags.game,
+    .description = "load new map",
+    .arg_completion = null,
+};
+
+const GameThreadArgs = struct {
+    num_frames: u32 = 0,
+};
+const GameThread = thread.ThreadWithArgs(GameThreadArgs);
+
+fn runGameFramesAndDraw(self: *GameThread) u8 {
+    if (self.args.num_frames == 0) return 0;
+
+    for (0..self.args.num_frames) |frame_index| {
+        _ = frame_index;
+        Game.instance.runFrame();
+    }
+
     if (self.allocator) |allocator| {
         console.instance.draw(allocator) catch return 1;
     }
@@ -32,11 +73,44 @@ fn runGameFrameAndDraw(self: *thread.Thread) u8 {
 
 var opt_last_frame_time: ?c_int = null;
 
-pub var game_thread: thread.Thread = .{ .payload_fn = runGameFrameAndDraw };
+pub var game_thread: GameThread = .{ .payload_fn = runGameFramesAndDraw, .args = .{} };
 var game_time_residual: f64 = 0;
 var sync_next_frame: bool = true;
 var game_frame: u64 = 0;
 var no_sleep: bool = false;
+pub var render_world: ?*RenderWorld = null;
+
+fn loadMap(map_name: []const u8) !void {
+    const world = render_world orelse @panic("no world");
+    // RenderSystem.instance.beginLevelLoad
+    // decl_manager.instance.beginLevelLoad
+    // ui_manager.instance.beginLevelLoad
+    //defer {
+    // RenderSystem.instance.endLevelLoad
+    // decl_manager.instance.endLevelLoad
+    // ui_manager.instance.endLevelLoad
+    // }
+    //
+    // TODO: allow com_engineHz to be changed between map loads
+    try world.initFromMap(map_name);
+    // user_cmd.generator.initForMap();
+    try Game.instance.initForMap(map_name, world, world.allocator);
+
+    try world.generateAllInteractions();
+    // user_cmd.generator.clear();
+
+    // we are valid for game draws now
+}
+
+const ErrorType = enum {
+    none,
+    fatal,
+    drop,
+    disconnect,
+};
+
+var error_entered: ErrorType = .none;
+var common_allocator: Allocator = undefined;
 
 pub const Common = opaque {
     extern fn c_common_getRendererGPUMicroseconds(*const Common) callconv(.C) u64;
@@ -49,6 +123,10 @@ pub const Common = opaque {
     ) void;
 
     pub fn frame(_: *Common, allocator: Allocator) !void {
+        common_allocator = allocator;
+        sys_event.generateEvents();
+        event_loop.instance.run(true);
+
         const render_commands = try RenderSystem.instance.swapCommandBuffers(allocator);
 
         // how many frames to run
@@ -95,7 +173,13 @@ pub const Common = opaque {
             std.time.sleep(0);
         }
 
-        game_thread.signalWork();
+        {
+            game_thread.args.num_frames = num_frames;
+            // always immediately return
+            game_thread.wait();
+            // TODO: pass num_frames to the worker
+            game_thread.signalWork();
+        }
 
         try RenderSystem.instance.renderCommandBuffers(render_commands, allocator);
 
@@ -115,10 +199,10 @@ pub const Common = opaque {
         try decl_manager.instance.init(allocator);
         try event_loop.instance.init(allocator);
         try parallel_job_manager.instance.init();
-        try cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec default.cfg\n");
-        try cmd.instance.bufferCommandText(.CMD_EXEC_APPEND, "exec autoexec.cfg\n");
+        try cmd.instance.bufferCommandText(.append, "exec default.cfg\n");
+        try cmd.instance.bufferCommandText(.append, "exec autoexec.cfg\n");
         try cmd.instance.executeCommandBuffer();
-        cvar.instance.modifiedFlags &= ~cvar.CVarFlags.CVAR_ARCHIVE;
+        cvar.instance.modifiedFlags &= ~cvar.CVarFlags.archive;
         try RenderSystem.instance.initBackend(allocator);
         try sound_system.instance.init();
         try RenderSystem.instance.init(allocator);
@@ -148,10 +232,11 @@ pub const Common = opaque {
         );
 
         // TODO common.initCommands(); // tools
-        //
-        // TODO ! game.instance.init();
+
+        Game.instance.init();
+
         // TODO ! fs.instance.unloadResourceContainer("_ordered");
-        // TODO ! common.render_world = render_system.instance.allocRenderWorld();
+        render_world = try RenderSystem.instance.createRenderWorld(allocator);
 
         // TODO common.sound_world = sound_system.instance.allocSoundWorld();
         // TODO common.menu_sound_world = sound_system.instance.allocSoundWorld();
@@ -164,7 +249,15 @@ pub const Common = opaque {
         // TODO ! common.createMainMenu();
         // TODO ! common.commonDialog.init();
 
-        // TODO common.addStartupCommands();
+        // add startup commands
+        {
+            const num = num_console_lines;
+            const lines = console_lines;
+            for (0..@intCast(num.*)) |i| {
+                if (lines[i].argc == 0) continue;
+                try cmd.instance.appendTokenizedString(&lines[i], allocator);
+            }
+        }
 
         // TODO ! common.startMenu(true);
 
@@ -302,7 +395,20 @@ pub const Common = opaque {
     }
 
     pub fn quit(common: *Common) void {
-        c_common_quit(common);
+        if (error_entered == .none) {
+            common.shutdown();
+        }
+
+        exit(0);
+    }
+
+    fn shutdown(_: *Common) void {
+        if (render_world) |world| {
+            RenderSystem.instance.destroyRenderWorld(common_allocator, world);
+            render_world = null;
+        }
+
+        RenderSystem.instance.deinit(common_allocator);
     }
 
     pub fn parseCommandLine(args: [][:0]const u8) void {

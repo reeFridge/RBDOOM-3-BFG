@@ -404,8 +404,8 @@ pub const ViewDef = extern struct {
 
     pub fn addDrawCommand(view_def: *ViewDef, gui_only: bool) void {
         var cmd = FrameData.createCommand(FrameData.DrawSurfacesCommand);
-        cmd.commandId = if (gui_only) .RC_DRAW_VIEW_GUI else .RC_DRAW_VIEW_3D;
-        cmd.viewDef = view_def;
+        cmd.command_id = if (gui_only) .draw_view_gui else .draw_view_3d;
+        cmd.view_def = view_def;
     }
 
     pub fn setupUnprojection(view_def: *ViewDef) void {

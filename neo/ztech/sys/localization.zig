@@ -6,7 +6,7 @@ const Allocator = @import("std").mem.Allocator;
 pub var sys_lang: CVar = CVar.init(
     "sys_lang",
     lang_english,
-    cvar.CVarFlags.CVAR_SYSTEM | cvar.CVarFlags.CVAR_INIT | cvar.CVarFlags.CVAR_ARCHIVE,
+    cvar.CVarFlags.system | cvar.CVarFlags.init | cvar.CVarFlags.archive,
     "",
 );
 

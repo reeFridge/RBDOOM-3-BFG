@@ -3,74 +3,74 @@ const ViewDef = @import("common.zig").ViewDef;
 const Image = @import("image.zig").Image;
 
 pub const RenderCommand = enum(u8) {
-    RC_NOP,
-    RC_DRAW_VIEW_3D, // may be at a reduced resolution, will be upsampled before 2D GUIs
-    RC_DRAW_VIEW_GUI, // not resolution scaled
-    RC_SET_BUFFER,
-    RC_COPY_RENDER,
-    RC_POST_PROCESS, // postfx after scene rendering is done but before GUI rendering
-    RC_CRT_POST_PROCESS, // CRT simulation after everything has been rendered on the final swapchain image
+    nop,
+    draw_view_3d, // may be at a reduced resolution, will be upsampled before 2D GUIs
+    draw_view_gui, // not resolution scaled
+    set_buffer,
+    copy_render,
+    post_process, // postfx after scene rendering is done but before GUI rendering
+    crt_post_process, // CRT simulation after everything has been rendered on the final swapchain image
 };
 
 pub const EmptyCommand = extern struct {
-    commandId: RenderCommand,
+    command_id: RenderCommand,
     next: ?*RenderCommand,
 };
 
 pub const SetBufferCommand = extern struct {
-    commandId: RenderCommand,
+    command_id: RenderCommand,
     next: ?*RenderCommand,
     buffer: c_int,
 };
 
 pub const DrawSurfacesCommand = extern struct {
-    commandId: RenderCommand,
+    command_id: RenderCommand,
     next: ?*RenderCommand,
-    viewDef: ?*ViewDef,
+    view_def: ?*ViewDef,
 };
 
 pub const CopyRenderCommand = extern struct {
-    commandId: RenderCommand,
+    command_id: RenderCommand,
     next: ?*RenderCommand,
     x: c_int,
     y: c_int,
-    imageWidth: c_int,
-    imageHeight: c_int,
+    image_width: c_int,
+    image_height: c_int,
     image: ?*Image,
-    cubeFace: c_int,
-    clearColorAfterCopy: bool,
+    cube_face: c_int,
+    clear_color_after_copy: bool,
 };
 
 pub const PostProcessCommand = extern struct {
-    commandId: RenderCommand,
+    command_id: RenderCommand,
     next: ?*RenderCommand,
-    viewDef: ?*ViewDef,
+    view_def: ?*ViewDef,
 };
 
 pub const CrtPostProcessCommand = extern struct {
-    commandId: RenderCommand,
+    command_id: RenderCommand,
     next: ?*RenderCommand,
     padding: c_int,
 };
 
 pub const FrameData = extern struct {
-    frameMemory: ?[*]u8,
-    cmdHead: ?*EmptyCommand, // may be of other command type based on commandId
-    cmdTail: ?*EmptyCommand,
+    frame_memory: ?[*]u8,
+    cmd_head: ?*EmptyCommand, // may be of other command type based on commandId
+    cmd_tail: ?*EmptyCommand,
 };
 
 pub var frame_data: ?*FrameData = null;
 
-const MAX_FRAME_MEMORY: usize = 64 * 1024 * 1024;
-const FRAME_ALLOC_ALIGNMENT: usize = 128;
-const FRAME_MEMORY_ALIGNMENT: usize = 16;
-const CACHE_LINE_SIZE: usize = 128;
+const max_frame_memory: usize = 64 * 1024 * 1024;
+const frame_alloc_alignment: usize = 128;
+const frame_memory_alignment: usize = 16;
+const cache_line_size: usize = 128;
 
 // SMP = Symmetric multiprocessing / shared-memory multiprocessing
 var smp_frame: u32 = 0;
-pub const NUM_FRAME_DATA: u32 = 3;
-var smp_frame_data: [NUM_FRAME_DATA]FrameData = undefined;
-var buffer_allocators: [NUM_FRAME_DATA]std.heap.FixedBufferAllocator = undefined;
+pub const num_frame_data: u32 = 3;
+var smp_frame_data: [num_frame_data]FrameData = undefined;
+var buffer_allocators: [num_frame_data]std.heap.FixedBufferAllocator = undefined;
 
 pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!void {
     shutdown(allocator);
@@ -78,11 +78,11 @@ pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!void {
     for (&smp_frame_data, &buffer_allocators) |*data, *frame_allocator| {
         const mem = try allocator.alignedAlloc(
             u8,
-            FRAME_MEMORY_ALIGNMENT,
-            MAX_FRAME_MEMORY,
+            frame_memory_alignment,
+            max_frame_memory,
         );
         frame_allocator.* = std.heap.FixedBufferAllocator.init(mem);
-        data.frameMemory = mem.ptr;
+        data.frame_memory = mem.ptr;
     }
 
     frame_data = &smp_frame_data[0];
@@ -96,16 +96,16 @@ pub fn shutdown(allocator: std.mem.Allocator) void {
     frame_data = null;
 
     for (&smp_frame_data, &buffer_allocators) |*data, *frame_allocator| {
-        if (data.frameMemory) |frameMemory| {
+        if (data.frame_memory) |frame_memory| {
             frame_allocator.reset();
-            allocator.free(frameMemory[0..MAX_FRAME_MEMORY]);
-            data.frameMemory = null;
+            allocator.free(frame_memory[0..max_frame_memory]);
+            data.frame_memory = null;
         }
     }
 }
 
 pub inline fn bufferAllocator() *std.heap.FixedBufferAllocator {
-    return &buffer_allocators[smp_frame % NUM_FRAME_DATA];
+    return &buffer_allocators[smp_frame % num_frame_data];
 }
 
 pub fn toggleSmpFrame() void {
@@ -114,12 +114,12 @@ pub fn toggleSmpFrame() void {
     bufferAllocator().reset();
 
     var empty_command = frameCreate(EmptyCommand);
-    empty_command.commandId = .RC_NOP;
+    empty_command.command_id = .nop;
     empty_command.next = null;
 
-    var current_frame_data = &smp_frame_data[smp_frame % NUM_FRAME_DATA];
-    current_frame_data.cmdTail = empty_command;
-    current_frame_data.cmdHead = current_frame_data.cmdTail;
+    var current_frame_data = &smp_frame_data[smp_frame % num_frame_data];
+    current_frame_data.cmd_tail = empty_command;
+    current_frame_data.cmd_head = current_frame_data.cmd_tail;
     frame_data = current_frame_data;
 }
 
@@ -142,16 +142,16 @@ pub fn frameCreate(T: type) *T {
 }
 
 pub fn allocBytes(frame_allocator: std.mem.Allocator, bytes: usize) []u8 {
-    const slice = frame_allocator.alignedAlloc(u8, FRAME_ALLOC_ALIGNMENT, bytes) catch {
+    const slice = frame_allocator.alignedAlloc(u8, frame_alloc_alignment, bytes) catch {
         @panic("FrameData.alloc: ran out of memory!");
     };
 
     var offset: usize = 0;
-    while (offset < bytes) : (offset += CACHE_LINE_SIZE) {
+    while (offset < bytes) : (offset += cache_line_size) {
         const addr = @intFromPtr(slice.ptr) + offset;
-        const aligned_addr = std.mem.alignBackward(usize, addr, CACHE_LINE_SIZE);
+        const aligned_addr = std.mem.alignBackward(usize, addr, cache_line_size);
         const ptr: [*]u8 = @ptrFromInt(aligned_addr);
-        @memset(ptr[0..CACHE_LINE_SIZE], 0);
+        @memset(ptr[0..cache_line_size], 0);
     }
 
     return slice;
@@ -168,8 +168,8 @@ pub fn createCommandBuffer(bytes: usize) []u8 {
     cmd.next = null;
 
     var current_frame_data = frame_data orelse unreachable;
-    current_frame_data.cmdTail.?.next = &cmd.commandId;
-    current_frame_data.cmdTail = cmd;
+    current_frame_data.cmd_tail.?.next = &cmd.command_id;
+    current_frame_data.cmd_tail = cmd;
 
     return mem;
 }

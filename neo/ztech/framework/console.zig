@@ -39,28 +39,28 @@ pub const Console = extern struct {
     total_lines: u32,
     key_catching: bool,
     text: [CON_TEXTSIZE]c_short,
-    current: c_int, // line where next message will be printed
-    x: c_int, // offset in current line for next print
+    current: u32, // line where next message will be printed
+    x: i32, // offset in current line for next print
     display: c_int, // bottom of console displays this line
     last_key_event: c_int, // time of last key event for scroll delay
     next_key_event: c_int, // keyboard repeat rate
     display_frac: f32, // approaches finalFrac at con_speed
     final_frac: f32, // 0.0 to 1.0 lines of console to display
     frac_time: c_int, // time of last display_frac update
-    vislines: c_int, // in scanlines
+    vislines: u32, // in scanlines
     times: [NUM_CON_TIMES]c_int, // cls.realtime time the line was generated
     color: CVec4,
     history_edit_lines: [COMMAND_HISTORY]EditField,
 
     next_history_line: c_int, // the last line in the history buffer, not masked
-    history_line: c_int, // the line being displayed from history buffer
+    history_line: u32, // the line being displayed from history buffer
     console_field: EditField,
 
     overlay_text: idlib.List(OverlayText),
     debug_graphs: idlib.List(*DebugGraph),
 
-    last_virtual_screen_width: c_int,
-    last_virtual_screen_height: c_int,
+    last_virtual_screen_width: u32,
+    last_virtual_screen_height: u32,
 
     pub fn init(console: *Console) void {
         console.key_catching = false;

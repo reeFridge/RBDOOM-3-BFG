@@ -136,7 +136,7 @@ pub const VertexCache = extern struct {
     list_num: u32,
     draw_list_num: u32,
     static_data: GeoBufferSet,
-    frame_data: [FrameData.NUM_FRAME_DATA]GeoBufferSet,
+    frame_data: [FrameData.num_frame_data]GeoBufferSet,
     uniform_buffer_offset_alignment: u32,
     most_used_vertex: u32,
     most_used_index: u32,
@@ -341,7 +341,7 @@ pub const VertexCache = extern struct {
 
         vertex_cache.draw_list_num = vertex_cache.list_num;
         vertex_cache.current_frame += 1;
-        vertex_cache.list_num = vertex_cache.current_frame % FrameData.NUM_FRAME_DATA;
+        vertex_cache.list_num = vertex_cache.current_frame % FrameData.num_frame_data;
 
         vertex_cache.frame_data[vertex_cache.list_num].map();
         vertex_cache.frame_data[vertex_cache.list_num].clear();

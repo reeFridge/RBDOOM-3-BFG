@@ -10,7 +10,7 @@ const RenderMatrix = @import("matrix.zig").RenderMatrix;
 const render_matrix = @import("matrix.zig");
 const FrustumCorners = @import("matrix.zig").FrustumCorners;
 const FrustumCull = @import("matrix.zig").FrustumCull;
-const CWinding = @import("../geometry/winding.zig").CWinding;
+const Winding = @import("../geometry/winding.zig").Winding;
 const CFixedWinding = @import("../geometry/winding.zig").CFixedWinding;
 const material = @import("material.zig");
 const RenderLightLocal = @import("render_light.zig").RenderLightLocal;
@@ -107,7 +107,7 @@ pub const Portal = extern struct {
     // area this portal leads to
     intoArea: c_int,
     // winding points have counter clockwise ordering seen this area
-    w: *CWinding,
+    winding: *Winding,
     // view must be on the positive side of the plane to cross
     plane: Plane,
     // next portal of the area
@@ -117,7 +117,7 @@ pub const Portal = extern struct {
 
 pub const ExitPortal = extern struct {
     areas: [2]c_int,
-    w: *CWinding,
+    winding: *Winding,
     blockingBits: c_int,
     portalHandle: qhandle_t,
 };
@@ -174,7 +174,7 @@ portal_areas: ?[]PortalArea = null,
 connected_area_num: usize = 0,
 area_screen_rect: ?[]ScreenRect = null,
 double_portals: ?[]DoublePortal = null,
-local_models: std.ArrayList(*model.RenderModel),
+local_models: std.ArrayList(*model.RenderModelStatic),
 entity_defs: std.ArrayList(?*RenderEntityLocal),
 light_defs: std.ArrayList(?*RenderLightLocal),
 envprobe_defs: std.ArrayList(?*RenderEnvprobeLocal),
@@ -671,8 +671,8 @@ fn renderView(render_world: *RenderWorld, view_def: *ViewDef) RenderViewError!vo
     render_world.findClosestEnvironmentProbes(view_def);
 
     var cmd = FrameData.createCommand(FrameData.DrawSurfacesCommand);
-    cmd.commandId = .RC_DRAW_VIEW_3D;
-    cmd.viewDef = view_def;
+    cmd.command_id = .draw_view_3d;
+    cmd.view_def = view_def;
 }
 
 pub const RDF_IRRADIANCE: c_int = 4;
@@ -683,8 +683,8 @@ fn renderPostProcess(view_def: *ViewDef) void {
 
     if ((view_def.renderView.rdflags & RDF_IRRADIANCE) == 0) {
         var cmd = FrameData.createCommand(FrameData.PostProcessCommand);
-        cmd.commandId = .RC_POST_PROCESS;
-        cmd.viewDef = view_def;
+        cmd.command_id = .post_process;
+        cmd.view_def = view_def;
     }
 }
 
@@ -1005,7 +1005,7 @@ fn addSingleLight(
             // a large fraction of static entity / light pairs will still have no interactions even though
             // they are both present in the same area(s)
             if (opt_e_model) |e_model| {
-                if (e_model.isDynamicModel() == .DM_STATIC and inter == &Interaction.INTERACTION_EMPTY) {
+                if (e_model.dynamicModelType() == .static and inter == &Interaction.INTERACTION_EMPTY) {
                     // the interaction was statically checked, and it didn't generate any surfaces,
                     // so there is no need to force the entity onto the view list if it isn't
                     // already there
@@ -1018,7 +1018,7 @@ fn addSingleLight(
             if (!edef.isDirectlyVisible()) {
                 if (edef.parms.noShadow) continue;
                 if (opt_e_model) |e_model| {
-                    if (!e_model.hasShadowCastingSurfaces()) {
+                    if (!e_model.has_shadow_casting_surfaces) {
                         continue;
                     }
                 }
@@ -1026,8 +1026,8 @@ fn addSingleLight(
 
             // if the model doesn't accept lighting or cast shadows, it doesn't need to be added
             if (opt_e_model) |e_model| {
-                if (!e_model.hasInteractingSurfaces() and
-                    !e_model.hasShadowCastingSurfaces())
+                if (!e_model.has_interacting_surfaces and
+                    !e_model.has_shadow_casting_surfaces)
                 {
                     continue;
                 }
@@ -1193,7 +1193,7 @@ fn addSingleModel(
 
     const no_model = render_entity.hModel == null;
     const model_has_surfaces = if (render_entity.hModel) |render_model|
-        render_model.hasInteractingSurfaces() or render_model.hasShadowCastingSurfaces()
+        render_model.has_interacting_surfaces or render_model.has_shadow_casting_surfaces
     else
         false;
 
@@ -1288,7 +1288,7 @@ fn addSingleModel(
     // create a dynamic model if the geometry isn't static
     const render_model = entity_def.getDynamicModelForFrame(view_def) orelse
         return;
-    if (render_model.numSurfaces() <= 0) return;
+    if (render_model.surfaces.num <= 0) return;
 
     // add the lightweight blood decal surfaces if the model is directly visible
     if (model_is_visible) {
@@ -1385,8 +1385,8 @@ fn addSingleModel(
         (!view_def.isXraySubview or entity_def.parms.xrayIndex == 2);
 
     // add all the model surfaces
-    for (0..@intCast(render_model.numSurfaces())) |surface_num| {
-        const surf = render_model.getSurface(surface_num) orelse continue;
+    for (0..render_model.surfaces.num) |surface_num| {
+        const surf = &render_model.surfaces.constSlice()[surface_num];
         if (r_single_surface >= 0 and surface_num != r_single_surface) continue;
 
         const tri = surf.geometry orelse continue;
@@ -1546,7 +1546,7 @@ fn addSingleModel(
                     inter.staticInteraction)
                 {
                     // we have a static interaction that was calculated accurately
-                    std.debug.assert(render_model.numSurfaces() == inter.numSurfaces);
+                    std.debug.assert(render_model.surfaces.num == inter.numSurfaces);
                     opt_surf_inter = &inter.surfaces.?[surface_num];
                 }
             }
@@ -1834,7 +1834,11 @@ fn flowViewThroughPortals(
     }
 }
 
-extern fn c_screenRectFromWinding(*const CWinding, [*]const f32, *const ViewDef) callconv(.C) ScreenRect;
+extern fn c_screenRectFromWinding(
+    *const Winding,
+    [*]const f32,
+    *const ViewDef,
+) ScreenRect;
 
 fn floodViewThroughArea_r(
     render_world: *RenderWorld,
@@ -1885,12 +1889,12 @@ fn floodViewThroughArea_r(
             continue;
         }
 
-        var w = CFixedWinding.fromWinding(portal.w.*);
+        var w = CFixedWinding.fromWinding(portal.winding.*);
         for (ps.portalPlanes[0..@intCast(ps.numPortalPlanes)]) |plane| {
             if (!w.clipInPlace(plane.flip(), 0, false)) break;
         }
 
-        if (w.numPoints == 0) continue;
+        if (w.num_points == 0) continue;
         if (render_world.portalIsFoggedOut(portal.*)) continue;
 
         var new_ps = std.mem.zeroes(PortalStack);
@@ -1903,19 +1907,19 @@ fn floodViewThroughArea_r(
         );
         new_ps.rect.intersect(ps.rect);
 
-        const add_planes: usize = if (w.numPoints > MAX_PORTAL_PLANES)
+        const add_planes: usize = if (w.num_points > MAX_PORTAL_PLANES)
             MAX_PORTAL_PLANES
         else
-            @intCast(w.numPoints);
+            @intCast(w.num_points);
 
         new_ps.numPortalPlanes = 0;
 
         for (0..add_planes) |i| {
-            const num_points: usize = @intCast(w.numPoints);
+            const num_points: usize = @intCast(w.num_points);
             const j = if (i + 1 == num_points) 0 else i + 1;
 
-            const v1 = origin.subtract(w.p[i].toVec3().toVec3f());
-            const v2 = origin.subtract(w.p[j].toVec3().toVec3f());
+            const v1 = origin.subtract(w.points[i].toVec3().toVec3f());
+            const v2 = origin.subtract(w.points[j].toVec3().toVec3f());
             var portal_plane = &new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)];
             portal_plane.setNormal(Vec3(f32).cross(v2, v1));
 
@@ -2213,7 +2217,7 @@ pub fn updateEntityDef(
     // trigger entities don't need to get linked in and processed,
     // they only exist for editor use
     if (def.parms.hModel) |model_ptr| {
-        if (!model_ptr.hasDrawingSurfaces()) return;
+        if (!model_ptr.has_drawing_surfaces) return;
     }
 
     // based on the model bounds, add references in each area
@@ -2401,7 +2405,11 @@ pub const GetPortalError = error{
     DoublePortalHandleNotFound,
 } || AreaAccessError;
 
-pub fn getPortal(render_world: RenderWorld, area_num: usize, portal_num: usize) GetPortalError!ExitPortal {
+pub fn getPortal(
+    render_world: RenderWorld,
+    area_num: usize,
+    portal_num: usize,
+) GetPortalError!ExitPortal {
     const portal_areas = render_world.portal_areas orelse return error.NotInitialized;
     const double_portals = render_world.double_portals orelse return error.NotInitialized;
     if (area_num >= portal_areas.len) return error.BadAreaIndex;
@@ -2415,7 +2423,7 @@ pub fn getPortal(render_world: RenderWorld, area_num: usize, portal_num: usize) 
         if (count == portal_num) {
             ret.areas[0] = @intCast(area_num);
             ret.areas[1] = portal.intoArea;
-            ret.w = portal.w;
+            ret.winding = portal.winding;
 
             const double_portal = portal.doublePortal;
             ret.blockingBits = double_portal.blockingBits;
@@ -2466,7 +2474,7 @@ pub fn pointInArea(render_world: RenderWorld, point: Vec3(f32)) PointInAreaError
     } else error.NotInitialized;
 }
 
-pub fn boundsInAreas(render_world: RenderWorld, bounds: Bounds, areas: []c_int) usize {
+pub fn boundsInAreas(render_world: RenderWorld, bounds: Bounds, areas: []u32) usize {
     // TODO: assert
     const area_nodes = render_world.area_nodes orelse return 0;
 
@@ -2477,9 +2485,9 @@ pub fn boundsInAreas(render_world: RenderWorld, bounds: Bounds, areas: []c_int) 
 }
 
 pub fn boundsInAreas_r(
-    arg_node_num: c_int,
+    arg_node_num: i32,
     bounds: Bounds,
-    areas: []c_int,
+    areas: []u32,
     num_areas: *usize,
     area_nodes: []AreaNode,
 ) void {
@@ -2498,7 +2506,7 @@ pub fn boundsInAreas_r(
 
             if (i >= max and max < areas.len) {
                 num_areas.* += 1;
-                areas[num_areas.*] = node_num;
+                areas[num_areas.*] = @intCast(node_num);
             }
 
             return;
@@ -2590,7 +2598,7 @@ pub fn init(allocator: std.mem.Allocator) !RenderWorld {
 
     return .{
         .map_name = try allocator.alloc(u8, 0),
-        .local_models = std.ArrayList(*model.RenderModel).init(allocator),
+        .local_models = std.ArrayList(*model.RenderModelStatic).init(allocator),
         .entity_defs = std.ArrayList(?*RenderEntityLocal).init(allocator),
         .light_defs = std.ArrayList(?*RenderLightLocal).init(allocator),
         .envprobe_defs = std.ArrayList(?*RenderEnvprobeLocal).init(allocator),
@@ -2679,7 +2687,7 @@ pub fn freeWorld(render_world: *RenderWorld) void {
             var opt_next_portal: ?*Portal = null;
             while (opt_portal) |portal| : (opt_portal = opt_next_portal) {
                 opt_next_portal = portal.next;
-                portal.w.destroy();
+                portal.winding.destroy(render_world.allocator);
                 render_world.allocator.destroy(portal);
             }
 
@@ -2715,7 +2723,7 @@ pub fn freeWorld(render_world: *RenderWorld) void {
 
     for (render_world.local_models.items) |item| {
         render_model_manager.instance.removeModel(@ptrCast(@alignCast(item)));
-        item.deinit(render_world);
+        item.deinit(render_world.allocator);
     }
     render_world.local_models.clearAndFree();
 
@@ -2875,7 +2883,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
             return error.BadProcFileId;
         }
 
-        var numEntries: usize = 0;
+        var num_entries: usize = 0;
         while (lexer.readTokenOk(&token, render_world.allocator)) {
             if (std.mem.eql(u8, token.slice(), "model")) {
                 const render_model = try render_world.parseModel(&lexer);
@@ -2887,7 +2895,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
 
                 // save it in the list to free when clearing this map
                 try render_world.local_models.append(render_model);
-                numEntries += 1;
+                num_entries += 1;
                 continue;
             }
 
@@ -2899,19 +2907,19 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
 
                 // save it in the list to free when clearing this map
                 //render_world.local_models.append(last_model);
-                numEntries += 1;
+                num_entries += 1;
                 continue;
             }
 
             if (std.mem.eql(u8, token.slice(), "interAreaPortals")) {
                 try render_world.parseInterAreaPortals(&lexer);
-                numEntries += 1;
+                num_entries += 1;
                 continue;
             }
 
             if (std.mem.eql(u8, token.slice(), "nodes")) {
                 try render_world.parseNodes(&lexer);
-                numEntries += 1;
+                num_entries += 1;
                 continue;
             }
 
@@ -2991,18 +2999,18 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         def.index = @intCast(index);
         def.world = render_world;
 
-        const model_name = try std.fmt.allocPrintZ(string_allocator, "_area{d}", .{area_index});
+        const model_name = try std.fmt.allocPrint(string_allocator, "_area{d}", .{area_index});
         const model_ptr = try render_model_manager.instance.findModel(model_name);
         def.parms.hModel = model_ptr;
 
-        if (model_ptr.isDefaultModel() or !model_ptr.isStaticWorldModel())
+        if (model_ptr.defaulted or !model_ptr.is_static_world_model)
             return error.BadModel;
 
         // TODO: set needsPortalSky if model shader name matches "textures/smf/portal_sky"
 
         // the local and global reference bounds are the same for area models
-        def.localReferenceBounds = model_ptr.bounds();
-        def.globalReferenceBounds = model_ptr.bounds();
+        def.localReferenceBounds = model_ptr.bounds;
+        def.globalReferenceBounds = model_ptr.bounds;
 
         def.parms.axis.mat[0].x = 1.0;
         def.parms.axis.mat[1].y = 1.0;
@@ -3185,7 +3193,7 @@ const ParseModelError = error{
 const sys_types = @import("../sys/types.zig");
 const model = @import("model.zig");
 
-fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
+fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModelStatic {
     try lexer.expectTokenString("{", render_world.allocator);
 
     // reusable token
@@ -3195,8 +3203,10 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
     // model name
     try lexer.readToken(&token, render_world.allocator);
 
-    var render_model = try model.RenderModel.initEmpty(token.slice());
-    errdefer render_model.deinit(render_world);
+    var render_model = try render_world.allocator.create(model.RenderModelStatic);
+    render_model.* = .{};
+    try render_model.initEmpty(token.slice(), render_world.allocator);
+    errdefer render_model.deinit(render_world.allocator);
 
     const num_surfaces = try lexer.parseSize(render_world.allocator);
 
@@ -3230,19 +3240,19 @@ fn parseModel(render_world: *RenderWorld, lexer: *Lexer) !*model.RenderModel {
         try lexer.expectTokenString("}", render_world.allocator);
 
         // add the completed surface to the model
-        render_model.addSurface(try render_world.createModelSurface(
+        try render_model.addSurface(try render_world.createModelSurface(
             surface_id,
             token.slice(),
             vertices,
             num_vertices,
             indices,
-        ));
+        ), render_world.allocator);
     }
 
     try lexer.expectTokenString("}", render_world.allocator);
 
     // RB: FIXME add check for mikktspace
-    render_model.finishSurfaces(false);
+    try render_model.finishSurfaces(false, render_world.allocator);
 
     return render_model;
 }
@@ -3308,15 +3318,16 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
         const a1 = try lexer.parseSize(allocator);
         const a2 = try lexer.parseSize(allocator);
 
-        const w = CWinding.create(num_points);
-        w.setNumPoints(num_points);
+        const w = try Winding.createAndAllocPoints(@intCast(num_points), allocator);
+        errdefer w.destroy(allocator);
+        w.num_points = @intCast(num_points);
 
         for (0..num_points) |j| {
-            const vec = @as([*]f32, @ptrCast(&w.p[j]))[0..3];
+            const vec = @as([*]f32, @ptrCast(&w.points.?[j]))[0..3];
             try lexer.parse1DMatrix(vec, allocator);
 
-            w.p[j].s = 0;
-            w.p[j].t = 0;
+            w.points.?[j].s = 0;
+            w.points.?[j].t = 0;
         }
 
         {
@@ -3325,7 +3336,7 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
             portal.* = .{
                 .intoArea = @intCast(a2),
                 .doublePortal = &double_portals[i],
-                .w = w,
+                .winding = w,
                 .plane = w.getPlane(),
                 .next = portal_areas[a1].portals,
             };
@@ -3334,13 +3345,14 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
         }
 
         {
-            const w_reversed = w.reverse();
+            const w_reversed = try w.reverse(allocator);
+            errdefer w_reversed.destroy(allocator);
             const portal = try allocator.create(Portal);
             errdefer allocator.destroy(portal);
             portal.* = .{
                 .intoArea = @intCast(a1),
                 .doublePortal = &double_portals[i],
-                .w = w_reversed,
+                .winding = w_reversed,
                 .plane = w_reversed.getPlane(),
                 .next = portal_areas[a2].portals,
             };
@@ -3391,10 +3403,10 @@ pub fn findPortal(render_world: RenderWorld, b: Bounds) usize {
 
     var wb = Bounds.zero;
     for (double_portals, 0..) |*portal, i| {
-        const w = portal.portals[0].w;
+        const w = portal.portals[0].winding;
         wb.clear();
 
-        for (0..@intCast(w.numPoints)) |j| {
+        for (0..w.num_points) |j| {
             _ = wb.addPoint(w.getVec3Point(j).toVec3f());
         }
 

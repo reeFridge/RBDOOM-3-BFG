@@ -44,7 +44,7 @@ const Interaction = @import("interaction.zig").Interaction;
 const DoublePortal = @import("render_world.zig").DoublePortal;
 const MaterialFlags = @import("material.zig").Flags;
 const Material = @import("material.zig").Material;
-const CWinding = @import("../geometry/winding.zig").CWinding;
+const Winding = @import("../geometry/winding.zig").Winding;
 
 pub const RenderLightLocal = extern struct {
     _vptr: *anyopaque = undefined,
@@ -191,7 +191,7 @@ pub const RenderLightLocal = extern struct {
                 // this will never cause incorrect drawing, but it may
                 // fail to cull a portal
                 if (dp.fogLight == null or
-                    windingCompletelyInsideLight(portal.w.*, light.*))
+                    windingCompletelyInsideLight(portal.winding.*, light.*))
                     continue;
 
                 dp.fogLight = light;
@@ -202,8 +202,8 @@ pub const RenderLightLocal = extern struct {
     }
 };
 
-fn windingCompletelyInsideLight(w: CWinding, light: RenderLightLocal) bool {
-    for (0..@intCast(w.numPoints)) |i| {
+fn windingCompletelyInsideLight(w: Winding, light: RenderLightLocal) bool {
+    for (0..w.num_points) |i| {
         if (light.baseLightProject.cullPointToMVP(w.getVec3Point(i), true))
             return false;
     }

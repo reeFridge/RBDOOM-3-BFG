@@ -1,7 +1,7 @@
 const std = @import("std");
 const math = @import("../math/math.zig");
 const RenderEntity = @import("render_entity.zig").RenderEntity;
-const RenderModel = @import("model.zig").RenderModel;
+const RenderModelStatic = @import("model.zig").RenderModelStatic;
 const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const ViewDef = @import("common.zig").ViewDef;
 const ViewEntity = @import("common.zig").ViewEntity;
@@ -61,11 +61,11 @@ pub const ModelDecal = extern struct {
 
     extern fn c_modelDecal_createDecal(
         *ModelDecal,
-        *const RenderModel,
+        *const RenderModelStatic,
         *const DecalProjectionParams,
     ) void;
 
-    pub fn createDeferredDecals(decal: *ModelDecal, model: *const RenderModel, view_def: *const ViewDef) void {
+    pub fn createDeferredDecals(decal: *ModelDecal, model: *const RenderModelStatic, view_def: *const ViewDef) void {
         const first: usize = @intCast(decal.firstDeferredDecal);
         const last: usize = @intCast(decal.nextDeferredDecal);
         for (first..last) |i| {
@@ -222,7 +222,7 @@ pub const ModelDecal = extern struct {
 
     fn createDecal(
         decal: *ModelDecal,
-        model: *const RenderModel,
+        model: *const RenderModelStatic,
         params: *const DecalProjectionParams,
     ) void {
         c_modelDecal_createDecal(decal, model, params);

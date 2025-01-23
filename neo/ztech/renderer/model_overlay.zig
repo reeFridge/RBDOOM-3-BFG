@@ -3,7 +3,6 @@ const writeIndexPair = @import("model_decal.zig").writeIndexPair;
 const ViewEntity = @import("common.zig").ViewEntity;
 const DrawVertex = @import("../geometry/draw_vertex.zig").DrawVertex;
 const DrawSurface = @import("common.zig").DrawSurface;
-const RenderModel = @import("model.zig").RenderModel;
 const RenderModelStatic = @import("model.zig").RenderModelStatic;
 const SurfaceTriangles = @import("model.zig").SurfaceTriangles;
 const ViewDef = @import("common.zig").ViewDef;
@@ -54,7 +53,7 @@ pub const ModelOverlay = extern struct {
 
     extern fn c_modelOverlay_createOverlay(
         *ModelOverlay,
-        *const RenderModel,
+        *const RenderModelStatic,
         [*]const Plane,
         *const Material,
     ) void;
@@ -69,7 +68,7 @@ pub const ModelOverlay = extern struct {
 
     pub fn createOverlay(
         overlay: *ModelOverlay,
-        model: *const RenderModel,
+        model: *const RenderModelStatic,
         local_texture_axis: []const Plane,
         material: *const Material,
     ) void {
@@ -84,15 +83,15 @@ pub const ModelOverlay = extern struct {
     pub fn createOverlayDrawSurf(
         overlay: *ModelOverlay,
         space: *const ViewEntity,
-        opt_base_model: ?*const RenderModel,
+        opt_base_model: ?*const RenderModelStatic,
         index: usize,
         view_def: *ViewDef,
         allocator: std.mem.Allocator,
     ) Material.EvaluateRegistersError!?*DrawSurface {
         if (index >= overlay.numOverlayMaterials) return null;
         const base_model = opt_base_model orelse return null;
-        if (base_model.isDefaultModel() or base_model.numSurfaces() == 0) return null;
-        std.debug.assert(base_model.isDynamicModel() == .DM_STATIC);
+        if (base_model.defaulted or base_model.surfaces.num == 0) return null;
+        std.debug.assert(base_model.dynamicModelType() == .static);
 
         const material = overlay.overlayMaterials[index] orelse return null;
 
@@ -150,8 +149,8 @@ pub const ModelOverlay = extern struct {
 
             if (overlay_.material != material) continue;
 
-            var opt_base_surf = if (overlay_.surfaceNum < base_model.numSurfaces())
-                base_model.getSurface(@intCast(overlay_.surfaceNum))
+            var opt_base_surf = if (overlay_.surfaceNum < base_model.surfaces.num)
+                &base_model.surfaces.constSlice()[@intCast(overlay_.surfaceNum)]
             else
                 null;
 
@@ -166,7 +165,7 @@ pub const ModelOverlay = extern struct {
                 var surface_num: usize = 0;
                 if (static_model.findSurfaceWithId(@intCast(overlay_.surfaceId), &surface_num)) {
                     overlay_.surfaceNum = @intCast(surface_num);
-                    opt_base_surf = base_model.getSurface(surface_num);
+                    opt_base_surf = &base_model.surfaces.constSlice()[surface_num];
                 } else {
                     overlay.freeOverlay(overlay_);
                     if (i == overlay.firstOverlay) overlay.firstOverlay += 1;
@@ -217,7 +216,7 @@ pub const ModelOverlay = extern struct {
 
     pub fn createDeferredOverlays(
         overlay: *ModelOverlay,
-        model: *const RenderModel,
+        model: *const RenderModelStatic,
         view_def: *const ViewDef,
     ) void {
         const first: usize = @intCast(overlay.firstDeferredOverlay);

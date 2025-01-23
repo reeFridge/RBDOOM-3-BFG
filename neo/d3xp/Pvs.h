@@ -94,7 +94,7 @@ public:
 
 	bool				CheckAreasForPortalSky( const pvsHandle_t handle, const idVec3& origin );
 
-private:
+public:
 	int					numAreas;
 	int					numPortals;
 	bool* 				connectedAreas;
@@ -110,7 +110,7 @@ private:
 	struct pvsPortal_s* pvsPortals;
 	struct pvsArea_s* 	pvsAreas;
 
-private:
+public:
 	int					GetPortalCount() const;
 	void				CreatePVSData();
 	void				DestroyPVSData();

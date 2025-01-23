@@ -39,7 +39,7 @@ fn cmd_bind(args: *const cmd.CmdArgs) callconv(.C) void {
         return;
     }
 
-    var cmd_buffer: [cmd.CmdArgs.MAX_STRING_CHARS]u8 = undefined;
+    var cmd_buffer: [cmd.CmdArgs.max_string_chars]u8 = undefined;
     var len: usize = 0;
 
     for (2..@intCast(args.argc)) |i| {
@@ -351,7 +351,7 @@ pub fn init(allocator: Allocator) error{OutOfMemory}!void {
     try cmd.instance.addCommand(
         "unbindall",
         cmd_unbindAll,
-        cmd.CmdFlags.CMD_FL_SYSTEM,
+        cmd.CmdFlags.system,
         "unbinds any commands from all keys",
         null,
         allocator,
@@ -360,7 +360,7 @@ pub fn init(allocator: Allocator) error{OutOfMemory}!void {
     try cmd.instance.addCommand(
         "bind",
         cmd_bind,
-        cmd.CmdFlags.CMD_FL_SYSTEM,
+        cmd.CmdFlags.system,
         "binds a command to a key",
         null,
         allocator,
@@ -397,7 +397,7 @@ pub fn stringToKeyNum(str: []const u8) KeyNum {
 }
 
 pub fn setBinding(
-    keynum: c_int,
+    keynum: u32,
     binding: []const u8,
     allocator: Allocator,
 ) Allocator.Error!void {
@@ -411,10 +411,10 @@ pub fn setBinding(
     try keys[index].binding.assignSlice(binding, allocator);
 
     // TODO keys[index].usercmdAction = user_cmd_gen.instance.commandStringUserCmdData(binding);
-    cvar.instance.modifiedFlags |= cvar.CVarFlags.CVAR_ARCHIVE;
+    cvar.instance.modifiedFlags |= cvar.CVarFlags.archive;
 }
 
-pub const JoystickAxis = enum(c_int) {
+pub const JoystickAxis = enum(u32) {
     left_x,
     left_y,
     right_x,
@@ -423,7 +423,7 @@ pub const JoystickAxis = enum(c_int) {
     right_trig,
 };
 
-pub const KeyNum = enum(c_int) {
+pub const KeyNum = enum(u32) {
     K_NONE,
     K_ESCAPE,
     K_1,

@@ -34,7 +34,7 @@ pub export fn Sys_Milliseconds() c_int {
     return @intCast(current_time);
 }
 
-fn exit(exit_code: u8) noreturn {
+pub fn exit(exit_code: u8) noreturn {
     clearSignals();
 
     if (set_exit != 0) {

@@ -632,7 +632,7 @@ void idPVS::AddPassageBoundaries( const idWinding& source, const idWinding& pass
 
 			if( numBounds >= maxBounds )
 			{
-				gameLocal.Warning( "max passage boundaries." );
+				//gameLocal.Warning( "max passage boundaries." );
 				break;
 			}
 			bounds[numBounds] = plane;
@@ -776,14 +776,14 @@ void idPVS::CreatePassages() const
 			passage->canSee[n >> 3] |= ( 1 << ( n & 7 ) );
 		}
 	}
-	if( passageMemory < 1024 )
-	{
-		gameLocal.Printf( "%5d bytes passage memory used to build PVS\n", passageMemory );
-	}
-	else
-	{
-		gameLocal.Printf( "%5d KB passage memory used to build PVS\n", passageMemory >> 10 );
-	}
+	//if( passageMemory < 1024 )
+	//{
+	//	gameLocal.Printf( "%5d bytes passage memory used to build PVS\n", passageMemory );
+	//}
+	//else
+	//{
+	//	gameLocal.Printf( "%5d KB passage memory used to build PVS\n", passageMemory >> 10 );
+	//}
 }
 
 /*
@@ -1072,10 +1072,6 @@ int idPVS::GetPVSArea( const idVec3& point ) const
 	return gameRenderWorld->PointInArea( point );
 }
 
-extern "C" size_t c_pvsGetPVSAreas(const idBounds* bounds, int* areas, int maxAreas) {
-	return static_cast<size_t>(gameLocal.pvs.GetPVSAreas(*bounds, areas, maxAreas));
-}
-
 /*
 ================
 idPVS::GetPVSAreas
@@ -1296,7 +1292,7 @@ pvsHandle_t idPVS::AllocCurrentPVS( unsigned int h ) const
 		}
 	}
 
-	gameLocal.Error( "idPVS::AllocCurrentPVS: no free PVS left" );
+	//gameLocal.Error( "idPVS::AllocCurrentPVS: no free PVS left" );
 
 	handle.i = -1;
 	handle.h = 0;
@@ -1653,4 +1649,158 @@ bool idPVS::CheckAreasForPortalSky( const pvsHandle_t handle, const idVec3& orig
 	}
 
 	return false;
+}
+
+extern "C" {
+
+void c_pvs_frontPortalPVS(idPVS* pvs)
+{
+	pvs->FrontPortalPVS();
+}
+
+void c_pvs_copyPortalPVSToMightSee(idPVS* pvs)
+{
+	pvs->CopyPortalPVSToMightSee();
+}
+
+void c_pvs_passagePVS(idPVS* pvs)
+{
+	pvs->PassagePVS();
+}
+
+int c_pvs_areaPVSFromPortalPVS(idPVS* pvs)
+{
+	return pvs->AreaPVSFromPortalPVS();
+}
+
+pvsHandle_t c_pvs_setupCurrentPVS(idPVS* pvs, const int* sourceAreas, int numSourceAreas, pvsType_t type, void* render_world_ptr)
+{
+	int i, j;
+	unsigned int h;
+	// RB: 64 bit fixes, changed long to int
+	int* vis, *pvs_;
+	// RB end
+	pvsHandle_t handle;
+
+	h = 0;
+	for( i = 0; i < numSourceAreas; i++ )
+	{
+		h ^= *reinterpret_cast<const unsigned int*>( &sourceAreas[i] );
+	}
+
+	{
+		int i;
+
+		for( i = 0; i < MAX_CURRENT_PVS; i++ )
+		{
+			if( pvs->currentPVS[i].handle.i == -1 )
+			{
+				pvs->currentPVS[i].handle.i = i;
+				pvs->currentPVS[i].handle.h = h;
+				return pvs->currentPVS[i].handle;
+			}
+		}
+
+		handle.i = -1;
+		handle.h = 0;
+	}
+
+	if( !numSourceAreas || sourceAreas[0] < 0 || sourceAreas[0] >= pvs->numAreas )
+	{
+		memset( pvs->currentPVS[handle.i].pvs, 0, pvs->areaVisBytes );
+		return handle;
+	}
+
+	if( type != PVS_CONNECTED_AREAS )
+	{
+		// merge PVS of all areas the source is in
+		memcpy( pvs->currentPVS[handle.i].pvs, pvs->areaPVS + sourceAreas[0] * pvs->areaVisBytes, pvs->areaVisBytes );
+		for( i = 1; i < numSourceAreas; i++ )
+		{
+
+			assert( sourceAreas[i] >= 0 && sourceAreas[i] < pvs->numAreas );
+
+			// RB: 64 bit fixes, changed long to int
+			vis = reinterpret_cast<int*>( pvs->areaPVS + sourceAreas[i] * pvs->areaVisBytes );
+			pvs_ = reinterpret_cast<int*>( pvs->currentPVS[handle.i].pvs );
+			// RB end
+			for( j = 0; j < pvs->areaVisLongs; j++ )
+			{
+				*pvs_++ |= *vis++;
+			}
+		}
+	}
+	else
+	{
+		memset( pvs->currentPVS[handle.i].pvs, -1, pvs->areaVisBytes );
+	}
+
+	if( type == PVS_ALL_PORTALS_OPEN )
+	{
+		return handle;
+	}
+
+	memset( pvs->connectedAreas, 0, pvs->numAreas * sizeof( *pvs->connectedAreas ) );
+
+	// get all areas connected to any of the source areas
+	for( i = 0; i < numSourceAreas; i++ )
+	{
+		if( !pvs->connectedAreas[sourceAreas[i]] )
+		{
+			//GetConnectedAreas( sourceAreas[i], pvs.connectedAreas );
+			int srcArea = sourceAreas[i];
+			bool* areas = pvs->connectedAreas;
+
+			int curArea, nextArea;
+			int queueStart, queueEnd;
+			int i, n;
+			exitPortal_t portal;
+
+			queueStart = -1;
+			queueEnd = 0;
+			areas[srcArea] = true;
+
+			for( curArea = srcArea; queueStart < queueEnd; curArea = pvs->areaQueue[++queueStart] )
+			{
+
+				n = ztech_renderWorld_numPortalsInArea( render_world_ptr, curArea );
+
+				for( i = 0; i < n; i++ )
+				{
+					portal = ztech_renderWorld_getPortal( render_world_ptr, curArea, i );
+
+					if( portal.blockingBits & PS_BLOCK_VIEW )
+					{
+						continue;
+					}
+
+					// area[1] is always the area the portal leads to
+					nextArea = portal.areas[1];
+
+					// if already visited this area
+					if( areas[nextArea] )
+					{
+						continue;
+					}
+
+					// add area to queue
+					pvs->areaQueue[queueEnd++] = nextArea;
+					areas[nextArea] = true;
+				}
+			}
+		}
+	}
+
+	// remove unconnected areas from the PVS
+	for( i = 0; i < pvs->numAreas; i++ )
+	{
+		if( !pvs->connectedAreas[i] )
+		{
+			pvs->currentPVS[handle.i].pvs[i >> 3] &= ~( 1 << ( i & 7 ) );
+		}
+	}
+
+	return handle;
+}
+
 }
