@@ -38,9 +38,10 @@ pub const quit_command: cmd.CmdDecl = .{
     .arg_completion = null,
 };
 
-fn cmd_map(_: *const cmd.CmdArgs) callconv(.C) void {
-    loadMap("maps/fridge/zig.map") catch |err| {
-        std.debug.print("err while map loading: {s}\n", .{@errorName(err)});
+fn cmd_map(args: *const cmd.CmdArgs) callconv(.C) void {
+    std.debug.print("Load map: {s}\n", .{args.argv[1]});
+    loadMap(std.mem.span(args.argv[1])) catch |err| {
+        std.debug.print("[ERR] while map loading: {s}\n", .{@errorName(err)});
     };
 }
 pub const map_command: cmd.CmdDecl = .{

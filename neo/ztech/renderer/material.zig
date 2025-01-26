@@ -1288,6 +1288,7 @@ pub const Material = extern struct {
         .{ .name = "flashlight_trigger", .content_flags = .{ .flashlight_trigger = true } },
         .{ .name = "nonsolid", .clear_solid = true },
         .{ .name = "nullNormal", .surface_flags = .{ .nullnormal = true } },
+        .{ .name = "areaportal", .clear_solid = true, .content_flags = .{ .areaportal = true } }, // divides areas
     };
 
     fn checkSurfaceParam(token: *const Token) ?InfoParam {

@@ -6,12 +6,37 @@ pub const Plane = extern struct {
     c: f32 = 0,
     d: f32 = 0,
 
-    pub fn fromSlice(slice: []f32) Plane {
+    pub fn slice(plane: *Plane) []f32 {
+        const as_array_ptr: *[4]f32 = @ptrCast(plane);
+        return &as_array_ptr.*;
+    }
+
+    pub fn constSlice(plane: *const Plane) []const f32 {
+        const as_array_ptr: *const [4]f32 = @ptrCast(plane);
+        return &as_array_ptr.*;
+    }
+
+    pub fn fromPoints(
+        plane: *Plane,
+        p1: Vec3(f32),
+        p2: Vec3(f32),
+        p3: Vec3(f32),
+        fix_degenerate: bool,
+    ) error{DegenerateNormal}!void {
+        plane.setNormal(p1.subtract(p2).cross(p3.subtract(p2)));
+        if (plane.normalize(fix_degenerate) == 0) {
+            return error.DegenerateNormal;
+        }
+
+        plane.d = -plane.normal().dot(p2);
+    }
+
+    pub fn fromSlice(in_slice: []f32) Plane {
         return .{
-            .a = slice[0],
-            .b = slice[1],
-            .c = slice[2],
-            .d = slice[3],
+            .a = in_slice[0],
+            .b = in_slice[1],
+            .c = in_slice[2],
+            .d = in_slice[3],
         };
     }
 

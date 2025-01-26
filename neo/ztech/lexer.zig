@@ -369,7 +369,7 @@ pub const Lexer = struct {
 
     pub fn initFromFile(
         lexer: *Lexer,
-        path: [:0]const u8,
+        path: []const u8,
         flags: Flags,
         allocator: Allocator,
     ) LoadFileError!void {
@@ -388,7 +388,7 @@ pub const Lexer = struct {
     } || fs.FileSystem.OpenOSFileError || std.fs.File.Reader.Error;
     fn loadFile(
         lexer: *Lexer,
-        path: [:0]const u8,
+        path: []const u8,
         os_path: bool,
         allocator: Allocator,
     ) LoadFileError!void {
@@ -447,6 +447,13 @@ pub const Lexer = struct {
 
     pub fn isLoaded(lexer: *Lexer) bool {
         return lexer.loaded;
+    }
+
+    pub fn readTokenOnLineOk(lexer: *Lexer, token: *Token, allocator: Allocator) bool {
+        return if (lexer.readTokenOnLine(token, allocator))
+            true
+        else |_|
+            false;
     }
 
     pub fn readTokenOk(lexer: *Lexer, token: *Token, allocator: Allocator) bool {
@@ -1118,6 +1125,22 @@ pub const Lexer = struct {
         try lexer.expectTokenString(")", allocator);
     }
 
+    pub fn parse2DMatrix(
+        lexer: *Lexer,
+        y: u32,
+        x: u32,
+        slice: []f32,
+        allocator: Allocator,
+    ) Parse1DMatrixError!void {
+        try lexer.expectTokenString("(", allocator);
+
+        for (0..y) |i| {
+            try lexer.parse1DMatrix(slice[i * x ..][0..x], allocator);
+        }
+
+        try lexer.expectTokenString(")", allocator);
+    }
+
     pub const ParseIntError = error{
         TokenIsNotANumber,
         TokenIsNotAnInteger,
@@ -1188,6 +1211,24 @@ pub const Lexer = struct {
             try token.assignToken(&tok, allocator);
             return true;
         }
+
+        // unread token
+        lexer.script_p = lexer.last_script_p;
+        lexer.line = lexer.last_line;
+        return false;
+    }
+
+    pub fn checkTokenString(
+        lexer: *Lexer,
+        string: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!bool {
+        var token = Token{};
+        defer token.deinit(allocator);
+
+        lexer.readToken(&token, allocator) catch return false;
+
+        if (token.eql(string)) return true;
 
         // unread token
         lexer.script_p = lexer.last_script_p;

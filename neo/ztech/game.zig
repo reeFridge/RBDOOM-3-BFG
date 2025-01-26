@@ -8,6 +8,7 @@ const idlib = @import("idlib.zig");
 const Decl = @import("framework/decl_manager.zig").Decl;
 const DeclType = @import("framework/decl_manager.zig").DeclType;
 const ztech_lib = @import("lib.zig");
+const MapFile = @import("map_file.zig").MapFile;
 const Allocator = std.mem.Allocator;
 
 const cmd = @import("framework/cmd_system.zig");
@@ -110,17 +111,38 @@ pub fn init(game: *Game) void {
     ztech_lib.ztech_init();
 }
 
+pub const InitForMapError =
+    Allocator.Error ||
+    MapFile.ParseError;
 pub fn initForMap(
     game: *Game,
     map_name: []const u8,
     render_world: *RenderWorld,
     allocator: Allocator,
-) Allocator.Error!void {
+) InitForMapError!void {
     game.render_world = render_world;
 
-    _ = map_name;
     try game.pvs.init(render_world, allocator);
-    // load map_file and parse it
+
+    var map_file = MapFile{};
+    defer map_file.deinit(allocator);
+    try map_file.resizeEntities(allocator);
+
+    try map_file.parse(map_name, allocator);
+
+    // debug
+    for (map_file.entities.constSlice(), 0..) |*entity, i| {
+        std.debug.print("entity#{}\n", .{i});
+        for (entity.kv_pairs.args.constSlice()) |kv| {
+            std.debug.print("{s} = {s}\n", .{
+                kv.key.?.str.constSlice(),
+                kv.value.?.str.constSlice(),
+            });
+        }
+
+        std.debug.print("---\n", .{});
+    }
+
     // populate entities from map_file
 }
 

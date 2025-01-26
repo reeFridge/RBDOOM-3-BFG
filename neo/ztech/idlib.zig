@@ -111,6 +111,15 @@ pub const Str = extern struct {
         self.len = @intCast(new_len);
     }
 
+    pub fn stripTrailingWhitespace(self: *Str) void {
+        const data = self.slice();
+        var i: usize = @intCast(self.len);
+        while (i > 0 and data[i - 1] <= ' ') : (i -= 1) {
+            data[i - 1] = 0;
+            self.len -= 1;
+        }
+    }
+
     pub fn stripTrailingChar(self: *Str, char: u8) void {
         const data = self.slice();
         var i: usize = @intCast(self.len);
@@ -227,7 +236,7 @@ pub const Str = extern struct {
         return result;
     }
 
-    pub fn caseInsensetiveHash(str: []const u8) u32 {
+    pub fn caseInsensitiveHash(str: []const u8) u32 {
         var result: u32 = 0;
         for (str, 0..) |char, i| {
             result += std.ascii.toLower(char) * @as(u32, @intCast(i + 119));
@@ -248,6 +257,26 @@ pub fn List(T: type) type {
         granularity: u32 = default_granularity,
         list: ?[*]T = null,
         mem_tag: u8 = 0,
+
+        pub fn copyFrom(
+            self: *Self,
+            other: *const Self,
+            allocator: Allocator,
+        ) Allocator.Error!void {
+            self.clear(allocator);
+            self.list = null;
+
+            self.num = other.num;
+            self.size = other.size;
+            self.granularity = other.granularity;
+
+            if (self.size != 0) {
+                const list = try allocator.alloc(T, self.size);
+                for (list, other.constSlice()) |*self_item, *other_item| {
+                    self_item.* = other_item.*;
+                }
+            }
+        }
 
         pub fn removeIndex(self: *Self, index: usize) void {
             std.debug.assert(self.list != null);
@@ -561,6 +590,55 @@ pub const HashIndex = extern struct {
     hash_mask: i32 = default_hash_size - 1,
     lookup_mask: i32 = 0,
 
+    pub fn copyFrom(
+        hash_index: *HashIndex,
+        other: *const HashIndex,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        hash_index.granularity = other.granularity;
+        hash_index.hash_mask = other.hash_mask;
+        hash_index.lookup_mask = other.lookup_mask;
+
+        if (other.lookup_mask == 0) {
+            hash_index.hash_size = other.hash_size;
+            hash_index.index_size = other.index_size;
+            hash_index.free(allocator);
+        } else {
+            if (other.hash_size != hash_index.hash_size or
+                hash_index.hash == &invalid_index)
+            {
+                if (hash_index.hash != &invalid_index) {
+                    allocator.free(hash_index.hash[0..hash_index.hash_size]);
+                }
+
+                hash_index.hash_size = other.hash_size;
+                const hash = try allocator.alloc(i32, hash_index.hash_size);
+                hash_index.hash = hash.ptr;
+            }
+
+            if (other.index_size != hash_index.index_size or
+                hash_index.index_chain == &invalid_index)
+            {
+                if (hash_index.index_chain != &invalid_index) {
+                    allocator.free(hash_index.index_chain[0..hash_index.index_size]);
+                }
+
+                hash_index.index_size = other.index_size;
+                const index_chain = try allocator.alloc(i32, hash_index.index_size);
+                hash_index.index_chain = index_chain.ptr;
+            }
+
+            @memcpy(
+                hash_index.hash[0..hash_index.hash_size],
+                other.hash[0..hash_index.hash_size],
+            );
+            @memcpy(
+                hash_index.index_chain[0..hash_index.index_size],
+                other.index_chain[0..hash_index.index_size],
+            );
+        }
+    }
+
     pub fn init(initial_hash_size: u32, initial_index_size: u32) HashIndex {
         var hash = HashIndex{};
 
@@ -593,10 +671,36 @@ pub const HashIndex = extern struct {
     }
 
     pub fn removeIndex(hash_index: *HashIndex, key: u32, index: u32) void {
-        _ = hash_index;
-        _ = key;
-        _ = index;
-        @panic("not implemented");
+        hash_index.remove(key, index);
+
+        if (hash_index.hash == &invalid_index) return;
+
+        var max: u32 = index;
+
+        for (0..hash_index.hash_size) |i| {
+            if (hash_index.hash[i] >= index) {
+                if (hash_index.hash[i] > max) {
+                    max = @intCast(hash_index.hash[i]);
+                }
+                hash_index.hash -= 1;
+            }
+        }
+
+        for (0..hash_index.index_size) |i| {
+            if (hash_index.index_chain[i] >= index) {
+                if (hash_index.index_chain[i] > max) {
+                    max = @intCast(hash_index.index_chain[i]);
+                }
+                hash_index.index_chain[i] -= 1;
+            }
+        }
+
+        var i: u32 = index;
+        while (i < max) : (i += 1) {
+            hash_index.index_chain[i] = hash_index.index_chain[i + 1];
+        }
+
+        hash_index.index_chain[max] = -1;
     }
 
     pub fn add(
@@ -714,12 +818,12 @@ pub const HashIndex = extern struct {
     pub fn generateKey(
         hash_index: *const HashIndex,
         str: []const u8,
-        case_sensetive: bool,
+        case_sensitive: bool,
     ) u32 {
-        const hash = if (case_sensetive)
+        const hash = if (case_sensitive)
             Str.hash(str)
         else
-            Str.caseInsensetiveHash(str);
+            Str.caseInsensitiveHash(str);
 
         return @intCast(@as(i32, @intCast(hash)) & hash_index.hash_mask);
     }
@@ -744,13 +848,225 @@ pub const HashIndex = extern struct {
 pub const File = opaque {};
 
 pub const Dict = extern struct {
-    const KeyValue = extern struct {
-        key: *const anyopaque,
-        value: *const anyopaque,
+    const Allocator = std.mem.Allocator;
+    const StrPool = extern struct {
+        const Entry = extern struct {
+            str: Str = .{},
+            pool: ?*StrPool = null,
+            num_users: u32 = 0, // mutable
+        };
+
+        case_sensitive: bool = true,
+        entries: List(*Entry) = .{},
+        entries_hash: HashIndex = .{},
+
+        fn copyEntry(
+            pool: *StrPool,
+            entry: *const Entry,
+            allocator: Allocator,
+        ) Allocator.Error!*const Entry {
+            std.debug.assert(entry.num_users >= 1);
+
+            if (entry.pool == pool) {
+                @as(*Entry, @constCast(entry)).num_users += 1;
+                return entry;
+            } else {
+                return try pool.allocEntry(entry.str.constSlice(), allocator);
+            }
+        }
+
+        fn allocEntry(
+            pool: *StrPool,
+            string: []const u8,
+            allocator: Allocator,
+        ) Allocator.Error!*const Entry {
+            const hash = pool.entries_hash.generateKey(
+                string,
+                pool.case_sensitive,
+            );
+
+            var i: i32 = pool.entries_hash.first(hash);
+            if (pool.case_sensitive) {
+                while (i != -1) : (i = pool.entries_hash.next(@intCast(i))) {
+                    const entry = pool.entries.constSlice()[@intCast(i)];
+                    if (std.mem.eql(u8, entry.str.constSlice(), string)) {
+                        entry.num_users += 1;
+                        return entry;
+                    }
+                }
+            } else {
+                while (i != -1) : (i = pool.entries_hash.next(@intCast(i))) {
+                    const entry = pool.entries.constSlice()[@intCast(i)];
+                    if (std.ascii.eqlIgnoreCase(entry.str.constSlice(), string)) {
+                        entry.num_users += 1;
+                        return entry;
+                    }
+                }
+            }
+
+            var entry = try allocator.create(Entry);
+            entry.* = .{};
+            try entry.str.assignSlice(string, allocator);
+            entry.pool = pool;
+            entry.num_users = 1;
+            try pool.entries_hash.add(
+                hash,
+                @intCast(try pool.entries.append(entry, allocator)),
+                allocator,
+            );
+
+            return entry;
+        }
+
+        fn freeEntry(pool: *StrPool, entry: *const Entry, allocator: Allocator) void {
+            if (pool.entries.num == 0) return;
+            std.debug.assert(entry.pool == pool);
+            std.debug.assert(entry.num_users >= 1);
+
+            @as(*Entry, @constCast(entry)).num_users -= 1;
+
+            if (entry.num_users == 0) {
+                const hash = pool.entries_hash.generateKey(
+                    entry.str.constSlice(),
+                    pool.case_sensitive,
+                );
+
+                var i: i32 = pool.entries_hash.first(hash);
+                if (pool.case_sensitive) {
+                    while (i != -1) : (i = pool.entries_hash.next(@intCast(i))) {
+                        const str = pool.entries.constSlice()[@intCast(i)].str;
+                        if (std.mem.eql(u8, str.constSlice(), entry.str.constSlice())) {
+                            break;
+                        }
+                    }
+                } else {
+                    while (i != -1) : (i = pool.entries_hash.next(@intCast(i))) {
+                        const str = pool.entries.constSlice()[@intCast(i)].str;
+                        if (std.ascii.eqlIgnoreCase(str.constSlice(), entry.str.constSlice())) {
+                            break;
+                        }
+                    }
+                }
+
+                std.debug.assert(i != -1);
+                const owning_entry = pool.entries.constSlice()[@intCast(i)];
+                std.debug.assert(owning_entry == entry);
+                owning_entry.str.deinit(allocator);
+
+                pool.entries.removeIndex(@intCast(i));
+                pool.entries_hash.removeIndex(hash, @intCast(i));
+            }
+        }
     };
 
-    args: List(KeyValue) = .{},
-    args_hash: HashIndex = .{},
+    const KeyValue = extern struct {
+        key: ?*const StrPool.Entry = null,
+        value: ?*const StrPool.Entry = null,
+    };
+
+    var global_keys: StrPool = .{};
+    var global_values: StrPool = .{};
+
+    args: List(KeyValue) = .{
+        .granularity = 16,
+    },
+    args_hash: HashIndex = .{
+        .granularity = 16,
+        .hash_size = 128,
+        .index_size = 16,
+    },
+
+    pub fn copyFrom(
+        dict: *Dict,
+        other: *const Dict,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        if (dict == other) return;
+
+        dict.deinit(allocator);
+
+        try dict.args.copyFrom(&other.args, allocator);
+        try dict.args_hash.copyFrom(&other.args_hash, allocator);
+
+        for (dict.args.slice()) |*kv| {
+            if (kv.key) |key| {
+                kv.key = try global_keys.copyEntry(key, allocator);
+            }
+
+            if (kv.value) |value| {
+                kv.value = try global_values.copyEntry(value, allocator);
+            }
+        }
+    }
+
+    pub fn set(
+        dict: *Dict,
+        key: []const u8,
+        value: []const u8,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        if (key.len == 0) return;
+
+        if (dict.findKeyIndex(key)) |key_index| {
+            var kv = &dict.args.slice()[key_index];
+            const opt_old_value = kv.value;
+            kv.value = try global_values.allocEntry(value, allocator);
+
+            if (opt_old_value) |old_value| {
+                global_values.freeEntry(old_value, allocator);
+            }
+        } else {
+            const key_entry = try global_keys.allocEntry(key, allocator);
+            errdefer global_keys.freeEntry(key_entry, allocator);
+            const value_entry = try global_keys.allocEntry(value, allocator);
+            errdefer global_keys.freeEntry(value_entry, allocator);
+
+            const kv = KeyValue{
+                .key = key_entry,
+                .value = value_entry,
+            };
+
+            try dict.args_hash.add(
+                dict.args_hash.generateKey(key_entry.str.constSlice(), false),
+                @intCast(try dict.args.append(kv, allocator)),
+                allocator,
+            );
+        }
+    }
+
+    pub fn findKeyIndex(dict: *const Dict, key: []const u8) ?u32 {
+        if (key.len == 0) {
+            std.debug.print("[Dict][warn] empty key\n", .{});
+            return 0;
+        }
+
+        const hash = dict.args_hash.generateKey(key, false);
+        var i = dict.args_hash.first(hash);
+        while (i != -1) : (i = dict.args_hash.next(@intCast(i))) {
+            const key_ = dict.args.constSlice()[@intCast(i)].key orelse continue;
+            if (std.ascii.eqlIgnoreCase(key_.str.constSlice(), key)) {
+                return @intCast(i);
+            }
+        }
+
+        return null;
+    }
+
+    pub fn deinit(dict: *Dict, allocator: Allocator) void {
+        for (dict.args.slice()) |*kv| {
+            if (kv.key) |key| {
+                global_keys.freeEntry(key, allocator);
+                kv.key = null;
+            }
+            if (kv.value) |value| {
+                global_keys.freeEntry(value, allocator);
+                kv.value = null;
+            }
+        }
+
+        dict.args.clear(allocator);
+        dict.args_hash.free(allocator);
+    }
 };
 
 pub const ZipCacheEntry = extern struct {
