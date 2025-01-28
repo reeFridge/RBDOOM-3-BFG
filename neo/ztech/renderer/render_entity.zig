@@ -15,13 +15,14 @@ const RenderSystem = @import("render_system.zig");
 const RenderModelManager = @import("render_model_manager.zig");
 const RenderView = @import("render_world.zig").RenderView;
 const JointMat = @import("../anim/animator.zig").JointMat;
+const idlib = @import("../idlib.zig");
 
 pub const max_entity_shader_params: usize = 12;
 pub const max_renderentity_gui: usize = 3;
 
 const deferredEntityCallback_t = fn (?*RenderEntity, ?*RenderView) callconv(.C) bool;
 
-extern fn c_parseSpawnArgsToRenderEntity(*anyopaque, *RenderEntity) callconv(.C) void;
+extern fn c_parseSpawnArgsToRenderEntity(*const idlib.Dict, *RenderEntity) callconv(.C) void;
 
 pub const RenderEntity = extern struct {
     // this can only be null if callback is set
@@ -118,7 +119,7 @@ pub const RenderEntity = extern struct {
     timeGroup: c_int = 0,
     xrayIndex: c_int = 0,
 
-    pub fn initFromSpawnArgs(self: *RenderEntity, dict: *anyopaque) void {
+    pub fn initFromSpawnArgs(self: *RenderEntity, dict: *const idlib.Dict) void {
         c_parseSpawnArgsToRenderEntity(dict, self);
     }
 };
@@ -329,10 +330,10 @@ pub const RenderEntityLocal = extern struct {
         var opt_ref = entity.entityRefs;
         var next: ?*AreaReference = null;
         while (opt_ref) |ref| : (opt_ref = next) {
-            next = ref.ownerNext;
+            next = ref.owner_next;
 
-            ref.areaNext.?.areaPrev = ref.areaPrev;
-            ref.areaPrev.?.areaNext = ref.areaNext;
+            ref.area_next.?.area_prev = ref.area_prev;
+            ref.area_prev.?.area_next = ref.area_next;
 
             render_world.area_reference_allocator.destroy(ref);
         }

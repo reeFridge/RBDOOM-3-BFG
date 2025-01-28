@@ -186,7 +186,18 @@ pub const MapEntity = extern struct {
     pub fn deinit(entity: *MapEntity, allocator: Allocator) void {
         entity.kv_pairs.deinit(allocator);
         for (entity.primitives.slice()) |primitive_ptr| {
-            allocator.destroy(primitive_ptr);
+            switch (primitive_ptr.type) {
+                .brush => {
+                    @as(*Brush, @ptrCast(primitive_ptr)).destroy(allocator);
+                },
+                .patch => {
+                    @panic("not implemented");
+                },
+                .mesh => {
+                    @panic("not implemented");
+                },
+                .invalid => @panic("invalid primitive type"),
+            }
         }
 
         entity.primitives.clear(allocator);
@@ -283,6 +294,10 @@ pub const MapPrimitive = extern struct {
     vptr: *anyopaque = undefined,
     kv_pairs: idlib.Dict = .{},
     type: Type = .invalid,
+
+    pub fn deinit(primitive: *MapPrimitive, allocator: Allocator) void {
+        primitive.kv_pairs.deinit(allocator);
+    }
 };
 
 pub const BrushSide = extern struct {
@@ -306,6 +321,17 @@ pub const Brush = extern struct {
     base: MapPrimitive = .{ .type = .brush },
     num_sides: u32 = 0,
     sides: idlib.List(BrushSide) = .{},
+
+    pub fn destroy(brush: *Brush, allocator: Allocator) void {
+        brush.base.deinit(allocator);
+        for (brush.sides.slice()) |*brush_side| {
+            brush_side.material.deinit(allocator);
+        }
+
+        brush.sides.clear(allocator);
+
+        allocator.destroy(brush);
+    }
 
     pub fn calcGeometryCrc(brush: *const Brush) u32 {
         var crc: u32 = 0;
@@ -431,7 +457,7 @@ pub const Brush = extern struct {
 
         var brush = try allocator.create(Brush);
         brush.* = .{};
-        errdefer allocator.destroy(brush);
+        errdefer brush.destroy(allocator);
 
         for (sides.constSlice()) |side| {
             _ = try brush.sides.append(side, allocator);
@@ -544,7 +570,7 @@ pub const Brush = extern struct {
 
         var brush = try allocator.create(Brush);
         brush.* = .{};
-        errdefer allocator.destroy(brush);
+        errdefer brush.destroy(allocator);
 
         for (sides.constSlice()) |side| {
             _ = try brush.sides.append(side, allocator);
@@ -617,7 +643,7 @@ pub const Brush = extern struct {
 
         var brush = try allocator.create(Brush);
         brush.* = .{};
-        errdefer allocator.destroy(brush);
+        errdefer brush.destroy(allocator);
 
         for (sides.constSlice()) |side| {
             _ = try brush.sides.append(side);

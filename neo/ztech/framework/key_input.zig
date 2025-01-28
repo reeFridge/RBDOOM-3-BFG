@@ -351,6 +351,7 @@ pub fn init(allocator: Allocator) error{OutOfMemory}!void {
     try cmd.instance.addCommand(
         "unbindall",
         cmd_unbindAll,
+        null,
         cmd.CmdFlags.system,
         "unbinds any commands from all keys",
         null,
@@ -360,6 +361,7 @@ pub fn init(allocator: Allocator) error{OutOfMemory}!void {
     try cmd.instance.addCommand(
         "bind",
         cmd_bind,
+        null,
         cmd.CmdFlags.system,
         "binds a command to a key",
         null,

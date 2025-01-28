@@ -2,7 +2,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const Transform = @import("../physics/physics.zig").Transform;
 const RenderEntity = @import("../renderer/render_entity.zig").RenderEntity;
-const SpawnArgs = @import("../entity.zig").SpawnArgs;
+const idlib = @import("../idlib.zig");
 const global = @import("../global.zig");
 const EntityHandle = global.Entities.EntityHandle;
 const Game = @import("../game.zig");
@@ -21,14 +21,11 @@ model_def_handle: c_int = -1,
 
 pub fn spawn(
     _: EntityHandle,
+    spawn_args: *const idlib.Dict,
     _: std.mem.Allocator,
-    spawn_args: SpawnArgs,
-    c_dict_ptr: ?*anyopaque,
 ) !Emitter {
     var c_render_entity = RenderEntity{};
-    if (c_dict_ptr) |ptr| {
-        c_render_entity.initFromSpawnArgs(ptr);
-    } else return error.CSpawnArgsIsUndefined;
+    c_render_entity.initFromSpawnArgs(spawn_args);
 
     c_render_entity.shader_params[SHADERPARM_PARTICLE_STOPTIME] = 0;
     c_render_entity.shader_params[SHADERPARM_TIMEOFFSET] = -@as(f32, @floatFromInt(Game.instance.time)) * MS2SEC;
@@ -40,6 +37,6 @@ pub fn spawn(
     return .{
         .transform = transform,
         .render_entity = c_render_entity,
-        .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
+        .name = spawn_args.getString("name") orelse "unnamed_" ++ @typeName(@This()),
     };
 }

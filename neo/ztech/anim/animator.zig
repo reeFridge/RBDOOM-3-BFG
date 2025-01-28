@@ -11,6 +11,7 @@ const RenderModelStatic = @import("../renderer/model.zig").RenderModelStatic;
 const decl_manager = @import("../framework/decl_manager.zig");
 const Transform = @import("../physics/physics.zig").Transform;
 const DeclSkin = @import("../renderer/common.zig").DeclSkin;
+const Allocator = std.mem.Allocator;
 
 const num_anim_channels: usize = 5;
 const max_anims_per_channel: usize = 3;
@@ -403,7 +404,7 @@ const JointInfo = extern struct {
 
 const Anim = opaque {};
 
-const DeclModelDef = extern struct {
+pub const DeclModelDef = extern struct {
     base: decl_manager.Decl,
     offset: CVec3,
     joints: idlib.List(JointInfo),
@@ -446,7 +447,8 @@ const DeclModelDef = extern struct {
         @panic("DeclModelDef.parse is not implemented");
     }
 
-    pub fn setDefaultText(decl: *DeclModelDef) error{}!void {
+    pub fn setDefaultText(decl: *DeclModelDef, allocator: Allocator) Allocator.Error!void {
+        _ = allocator;
         _ = decl;
 
         @panic("DeclModelDef.setDefaultText is not implemented");

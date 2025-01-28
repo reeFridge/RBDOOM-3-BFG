@@ -456,7 +456,7 @@ pub const DeclFolder = extern struct {
 
 pub const DeclParseError = error{ParseFailed};
 
-fn DeclInterface(Type: type) type {
+pub fn DeclInterface(Type: type) type {
     return struct {
         pub fn create(allocator: Allocator) Allocator.Error!*Decl {
             if (!std.meta.hasMethod(Type, "init")) @panic("not implemented");
@@ -771,7 +771,7 @@ pub const DeclManager = extern struct {
     pub const RegisterDeclFolderError =
         Allocator.Error ||
         DeclFile.LoadAndParseError;
-    fn registerDeclFolder(
+    pub fn registerDeclFolder(
         manager: *DeclManager,
         folder: []const u8,
         extension: []const u8,
@@ -847,7 +847,7 @@ pub const DeclManager = extern struct {
         }
     }
 
-    fn registerDeclType(
+    pub fn registerDeclType(
         manager: *DeclManager,
         type_name: []const u8,
         decl_type: DeclType,
@@ -995,6 +995,30 @@ pub const DeclManager = extern struct {
             try manager.createDefault(decl_type, name, allocator);
 
         return try manager.prepareDecl(decl, allocator);
+    }
+
+    pub fn findEntityDef(
+        manager: *DeclManager,
+        name: []const u8,
+        allocator: Allocator,
+    ) FindDeclError!?*DeclEntityDef {
+        return @ptrCast(try manager.findType(
+            .entitydef,
+            name,
+            allocator,
+        ));
+    }
+
+    pub fn findMaterial(
+        manager: *DeclManager,
+        name: []const u8,
+        allocator: Allocator,
+    ) FindDeclError!?*Material {
+        return @ptrCast(try manager.findType(
+            .material,
+            name,
+            allocator,
+        ));
     }
 
     pub fn findMaterialOrDefault(

@@ -101,10 +101,10 @@ pub const RenderEnvprobeLocal = extern struct {
         var opt_ref = probe.references;
         var next: ?*AreaReference = null;
         while (opt_ref) |ref| : (opt_ref = next) {
-            next = ref.ownerNext;
+            next = ref.owner_next;
 
-            ref.areaNext.?.areaPrev = ref.areaPrev;
-            ref.areaPrev.?.areaNext = ref.areaNext;
+            ref.area_next.?.area_prev = ref.area_prev;
+            ref.area_prev.?.area_next = ref.area_next;
 
             render_world.area_reference_allocator.destroy(ref);
         }

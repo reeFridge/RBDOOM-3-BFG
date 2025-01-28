@@ -2,7 +2,7 @@ const std = @import("std");
 const Transform = @import("../physics/physics.zig").Transform;
 const Animator = @import("../anim/animator.zig");
 const RenderEntity = @import("../renderer/render_entity.zig").RenderEntity;
-const SpawnArgs = @import("../entity.zig").SpawnArgs;
+const idlib = @import("../idlib.zig");
 const findEntryMatchedPrefix = @import("../entity.zig").findEntryMatchedPrefix;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const Mat3 = @import("../math/matrix.zig").Mat3;
@@ -16,7 +16,6 @@ const EntityHandle = global.Entities.EntityHandle;
 const JointModTransform = Animator.JointMod.JointModTransform;
 const decl_manager = @import("../framework/decl_manager.zig");
 const DeclEntityDef = @import("../game.zig").DeclEntityDef;
-const CopySpawnArgs = @import("../lib.zig").CopySpawnArgs;
 const Game = @import("../game.zig");
 
 const AnimatedHead = @import("animated_head.zig");
@@ -55,25 +54,22 @@ pub const CopyJoints = struct {
 
 pub fn spawn(
     handle: EntityHandle,
+    spawn_args: *const idlib.Dict,
     allocator: std.mem.Allocator,
-    spawn_args: SpawnArgs,
-    c_dict_ptr: ?*anyopaque,
 ) !AnimatedWithHead {
     var c_render_entity = RenderEntity{};
-    if (c_dict_ptr) |ptr| {
-        c_render_entity.initFromSpawnArgs(ptr);
-    } else return error.CSpawnArgsIsUndefined;
+    c_render_entity.initFromSpawnArgs(spawn_args);
 
     const transform = transform: {
-        const origin = if (spawn_args.get("origin")) |origin_str|
-            common.c_parseVector(origin_str.ptr).toVec3f()
+        const origin = if (spawn_args.getString("origin")) |origin_str|
+            try common.parseVec3f(origin_str)
         else
             Vec3(f32){};
 
-        const rotation = if (spawn_args.get("rotation")) |rotation_str|
-            common.c_parseMatrix(rotation_str.ptr).toMat3f()
-        else if (spawn_args.get("angles")) |angles_str|
-            common.c_parseAngles(angles_str.ptr).toAngles().toMat3()
+        const rotation = if (spawn_args.getString("rotation")) |rotation_str|
+            try common.parseMat3f(rotation_str)
+        else if (spawn_args.getString("angles")) |angles_str|
+            (try common.parseAngles(angles_str)).toMat3()
         else
             Mat3(f32).identity();
 
@@ -81,7 +77,7 @@ pub fn spawn(
     };
 
     var animator = Animator.init(allocator);
-    if (spawn_args.get("model")) |model_str| {
+    if (spawn_args.getString("model")) |model_str| {
         const opt_render_model = try animator.setModel(model_str);
         if (opt_render_model) |render_model| {
             c_render_entity.hModel = render_model;
@@ -113,26 +109,22 @@ pub fn spawn(
     var attachments = std.ArrayList(EntityHandle).init(allocator);
     var opt_last_index: ?usize = null;
     while (findEntryMatchedPrefix(
-        &spawn_args,
+        spawn_args,
         "def_attach",
         &opt_last_index,
     )) |entry| {
-        const def_name = entry.value_ptr.*;
-        const decl_entity: *DeclEntityDef = @ptrCast(try decl_manager.instance.findType(
-            .entitydef,
+        const def_name = entry.value.?.str.constSlice();
+        const decl_entity = try decl_manager.instance.findEntityDef(
             def_name,
             allocator,
-        ) orelse continue);
-        var attach_spawn_args = SpawnArgs.init(allocator);
-        defer attach_spawn_args.deinit();
-        CopySpawnArgs.init(&decl_entity.dict, &attach_spawn_args);
-        CopySpawnArgs.copy();
+        ) orelse continue;
+        const attach_spawn_args = &decl_entity.dict;
 
-        const joint_str = attach_spawn_args.get("joint") orelse continue;
+        const joint_str = attach_spawn_args.getString("joint") orelse continue;
         const attach_joint = animator.getJointHandle(joint_str) orelse continue;
 
-        const type_name = attach_spawn_args.get("spawnexternal") orelse continue;
-        const attach_handle = global.entities.spawn(type_name, attach_spawn_args, &decl_entity.dict) catch {
+        const type_name = attach_spawn_args.getString("spawnexternal") orelse continue;
+        const attach_handle = global.entities.spawn(type_name, attach_spawn_args) catch {
             std.debug.print("[ztech] attachment {{{s}}} spawn error\n", .{type_name});
             continue;
         };
@@ -175,8 +167,8 @@ pub fn spawn(
     }
 
     var copy_joints = std.ArrayList(CopyJoint).init(allocator);
-    const opt_head_handle = if (spawn_args.get("def_head")) |head_model_str| head_handle: {
-        const head_joint_str = spawn_args.get("head_joint") orelse
+    const opt_head_handle = if (spawn_args.getString("def_head")) |head_model_str| head_handle: {
+        const head_joint_str = spawn_args.getString("head_joint") orelse
             break :head_handle null;
         const head_joint = animator.getJointHandle(head_joint_str) orelse
             break :head_handle null;
@@ -270,12 +262,12 @@ fn copyJoints(
     animator: *const Animator,
     head_animator: *const Animator,
     copy_joints: *std.ArrayList(CopyJoint),
-    spawn_args: SpawnArgs,
+    spawn_args: *const idlib.Dict,
 ) !void {
     var opt_last_index: ?usize = null;
     const copy_joint_prefix = "copy_joint";
     while (findEntryMatchedPrefix(
-        &spawn_args,
+        spawn_args,
         copy_joint_prefix,
         &opt_last_index,
     )) |entry| {
@@ -285,16 +277,16 @@ fn copyJoints(
             .to = -1,
         };
 
-        const from_joint_name = entry.key_ptr.*[copy_joint_prefix.len + 1 ..];
+        const from_joint_name = entry.key.?.str.constSlice()[copy_joint_prefix.len + 1 ..];
         if (animator.getJointHandle(from_joint_name)) |copy_from| {
             copy_joint.from = copy_from;
         } else continue;
 
-        if (head_animator.getJointHandle(entry.value_ptr.*)) |copy_to| {
+        if (head_animator.getJointHandle(entry.value.?.str.constSlice())) |copy_to| {
             copy_joint.to = copy_to;
         } else continue;
 
-        std.debug.print("copy_joint entry = from: {s} to: {s}\n", .{ from_joint_name, entry.value_ptr.* });
+        std.debug.print("copy_joint entry = from: {s} to: {s}\n", .{ from_joint_name, entry.value.?.str.constSlice() });
         try copy_joints.append(copy_joint);
     }
 }

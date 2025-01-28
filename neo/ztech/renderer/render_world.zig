@@ -32,6 +32,15 @@ const framebuffer = @import("framebuffer.zig");
 const VertexCache = @import("vertex_cache.zig");
 const Material = @import("material.zig").Material;
 
+pub const ShaderParam = struct {
+    pub const red = 0;
+    pub const green = 1;
+    pub const blue = 2;
+    pub const alpha = 3;
+    pub const timescale = 3;
+    pub const timeoffset = 4;
+};
+
 pub const RenderView = extern struct {
     view_id: c_int,
     fov_x: f32,
@@ -43,7 +52,7 @@ pub const RenderView = extern struct {
     flip_projection: bool,
     force_update: bool,
     time: [2]c_int,
-    shader_params: [material.max_global_shader_parms]f32,
+    shader_params: [material.max_global_shader_params]f32,
     global_material: ?*const material.Material,
     view_eye_buffer: c_int,
     stereo_screen_separation: f32,
@@ -70,7 +79,7 @@ pub const AreaNode = extern struct {
     children: [2]c_int,
     // if all children are either solid or a single area,
     // this is the area number, else CHILDREN_HAVE_MULTIPLE_AREAS
-    commonChildrenArea: c_int,
+    common_children_area: c_int,
 };
 
 pub const NUM_PORTAL_ATTRIBUTES: usize = 3;
@@ -93,73 +102,73 @@ const List = extern struct {
 };
 
 pub const LightGrid = extern struct {
-    lightGridOrigin: CVec3,
-    lightGridSize: CVec3,
-    lightGridBounds: [3]c_int,
-    lightGridPoints: List,
+    origin: CVec3,
+    size: CVec3,
+    bounds: [3]c_int,
+    points: List,
     area: c_int,
-    irradianceImage: ?*Image,
-    imageSingleProbeSize: c_int,
-    imageBorderSize: c_int,
+    irradiance_image: ?*Image,
+    image_single_probe_size: c_int,
+    image_border_size: c_int,
 };
 
 pub const Portal = extern struct {
     // area this portal leads to
-    intoArea: c_int,
+    into_area: c_int,
     // winding points have counter clockwise ordering seen this area
     winding: *Winding,
     // view must be on the positive side of the plane to cross
     plane: Plane,
     // next portal of the area
     next: ?*Portal,
-    doublePortal: *DoublePortal,
+    double_portal: *DoublePortal,
 };
 
 pub const ExitPortal = extern struct {
     areas: [2]c_int,
     winding: *Winding,
-    blockingBits: c_int,
-    portalHandle: qhandle_t,
+    blocking_bits: c_int,
+    portal_handle: qhandle_t,
 };
 
 pub const DoublePortal = extern struct {
     portals: [2]*Portal,
     // PS_BLOCK_VIEW, PS_BLOCK_AIR, etc, set by doors that shut them off
-    blockingBits: c_int,
+    blocking_bits: c_int,
     // A portal will be considered closed if it is past the
     // fog-out point in a fog volume.  We only support a single
     // fog volume over each portal.
-    fogLight: ?*RenderLightLocal,
-    nextFoggedPortal: ?*DoublePortal,
+    fog_light: ?*RenderLightLocal,
+    next_fogged_portal: ?*DoublePortal,
 };
 
 pub const PortalArea = extern struct {
-    areaNum: c_int,
-    // if two areas have matching connectedAreaNum, they are
+    area_num: c_int,
+    // if two areas have matching connected_area_num, they are
     // not separated by a portal with the apropriate PS_BLOCK_* blockingBits
-    connectedAreaNum: [NUM_PORTAL_ATTRIBUTES]c_int,
-    globalBounds: CBounds,
-    lightGrid: LightGrid,
-    viewCount: c_int,
+    connected_area_num: [NUM_PORTAL_ATTRIBUTES]c_int,
+    global_bounds: CBounds,
+    light_grid: LightGrid,
+    view_count: c_int,
     portals: ?*Portal,
-    entityRefs: AreaReference,
-    lightRefs: AreaReference,
-    envprobeRefs: AreaReference,
+    entity_refs: AreaReference,
+    light_refs: AreaReference,
+    envprobe_refs: AreaReference,
 };
 
 const qhandle_t = c_int;
 
 const RenderModelDecal = @import("model_decal.zig").ModelDecal;
 pub const ReusableDecal = extern struct {
-    entityHandle: qhandle_t = -1,
-    lastStartTime: c_int = 0,
+    entity_handle: qhandle_t = -1,
+    last_start_time: c_int = 0,
     decals: ?*RenderModelDecal = null,
 };
 
 const RenderModelOverlay = @import("model_overlay.zig").ModelOverlay;
 pub const ReusableOverlay = extern struct {
-    entityHandle: qhandle_t = -1,
-    lastStartTime: c_int = 0,
+    entity_handle: qhandle_t = -1,
+    last_start_time: c_int = 0,
     overlays: ?*RenderModelOverlay = null,
 };
 
@@ -218,7 +227,7 @@ pub fn getRenderLight(render_world: *const RenderWorld, index: usize) ?*const Re
     if (index >= render_world.light_defs.items.len) return null;
     const def = render_world.light_defs.items[index] orelse return null;
 
-    return &def.parms;
+    return &def.params;
 }
 
 // Frees all references and lit surfaces from the light, and
@@ -274,19 +283,23 @@ pub fn updateLightDef(
     var light = if (render_world.light_defs.items[light_index]) |light_def| light: {
         // if the shape of the light stays the same, we don't need to dump
         // any of our derived data, because shader parms are calculated every frame
-        const axis_match = render_light.axis.toMat3f().eql(light_def.parms.axis.toMat3f());
-        const light_center_match = render_light.lightCenter.toVec3f().eql(light_def.parms.lightCenter.toVec3f());
-        const light_radius_match = render_light.lightRadius.toVec3f().eql(light_def.parms.lightRadius.toVec3f());
-        const noshadows_match = render_light.noShadows == light_def.parms.noShadows;
-        const origin_match = render_light.origin.toVec3f().eql(light_def.parms.origin.toVec3f());
-        const parallel_match = render_light.parallel == light_def.parms.parallel;
-        const pointlight_match = render_light.pointLight == light_def.parms.pointLight;
-        const shader_match = render_light.shader == light_def.lightShader;
-        const start_match = render_light.start.toVec3f().eql(light_def.parms.start.toVec3f());
-        const end_match = render_light.end.toVec3f().eql(light_def.parms.end.toVec3f());
-        const right_match = render_light.right.toVec3f().eql(light_def.parms.right.toVec3f());
-        const up_match = render_light.up.toVec3f().eql(light_def.parms.up.toVec3f());
-        const target_match = render_light.target.toVec3f().eql(light_def.parms.target.toVec3f());
+        const axis_match = render_light.axis.toMat3f().eql(light_def.params.axis.toMat3f());
+        const light_center_match = render_light.light_center.toVec3f().eql(
+            light_def.params.light_center.toVec3f(),
+        );
+        const light_radius_match = render_light.light_center.toVec3f().eql(
+            light_def.params.light_radius.toVec3f(),
+        );
+        const noshadows_match = render_light.no_shadows == light_def.params.no_shadows;
+        const origin_match = render_light.origin.toVec3f().eql(light_def.params.origin.toVec3f());
+        const parallel_match = render_light.parallel == light_def.params.parallel;
+        const pointlight_match = render_light.point_light == light_def.params.point_light;
+        const shader_match = render_light.shader == light_def.light_shader;
+        const start_match = render_light.start.toVec3f().eql(light_def.params.start.toVec3f());
+        const end_match = render_light.end.toVec3f().eql(light_def.params.end.toVec3f());
+        const right_match = render_light.right.toVec3f().eql(light_def.params.right.toVec3f());
+        const up_match = render_light.up.toVec3f().eql(light_def.params.up.toVec3f());
+        const target_match = render_light.target.toVec3f().eql(light_def.params.target.toVec3f());
 
         if (axis_match and
             light_center_match and
@@ -305,7 +318,7 @@ pub fn updateLightDef(
             just_update = true;
         } else {
             // if we are updating shadows, the prelight model is no longer valid
-            light_def.lightHasMoved = true;
+            light_def.light_has_moved = true;
             light_def.freeLightDerivedData();
         }
 
@@ -321,14 +334,14 @@ pub fn updateLightDef(
         break :light light_def;
     };
 
-    light.parms = render_light;
-    light.lastModifiedFrameNum = @intCast(RenderSystem.instance.frameCount());
+    light.params = render_light;
+    light.last_modified_frame_num = @intCast(RenderSystem.instance.frameCount());
 
     // new for BFG edition: force noShadows on spectrum lights so teleport spawns
     // don't cause such a slowdown.  Hell writing shouldn't be shadowed anyway...
-    if (light.parms.shader) |shader| {
+    if (light.params.shader) |shader| {
         if (shader.spectrum > 0)
-            light.parms.noShadows = true;
+            light.params.no_shadows = true;
     }
 
     if (!just_update)
@@ -504,13 +517,13 @@ pub fn generateAllInteractions(render_world: *RenderWorld) !void {
         defer Session.instance.pump();
 
         var opt_light_ref = light_def.references;
-        while (opt_light_ref) |light_ref| : (opt_light_ref = light_ref.ownerNext) {
+        while (opt_light_ref) |light_ref| : (opt_light_ref = light_ref.owner_next) {
             var area = light_ref.area orelse continue;
-            var opt_entity_ref = area.entityRefs.areaNext;
+            var opt_entity_ref = area.entity_refs.area_next;
 
             // check all the models in this area
-            while (opt_entity_ref) |entity_ref| : (opt_entity_ref = entity_ref.areaNext) {
-                if (entity_ref == &area.entityRefs) break;
+            while (opt_entity_ref) |entity_ref| : (opt_entity_ref = entity_ref.area_next) {
+                if (entity_ref == &area.entity_refs) break;
                 const entity_def = entity_ref.entity orelse continue;
 
                 var opt_inter = entity_def.firstInteraction;
@@ -737,24 +750,24 @@ fn addSingleLight(
     view_light.shadowOnlyViewEntities = null;
 
     const light = view_light.lightDef orelse @panic("lightDef is undefined");
-    const light_shader = light.lightShader orelse @panic("lightShader is undefined");
+    const light_shader = light.light_shader orelse @panic("lightShader is undefined");
 
     // see if we are suppressing the light in this view
     if (!r_skip_suppress) {
-        if (light.parms.suppressLightInViewID != 0 and
-            light.parms.suppressLightInViewID == view_def.renderView.viewID) return;
-        if (light.parms.allowLightInViewID != 0 and
-            light.parms.allowLightInViewID != view_def.renderView.viewID) return;
+        if (light.params.suppress_light_in_view_id != 0 and
+            light.params.suppress_light_in_view_id == view_def.renderView.viewID) return;
+        if (light.params.allow_light_in_view_id != 0 and
+            light.params.allow_light_in_view_id != view_def.renderView.viewID) return;
     }
 
     // evaluate the light shader registers
     const light_regs = FrameData.frameAlloc(f32, light_shader.getNumRegisters());
     try light_shader.evaluateRegisters(
         light_regs,
-        &light.parms.shader_params,
+        &light.params.shader_params,
         &view_def.renderView.shader_params,
         @as(f32, @floatFromInt(view_def.renderView.time[0])) * 0.001,
-        light.parms.referenceSound,
+        light.params.reference_sound,
         render_world.allocator,
     );
 
@@ -796,15 +809,15 @@ fn addSingleLight(
 
     // copy data used by backend
 
-    view_light.globalLightOrigin = light.globalLightOrigin;
-    view_light.lightProject = light.lightProject;
+    view_light.globalLightOrigin = light.global_light_origin;
+    view_light.lightProject = light.light_project;
 
     // the fog plane is the light far clip plane
     const fog_plane = Plane{
-        .a = light.baseLightProject.m[2 * 4 + 0] - light.baseLightProject.m[3 * 4 + 0],
-        .b = light.baseLightProject.m[2 * 4 + 1] - light.baseLightProject.m[3 * 4 + 1],
-        .c = light.baseLightProject.m[2 * 4 + 2] - light.baseLightProject.m[3 * 4 + 2],
-        .d = light.baseLightProject.m[2 * 4 + 3] - light.baseLightProject.m[3 * 4 + 3],
+        .a = light.base_light_project.m[2 * 4 + 0] - light.base_light_project.m[3 * 4 + 0],
+        .b = light.base_light_project.m[2 * 4 + 1] - light.base_light_project.m[3 * 4 + 1],
+        .c = light.base_light_project.m[2 * 4 + 2] - light.base_light_project.m[3 * 4 + 2],
+        .d = light.base_light_project.m[2 * 4 + 3] - light.base_light_project.m[3 * 4 + 3],
     };
     const plane_scale = math.invSqrt(fog_plane.normal().lengthSqr());
     view_light.fogPlane.a = fog_plane.a * plane_scale;
@@ -813,15 +826,15 @@ fn addSingleLight(
     view_light.fogPlane.d = fog_plane.d * plane_scale;
 
     // copy the matrix for deforming the 'zeroOneCubeModel' to exactly cover the light volume in world space
-    view_light.inverseBaseLightProject = light.inverseBaseLightProject;
+    view_light.inverseBaseLightProject = light.inverse_base_light_project;
 
-    view_light.baseLightProject = light.baseLightProject;
-    view_light.pointLight = light.parms.pointLight;
-    view_light.parallel = light.parms.parallel;
-    view_light.lightCenter = light.parms.lightCenter;
+    view_light.baseLightProject = light.base_light_project;
+    view_light.pointLight = light.params.point_light;
+    view_light.parallel = light.params.parallel;
+    view_light.lightCenter = light.params.light_center;
 
-    view_light.falloffImage = light.falloffImage;
-    view_light.lightShader = light.lightShader;
+    view_light.falloffImage = light.falloff_image;
+    view_light.lightShader = light.light_shader;
     view_light.shaderRegisters = light_regs.ptr;
 
     const light_casts_shadows = light.lightCastsShadows();
@@ -831,7 +844,7 @@ fn addSingleLight(
         // light frustum in clip space.
         const inv_project_mvp_matrix = RenderMatrix.multiply(
             view_def.worldSpace.mvp,
-            light.inverseBaseLightProject,
+            light.inverse_base_light_project,
         );
 
         // Calculate the projected bounds, either not clipped at all, near clipped, or fully clipped.
@@ -936,7 +949,7 @@ fn addSingleLight(
                     view_light.shadowFadeOut = math.frac(flod);
                 }
                 // 2048^2 ultra quality is only for cascaded shadow mapping with sun lights
-                if (temp == 0 and !light.parms.parallel) {
+                if (temp == 0 and !light.params.parallel) {
                     temp = 1;
                 }
 
@@ -965,15 +978,15 @@ fn addSingleLight(
     view_light.entityInteractionState = entity_interaction_state.ptr;
 
     var opt_lref: ?*AreaReference = light.references;
-    while (opt_lref) |lref| : (opt_lref = lref.ownerNext) {
+    while (opt_lref) |lref| : (opt_lref = lref.owner_next) {
         const area = lref.area orelse continue;
 
         // some lights have their center of projection outside the world, but otherwise
         // we want to ignore areas that are not connected to the light center due to a closed door
-        if (light.areaNum != -1 and r_use_areas_connected_for_shadow_culling == 2) {
+        if (light.area_num != -1 and r_use_areas_connected_for_shadow_culling == 2) {
             const connected = render_world.areasAreConnected(
-                @intCast(light.areaNum),
-                @intCast(area.areaNum),
+                @intCast(light.area_num),
+                @intCast(area.area_num),
                 PS_BLOCK_VIEW,
             ) catch unreachable;
             if (!connected) {
@@ -983,9 +996,9 @@ fn addSingleLight(
         }
 
         // check all the models in this area
-        var opt_eref = area.entityRefs.areaNext;
-        while (opt_eref) |eref| : (opt_eref = eref.areaNext) {
-            if (eref == &area.entityRefs) break;
+        var opt_eref = area.entity_refs.area_next;
+        while (opt_eref) |eref| : (opt_eref = eref.area_next) {
+            if (eref == &area.entity_refs) break;
 
             const edef = eref.entity orelse continue;
             if (entity_interaction_state[@intCast(edef.index)] != .INTERACTION_UNCHECKED) {
@@ -1068,15 +1081,15 @@ fn addSingleLight(
                     edef.parms.suppressShadowInViewID == view_def.renderView.viewID)
                     continue;
                 if (edef.parms.suppressShadowInLightID != 0 and
-                    edef.parms.suppressShadowInLightID == light.parms.lightId)
+                    edef.parms.suppressShadowInLightID == light.params.lightId)
                     continue;
             }
 
             // should we use the shadow bounds from pre-calculated interactions?
             const shadow_bounds = shadowBounds(
                 edef.globalReferenceBounds.toBounds(),
-                light.globalLightBounds.toBounds(),
-                light.globalLightOrigin.toVec3f(),
+                light.global_light_bounds.toBounds(),
+                light.global_light_origin.toVec3f(),
             );
 
             // this test is pointless if we knew the light was completely contained
@@ -1222,7 +1235,7 @@ fn addSingleModel(
             }
 
             if (!Bounds.intersectsBounds(
-                light_def.globalLightBounds.toBounds(),
+                light_def.global_light_bounds.toBounds(),
                 entity_def.globalReferenceBounds.toBounds(),
             ))
                 continue;
@@ -1236,16 +1249,16 @@ fn addSingleModel(
 
             if (!model_is_visible) {
                 // some lights have their center of projection outside the world
-                if (light_def.areaNum != -1) {
+                if (light_def.area_num != -1) {
                     // if no part of the model is in an area that is connected to
                     // the light center (it is behind a solid, closed door), we can ignore it
                     var areas_connected = false;
                     var opt_ref: ?*AreaReference = entity_def.entityRefs;
-                    while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+                    while (opt_ref) |ref| : (opt_ref = ref.owner_next) {
                         const area = ref.area orelse continue;
                         const connected = render_world.areasAreConnected(
-                            @intCast(light_def.areaNum),
-                            @intCast(area.areaNum),
+                            @intCast(light_def.area_num),
+                            @intCast(area.area_num),
                             PS_BLOCK_VIEW,
                         ) catch unreachable;
                         if (connected) {
@@ -1260,8 +1273,8 @@ fn addSingleModel(
                 // check more precisely for shadow visibility
                 const shadow_bounds = shadowBounds(
                     entity_def.globalReferenceBounds.toBounds(),
-                    light_def.globalLightBounds.toBounds(),
-                    light_def.globalLightOrigin.toVec3f(),
+                    light_def.global_light_bounds.toBounds(),
+                    light_def.global_light_origin.toVec3f(),
                 );
 
                 // this doesn't say that the shadow can't effect anything, only that it can't
@@ -1334,19 +1347,19 @@ fn addSingleModel(
 
     // use first valid lightgrid
     var opt_ref: ?*AreaReference = entity_def.entityRefs;
-    while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+    while (opt_ref) |ref| : (opt_ref = ref.owner_next) {
         const area = ref.area orelse continue;
-        const light_grid_image = area.lightGrid.irradianceImage orelse continue;
-        if (area.lightGrid.lightGridPoints.num > 0 and !light_grid_image.defaulted) {
+        const light_grid_image = area.light_grid.irradiance_image orelse continue;
+        if (area.light_grid.points.num > 0 and !light_grid_image.defaulted) {
             view_entity.useLightGrid = true;
             view_entity.lightGridAtlasImage = light_grid_image;
-            view_entity.lightGridAtlasSingleProbeSize = area.lightGrid.imageSingleProbeSize;
-            view_entity.lightGridAtlasBorderSize = area.lightGrid.imageBorderSize;
+            view_entity.lightGridAtlasSingleProbeSize = area.light_grid.image_single_probe_size;
+            view_entity.lightGridAtlasBorderSize = area.light_grid.image_border_size;
 
             for (0..3) |i| {
-                view_entity.lightGridOrigin.slice()[i] = area.lightGrid.lightGridOrigin.slice()[i];
-                view_entity.lightGridSize.slice()[i] = area.lightGrid.lightGridSize.slice()[i];
-                view_entity.lightGridBounds[i] = area.lightGrid.lightGridBounds[i];
+                view_entity.lightGridOrigin.slice()[i] = area.light_grid.origin.slice()[i];
+                view_entity.lightGridSize.slice()[i] = area.light_grid.size.slice()[i];
+                view_entity.lightGridBounds[i] = area.light_grid.bounds[i];
             }
 
             break;
@@ -1561,7 +1574,7 @@ fn addSingleModel(
             }
 
             // "invisible ink" lights and shaders (imp spawn drawing on walls, etc)
-            if (light_def.lightShader) |light_shader| {
+            if (light_def.light_shader) |light_shader| {
                 if (shader.spectrum != light_shader.spectrum)
                     continue;
             }
@@ -1614,7 +1627,7 @@ fn addSingleModel(
                         // there are surfaces with NOSELFSHADOW.
                         if (shader.coverage == .translucent) {
                             light_draw_surf.linkChain = &view_light.translucentInteractions;
-                        } else if (!light_def.parms.noShadows and
+                        } else if (!light_def.params.no_shadows and
                             shader.testMaterialFlag(.{ .noselfshadow = true }))
                         {
                             light_draw_surf.linkChain = &view_light.localInteractions;
@@ -1641,7 +1654,7 @@ fn addSingleModel(
             if (entity_def.parms.noShadow) continue;
             // No shadow if it's suppressed for this light.
             if (entity_def.parms.suppressShadowInLightID != 0 and
-                entity_def.parms.suppressShadowInLightID == light_def.parms.lightId)
+                entity_def.parms.suppressShadowInLightID == light_def.params.light_id)
                 continue;
 
             const is_cached = if (opt_surf_inter) |surf_inter|
@@ -1792,8 +1805,8 @@ const MAX_PORTAL_PLANES: usize = 20;
 const PortalStack = extern struct {
     p: ?*const Portal,
     next: ?*const PortalStack,
-    numPortalPlanes: c_int,
-    portalPlanes: [MAX_PORTAL_PLANES + 1]Plane,
+    num_portal_planes: u32,
+    portal_planes: [MAX_PORTAL_PLANES + 1]Plane,
     rect: ScreenRect,
 };
 
@@ -1811,10 +1824,10 @@ fn flowViewThroughPortals(
     ps.p = null;
 
     for (planes, 0..) |plane, i| {
-        ps.portalPlanes[i] = plane;
+        ps.portal_planes[i] = plane;
     }
 
-    ps.numPortalPlanes = @intCast(planes.len);
+    ps.num_portal_planes = @intCast(planes.len);
     ps.rect = view_def.scissor;
 
     if (view_def.areaNum < 0) {
@@ -1862,7 +1875,7 @@ fn floodViewThroughArea_r(
 
     var opt_portal: ?*Portal = area.portals;
     while (opt_portal) |portal| : (opt_portal = portal.next) {
-        if ((portal.doublePortal.blockingBits & PS_BLOCK_VIEW) > 0)
+        if ((portal.double_portal.blocking_bits & PS_BLOCK_VIEW) > 0)
             continue;
 
         const d = portal.plane.distance(origin);
@@ -1883,14 +1896,14 @@ fn floodViewThroughArea_r(
             render_world.floodViewThroughArea_r(
                 view_def,
                 origin,
-                @intCast(portal.intoArea),
+                @intCast(portal.into_area),
                 &new_ps,
             );
             continue;
         }
 
         var w = CFixedWinding.fromWinding(portal.winding.*);
-        for (ps.portalPlanes[0..@intCast(ps.numPortalPlanes)]) |plane| {
+        for (ps.portal_planes[0..ps.num_portal_planes]) |plane| {
             if (!w.clipInPlace(plane.flip(), 0, false)) break;
         }
 
@@ -1912,7 +1925,7 @@ fn floodViewThroughArea_r(
         else
             @intCast(w.num_points);
 
-        new_ps.numPortalPlanes = 0;
+        new_ps.num_portal_planes = 0;
 
         for (0..add_planes) |i| {
             const num_points: usize = @intCast(w.num_points);
@@ -1920,29 +1933,29 @@ fn floodViewThroughArea_r(
 
             const v1 = origin.subtract(w.points[i].toVec3().toVec3f());
             const v2 = origin.subtract(w.points[j].toVec3().toVec3f());
-            var portal_plane = &new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)];
+            var portal_plane = &new_ps.portal_planes[new_ps.num_portal_planes];
             portal_plane.setNormal(Vec3(f32).cross(v2, v1));
 
             if (portal_plane.normalize(true) < 0.01) continue;
 
             portal_plane.fitThroughPoint(origin);
-            new_ps.numPortalPlanes += 1;
+            new_ps.num_portal_planes += 1;
         }
 
-        new_ps.portalPlanes[@intCast(new_ps.numPortalPlanes)] = portal.plane;
-        new_ps.numPortalPlanes += 1;
+        new_ps.portal_planes[new_ps.num_portal_planes] = portal.plane;
+        new_ps.num_portal_planes += 1;
 
         render_world.floodViewThroughArea_r(
             view_def,
             origin,
-            @intCast(portal.intoArea),
+            @intCast(portal.into_area),
             &new_ps,
         );
     }
 }
 
 fn portalIsFoggedOut(_: RenderWorld, portal: Portal) bool {
-    _ = portal.doublePortal.fogLight orelse return false;
+    _ = portal.double_portal.fog_light orelse return false;
 
     // TODO: convert
     return false;
@@ -1952,7 +1965,7 @@ fn addAreaToView(
     area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    area.viewCount = @intCast(RenderSystem.instance.viewCount());
+    area.view_count = @intCast(RenderSystem.instance.viewCount());
 
     addAreaViewEntities(area, ps);
     addAreaViewLights(area, ps);
@@ -1965,9 +1978,9 @@ fn addAreaViewEntities(
     area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    var opt_ref: ?*AreaReference = area.entityRefs.areaNext;
-    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
-        if (ref == &area.entityRefs) break;
+    var opt_ref: ?*AreaReference = area.entity_refs.area_next;
+    while (opt_ref) |ref| : (opt_ref = ref.area_next) {
+        if (ref == &area.entity_refs) break;
         const entity = ref.entity orelse continue;
 
         if (c_cullEntityByPortals(&entity.inverseBaseModelProject, ps))
@@ -1984,7 +1997,7 @@ inline fn cullLightsMarkedAsRemoved(def: *ViewDef) void {
     while (ptr.*) |v_light| {
         if (v_light.removeFromList) {
             // this probably doesn't matter with current code
-            if (v_light.lightDef) |light_def| light_def.viewCount = -1;
+            if (v_light.lightDef) |light_def| light_def.view_count = -1;
             ptr.* = v_light.next;
             continue;
         }
@@ -2028,12 +2041,16 @@ fn addAreaViewLights(
     area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    var opt_ref: ?*AreaReference = area.lightRefs.areaNext;
-    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
-        if (ref == &area.lightRefs) break;
+    var opt_ref: ?*AreaReference = area.light_refs.area_next;
+    while (opt_ref) |ref| : (opt_ref = ref.area_next) {
+        if (ref == &area.light_refs) break;
         const light = ref.light orelse continue;
 
-        if (c_cullLightByPortals(&light.inverseBaseLightProject, &light.baseLightProject, ps))
+        if (c_cullLightByPortals(
+            &light.inverse_base_light_project,
+            &light.base_light_project,
+            ps,
+        ))
             continue;
 
         var view_light = setLightDefViewLight(light);
@@ -2043,10 +2060,10 @@ fn addAreaViewLights(
 
 fn setLightDefViewLight(light: *RenderLightLocal) *ViewLight {
     const view_count: c_int = @intCast(RenderSystem.instance.viewCount());
-    if (light.viewCount == view_count)
-        return light.viewLight.?;
+    if (light.view_count == view_count)
+        return light.view_light.?;
 
-    light.viewCount = view_count;
+    light.view_count = view_count;
     var v_light = FrameData.frameCreate(ViewLight);
     v_light.lightDef = light;
     v_light.scissorRect.clear();
@@ -2055,7 +2072,7 @@ fn setLightDefViewLight(light: *RenderLightLocal) *ViewLight {
     v_light.next = view_def.viewLights;
     view_def.viewLights = v_light;
 
-    light.viewLight = v_light;
+    light.view_light = v_light;
 
     return v_light;
 }
@@ -2064,9 +2081,9 @@ fn addAreaViewEnvprobes(
     area: *PortalArea,
     ps: *const PortalStack,
 ) void {
-    var opt_ref: ?*AreaReference = area.envprobeRefs.areaNext;
-    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
-        if (ref == &area.envprobeRefs) break;
+    var opt_ref: ?*AreaReference = area.envprobe_refs.area_next;
+    while (opt_ref) |ref| : (opt_ref = ref.area_next) {
+        if (ref == &area.envprobe_refs) break;
         const probe = ref.envprobe orelse continue;
 
         var v_probe = setEnvprobeDefViewEnvprobe(probe);
@@ -2123,8 +2140,8 @@ fn buildConnectedAreas_r(
 
     var opt_portal: ?*Portal = portal_areas[area_num].portals;
     while (opt_portal) |portal| : (opt_portal = portal.next) {
-        if ((portal.doublePortal.blockingBits & PS_BLOCK_VIEW) == 0) {
-            buildConnectedAreas_r(portal_areas, connected_areas, @intCast(portal.intoArea));
+        if ((portal.double_portal.blocking_bits & PS_BLOCK_VIEW) == 0) {
+            buildConnectedAreas_r(portal_areas, connected_areas, @intCast(portal.into_area));
         }
     }
 }
@@ -2133,8 +2150,8 @@ pub fn checkAreaForPortalSky(render_world: *RenderWorld, area_num: usize) bool {
     const portal_areas = render_world.portal_areas orelse return false;
     std.debug.assert(area_num < portal_areas.len);
 
-    var opt_ref = portal_areas[area_num].entityRefs.areaNext;
-    while (opt_ref) |ref| : (opt_ref = ref.areaNext) {
+    var opt_ref = portal_areas[area_num].entity_refs.area_next;
+    while (opt_ref) |ref| : (opt_ref = ref.area_next) {
         const ref_entity = ref.entity orelse break;
         std.debug.assert(ref.area == &portal_areas[area_num]);
 
@@ -2269,9 +2286,9 @@ fn pushFrustumIntoTree_r(
         var area = &portal_areas[area_num];
 
         // already added a reference here
-        if (area.viewCount == RenderSystem.instance.viewCount()) return;
+        if (area.view_count == RenderSystem.instance.viewCount()) return;
 
-        area.viewCount = @intCast(RenderSystem.instance.viewCount());
+        area.view_count = @intCast(RenderSystem.instance.viewCount());
 
         if (def) |render_entity|
             try render_world.addEntityRefToArea(render_entity, area);
@@ -2288,14 +2305,14 @@ fn pushFrustumIntoTree_r(
 
     // if we know that all possible children nodes only touch an area
     // we have already marked, we can early out
-    if (node.commonChildrenArea != AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS and
+    if (node.common_children_area != AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS and
         r_use_node_common_children)
     {
         // note that we do NOT try to set a reference in this area
         // yet, because the test volume may yet wind up being in the
         // solid part, which would cause bounds slightly poked into
         // a wall to show up in the next room
-        if (portal_areas[@intCast(node.commonChildrenArea)].viewCount == RenderSystem.instance.viewCount())
+        if (portal_areas[@intCast(node.common_children_area)].view_count == RenderSystem.instance.viewCount())
             return;
     }
 
@@ -2341,9 +2358,9 @@ pub fn pushEnvprobeIntoTree_r(
         var area = &portal_areas[area_num];
 
         // already added a reference here
-        if (area.viewCount == RenderSystem.instance.viewCount()) return;
+        if (area.view_count == RenderSystem.instance.viewCount()) return;
 
-        area.viewCount = @intCast(RenderSystem.instance.viewCount());
+        area.view_count = @intCast(RenderSystem.instance.viewCount());
 
         if (opt_def) |render_entity|
             try render_world.addEnvprobeRefToArea(render_entity, area);
@@ -2357,14 +2374,14 @@ pub fn pushEnvprobeIntoTree_r(
 
     // if we know that all possible children nodes only touch an area
     // we have already marked, we can early out
-    if (node.commonChildrenArea != AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS and
+    if (node.common_children_area != AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS and
         r_use_node_common_children)
     {
         // note that we do NOT try to set a reference in this area
         // yet, because the test volume may yet wind up being in the
         // solid part, which would cause bounds slightly poked into
         // a wall to show up in the next room
-        if (portal_areas[@intCast(node.commonChildrenArea)].viewCount == RenderSystem.instance.viewCount())
+        if (portal_areas[@intCast(node.common_children_area)].view_count == RenderSystem.instance.viewCount())
             return;
     }
 
@@ -2422,14 +2439,14 @@ pub fn getPortal(
     while (opt_portal) |portal| : (opt_portal = portal.next) {
         if (count == portal_num) {
             ret.areas[0] = @intCast(area_num);
-            ret.areas[1] = portal.intoArea;
+            ret.areas[1] = portal.into_area;
             ret.winding = portal.winding;
 
-            const double_portal = portal.doublePortal;
-            ret.blockingBits = double_portal.blockingBits;
+            const double_portal = portal.double_portal;
+            ret.blocking_bits = double_portal.blocking_bits;
             for (double_portals, 0..) |*double_portal_ptr, i| {
                 if (double_portal_ptr == double_portal) {
-                    ret.portalHandle = @intCast(i);
+                    ret.portal_handle = @intCast(i);
                     break;
                 }
             } else return error.DoublePortalHandleNotFound;
@@ -2538,7 +2555,7 @@ pub fn areaBounds(render_world: RenderWorld, area_num: usize) !Bounds {
     return if (render_world.portal_areas) |portal_areas| bounds: {
         if (area_num >= portal_areas.len) return error.AreaOutOfRange;
 
-        break :bounds portal_areas[area_num].globalBounds.toBounds();
+        break :bounds portal_areas[area_num].global_bounds.toBounds();
     } else error.NotInitialized;
 }
 
@@ -2559,8 +2576,8 @@ pub fn areasAreConnected(render_world: RenderWorld, area_a: usize, area_b: usize
         if (attribute >= NUM_PORTAL_ATTRIBUTES or attribute_mask != connection)
             break :connected error.BadConnectionNumber;
 
-        const num_a = portal_areas[area_a].connectedAreaNum[@intCast(attribute)];
-        const num_b = portal_areas[area_b].connectedAreaNum[@intCast(attribute)];
+        const num_a = portal_areas[area_a].connected_area_num[@intCast(attribute)];
+        const num_b = portal_areas[area_b].connected_area_num[@intCast(attribute)];
 
         break :connected num_a == num_b;
     } else error.NotInitialized;
@@ -2656,13 +2673,13 @@ pub fn freeDefs(render_world: *RenderWorld) void {
 
     // Reset decals and overlays
     for (&render_world.decals) |*decal| {
-        decal.entityHandle = -1;
-        decal.lastStartTime = 0;
+        decal.entity_handle = -1;
+        decal.last_start_time = 0;
     }
 
     for (&render_world.overlays) |*overlay| {
-        overlay.entityHandle = -1;
-        overlay.lastStartTime = 0;
+        overlay.entity_handle = -1;
+        overlay.last_start_time = 0;
     }
 }
 
@@ -2694,12 +2711,12 @@ pub fn freeWorld(render_world: *RenderWorld) void {
             // TODO:
             // area.lightGrid.lightGridPoints.clear();
 
-            // there shouldn't be any remaining lightRefs or entityRefs
-            if (area.lightRefs.areaNext != &area.lightRefs)
+            // there shouldn't be any remaining lightRefs or entity_refs
+            if (area.light_refs.area_next != &area.light_refs)
                 @panic("freeWorld: unexpected remaining lightRefs");
 
-            if (area.entityRefs.areaNext != &area.entityRefs)
-                @panic("freeWorld: unexpected remaining entityRefs");
+            if (area.entity_refs.area_next != &area.entity_refs)
+                @panic("freeWorld: unexpected remaining entity_refs");
         }
 
         render_world.allocator.free(portal_areas);
@@ -2768,16 +2785,16 @@ pub fn clearWorld(render_world: *RenderWorld) !void {
 pub fn setupAreaRefs(render_world: *RenderWorld, portal_areas: []PortalArea) void {
     render_world.connected_area_num = 0;
     for (portal_areas, 0..) |*portal_area, i| {
-        portal_area.areaNum = @intCast(i);
+        portal_area.area_num = @intCast(i);
 
-        portal_area.lightRefs.areaPrev = &portal_area.lightRefs;
-        portal_area.lightRefs.areaNext = portal_area.lightRefs.areaPrev;
+        portal_area.light_refs.area_prev = &portal_area.light_refs;
+        portal_area.light_refs.area_next = portal_area.light_refs.area_prev;
 
-        portal_area.entityRefs.areaPrev = &portal_area.entityRefs;
-        portal_area.entityRefs.areaNext = portal_area.entityRefs.areaPrev;
+        portal_area.entity_refs.area_prev = &portal_area.entity_refs;
+        portal_area.entity_refs.area_next = portal_area.entity_refs.area_prev;
 
-        portal_area.envprobeRefs.areaPrev = &portal_area.envprobeRefs;
-        portal_area.envprobeRefs.areaNext = portal_area.envprobeRefs.areaPrev;
+        portal_area.envprobe_refs.area_prev = &portal_area.envprobe_refs;
+        portal_area.envprobe_refs.area_next = portal_area.envprobe_refs.area_prev;
     }
 }
 
@@ -2935,7 +2952,7 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
 
     // 8. find the points where we can early-our of reference pushing into the BSP tree
     if (render_world.area_nodes) |area_nodes| {
-        _ = commonChildrenArea_r(&area_nodes[0], area_nodes);
+        _ = common_children_area_r(&area_nodes[0], area_nodes);
     }
 
     if (render_world.portal_areas) |portal_areas| {
@@ -2946,14 +2963,14 @@ pub fn initFromMap(render_world: *RenderWorld, map_name: []const u8) !void {
     try render_world.setupLightGrid();
 }
 
-fn commonChildrenArea_r(node: *AreaNode, area_nodes: []AreaNode) c_int {
+fn common_children_area_r(node: *AreaNode, area_nodes: []AreaNode) c_int {
     var nums: [2]c_int = .{ 0, 0 };
 
     for (&nums, 0..) |*num, i| {
         num.* = if (node.children[i] <= 0)
             -1 - node.children[i]
         else
-            commonChildrenArea_r(&area_nodes[@intCast(node.children[i])], area_nodes);
+            common_children_area_r(&area_nodes[@intCast(node.children[i])], area_nodes);
     }
 
     // solid nodes will match any area
@@ -2968,7 +2985,7 @@ fn commonChildrenArea_r(node: *AreaNode, area_nodes: []AreaNode) c_int {
     else
         AreaNode.CHILDREN_HAVE_MULTIPLE_AREAS;
 
-    node.commonChildrenArea = common;
+    node.common_children_area = common;
 
     return common;
 }
@@ -3024,7 +3041,7 @@ fn addWorldModelEntities(render_world: *RenderWorld, portal_areas: []PortalArea)
         def.deriveEntityData();
         try render_world.addEntityRefToArea(def, area);
 
-        area.globalBounds = def.globalReferenceBounds;
+        area.global_bounds = def.globalReferenceBounds;
     }
 }
 
@@ -3035,7 +3052,7 @@ pub fn addEnvprobeRefToArea(
 ) error{OutOfMemory}!void {
     {
         var opt_ref = def.references;
-        while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+        while (opt_ref) |ref| : (opt_ref = ref.owner_next) {
             if (ref.area == area) return;
         }
     }
@@ -3044,13 +3061,13 @@ pub fn addEnvprobeRefToArea(
     ref.* = AreaReference{};
     ref.envprobe = def;
     ref.area = area;
-    ref.ownerNext = def.references;
+    ref.owner_next = def.references;
     def.references = ref;
 
-    area.envprobeRefs.areaNext.?.areaPrev = ref;
-    ref.areaNext = area.envprobeRefs.areaNext;
-    ref.areaPrev = &area.envprobeRefs;
-    area.envprobeRefs.areaNext = ref;
+    area.envprobe_refs.area_next.?.area_prev = ref;
+    ref.area_next = area.envprobe_refs.area_next;
+    ref.area_prev = &area.envprobe_refs;
+    area.envprobe_refs.area_next = ref;
 }
 
 pub fn addLightRefToArea(
@@ -3060,7 +3077,7 @@ pub fn addLightRefToArea(
 ) error{OutOfMemory}!void {
     {
         var opt_ref = def.references;
-        while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+        while (opt_ref) |ref| : (opt_ref = ref.owner_next) {
             if (ref.area == area) return;
         }
     }
@@ -3069,13 +3086,13 @@ pub fn addLightRefToArea(
     ref.* = AreaReference{};
     ref.light = def;
     ref.area = area;
-    ref.ownerNext = def.references;
+    ref.owner_next = def.references;
     def.references = ref;
 
-    area.lightRefs.areaNext.?.areaPrev = ref;
-    ref.areaNext = area.lightRefs.areaNext;
-    ref.areaPrev = &area.lightRefs;
-    area.lightRefs.areaNext = ref;
+    area.light_refs.area_next.?.area_prev = ref;
+    ref.area_next = area.light_refs.area_next;
+    ref.area_prev = &area.light_refs;
+    area.light_refs.area_next = ref;
 }
 
 pub fn addEntityRefToArea(
@@ -3086,7 +3103,7 @@ pub fn addEntityRefToArea(
     {
         // check if we already have reference to that area
         var opt_ref: ?*AreaReference = def.entityRefs;
-        while (opt_ref) |ref| : (opt_ref = ref.ownerNext) {
+        while (opt_ref) |ref| : (opt_ref = ref.owner_next) {
             if (ref.area == area) return;
         }
     }
@@ -3097,22 +3114,22 @@ pub fn addEntityRefToArea(
     ref.entity = def;
 
     // link to entityDef
-    ref.ownerNext = def.entityRefs;
+    ref.owner_next = def.entityRefs;
     def.entityRefs = ref;
 
     // link to end of area list
     ref.area = area;
-    ref.areaNext = &area.entityRefs;
-    ref.areaPrev = area.entityRefs.areaPrev;
-    ref.areaNext.?.areaPrev = ref;
-    ref.areaPrev.?.areaNext = ref;
+    ref.area_next = &area.entity_refs;
+    ref.area_prev = area.entity_refs.area_prev;
+    ref.area_next.?.area_prev = ref;
+    ref.area_prev.?.area_next = ref;
 }
 
 fn clearPortalStates(render_world: *RenderWorld) void {
     // all portals start off open
     if (render_world.double_portals) |double_portals| {
         for (double_portals) |*double_portal| {
-            double_portal.blockingBits = PortalConnection.PS_BLOCK_NONE;
+            double_portal.blocking_bits = PortalConnection.PS_BLOCK_NONE;
         }
     }
 
@@ -3133,18 +3150,18 @@ fn floodConnectedAreas(
     area: *PortalArea,
     portal_attribute_index: usize,
 ) void {
-    if (area.connectedAreaNum[portal_attribute_index] == render_world.connected_area_num)
+    if (area.connected_area_num[portal_attribute_index] == render_world.connected_area_num)
         return;
 
-    area.connectedAreaNum[portal_attribute_index] = @intCast(render_world.connected_area_num);
+    area.connected_area_num[portal_attribute_index] = @intCast(render_world.connected_area_num);
 
     var opt_portal: ?*Portal = area.portals;
     while (opt_portal) |portal| : (opt_portal = portal.next) {
         const attribute_mask = @as(c_int, 1) << @intCast(portal_attribute_index);
-        if ((portal.doublePortal.blockingBits & attribute_mask) == 0) {
+        if ((portal.double_portal.blocking_bits & attribute_mask) == 0) {
             render_world.floodConnectedAreas(
                 portal_areas,
-                &portal_areas[@intCast(portal.intoArea)],
+                &portal_areas[@intCast(portal.into_area)],
                 portal_attribute_index,
             );
         }
@@ -3176,7 +3193,7 @@ fn setupLightGrid(render_world: *RenderWorld) error{OutOfMemory}!void {
     //} else {
     //    for (portal_areas) |*area| {
     //        area.lightGrid.setupLightGrid(
-    //            area.globalBounds,
+    //            area.global_bounds,
     //            render_world.map_name,
     //            render_world,
     //        );
@@ -3334,8 +3351,8 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
             const portal = try allocator.create(Portal);
             errdefer allocator.destroy(portal);
             portal.* = .{
-                .intoArea = @intCast(a2),
-                .doublePortal = &double_portals[i],
+                .into_area = @intCast(a2),
+                .double_portal = &double_portals[i],
                 .winding = w,
                 .plane = w.getPlane(),
                 .next = portal_areas[a1].portals,
@@ -3350,8 +3367,8 @@ fn parseInterAreaPortals(render_world: *RenderWorld, lexer: *Lexer) !void {
             const portal = try allocator.create(Portal);
             errdefer allocator.destroy(portal);
             portal.* = .{
-                .intoArea = @intCast(a1),
-                .doublePortal = &double_portals[i],
+                .into_area = @intCast(a1),
+                .double_portal = &double_portals[i],
                 .winding = w_reversed,
                 .plane = w_reversed.getPlane(),
                 .next = portal_areas[a2].portals,
@@ -3421,9 +3438,9 @@ pub fn setPortalState(render_world: *RenderWorld, portal_index: usize, block_typ
     const double_portals = render_world.double_portals orelse @panic("double_portals not initialized!");
     const portal_areas = render_world.portal_areas orelse @panic("portal_areas not initialized!");
 
-    const old_state = double_portals[portal_index - 1].blockingBits;
+    const old_state = double_portals[portal_index - 1].blocking_bits;
     if (old_state == block_types) return;
-    double_portals[portal_index - 1].blockingBits = block_types;
+    double_portals[portal_index - 1].blocking_bits = block_types;
 
     // leave the connectedAreaGroup the same on one side,
     // then flood fill from the other side with a new number for each changed attribute
@@ -3434,7 +3451,7 @@ pub fn setPortalState(render_world: *RenderWorld, portal_index: usize, block_typ
             const portal = double_portals[portal_index - 1].portals[1];
             render_world.floodConnectedAreas(
                 portal_areas,
-                &portal_areas[@intCast(portal.intoArea)],
+                &portal_areas[@intCast(portal.into_area)],
                 i,
             );
         }
@@ -3445,7 +3462,7 @@ pub fn getPortalState(render_world: *RenderWorld, portal_index: usize) c_int {
     if (portal_index == 0) return 0;
 
     return if (render_world.double_portals) |double_portals|
-        double_portals[portal_index - 1].blockingBits
+        double_portals[portal_index - 1].blocking_bits
     else
         0;
 }

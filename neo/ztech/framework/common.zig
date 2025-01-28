@@ -38,15 +38,15 @@ pub const quit_command: cmd.CmdDecl = .{
     .arg_completion = null,
 };
 
-fn cmd_map(args: *const cmd.CmdArgs) callconv(.C) void {
+fn cmd_map(args: *const cmd.CmdArgs, allocator: Allocator) void {
     std.debug.print("Load map: {s}\n", .{args.argv[1]});
-    loadMap(std.mem.span(args.argv[1])) catch |err| {
+    loadMap(std.mem.span(args.argv[1]), allocator) catch |err| {
         std.debug.print("[ERR] while map loading: {s}\n", .{@errorName(err)});
     };
 }
 pub const map_command: cmd.CmdDecl = .{
     .name = "map",
-    .function = cmd_map,
+    .function_with_allocator = cmd_map,
     .flags = cmd.CmdFlags.game,
     .description = "load new map",
     .arg_completion = null,
@@ -81,7 +81,7 @@ var game_frame: u64 = 0;
 var no_sleep: bool = false;
 pub var render_world: ?*RenderWorld = null;
 
-fn loadMap(map_name: []const u8) !void {
+fn loadMap(map_name: []const u8, allocator: Allocator) !void {
     const world = render_world orelse @panic("no world");
     // RenderSystem.instance.beginLevelLoad
     // decl_manager.instance.beginLevelLoad
@@ -95,7 +95,7 @@ fn loadMap(map_name: []const u8) !void {
     // TODO: allow com_engineHz to be changed between map loads
     try world.initFromMap(map_name);
     // user_cmd.generator.initForMap();
-    try Game.instance.initForMap(map_name, world, world.allocator);
+    try Game.instance.initForMap(map_name, world, allocator);
 
     try world.generateAllInteractions();
     // user_cmd.generator.clear();
@@ -126,7 +126,7 @@ pub const Common = opaque {
     pub fn frame(_: *Common, allocator: Allocator) !void {
         common_allocator = allocator;
         sys_event.generateEvents();
-        event_loop.instance.run(true);
+        event_loop.instance.run(true, allocator);
 
         const render_commands = try RenderSystem.instance.swapCommandBuffers(allocator);
 
@@ -200,9 +200,9 @@ pub const Common = opaque {
         try decl_manager.instance.init(allocator);
         try event_loop.instance.init(allocator);
         try parallel_job_manager.instance.init();
-        try cmd.instance.bufferCommandText(.append, "exec default.cfg\n");
-        try cmd.instance.bufferCommandText(.append, "exec autoexec.cfg\n");
-        try cmd.instance.executeCommandBuffer();
+        cmd.instance.appendCommandText("exec default.cfg\n");
+        cmd.instance.appendCommandText("exec autoexec.cfg\n");
+        try cmd.instance.executeCommandBuffer(allocator);
         cvar.instance.modifiedFlags &= ~cvar.CVarFlags.archive;
         try RenderSystem.instance.initBackend(allocator);
         try sound_system.instance.init();
@@ -234,7 +234,7 @@ pub const Common = opaque {
 
         // TODO common.initCommands(); // tools
 
-        Game.instance.init();
+        try Game.instance.init(allocator);
 
         // TODO ! fs.instance.unloadResourceContainer("_ordered");
         render_world = try RenderSystem.instance.createRenderWorld(allocator);

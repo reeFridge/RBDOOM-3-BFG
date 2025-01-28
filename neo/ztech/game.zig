@@ -5,9 +5,15 @@ const RenderSystem = @import("renderer/render_system.zig");
 const global = @import("global.zig");
 const Player = @import("entity_types/player.zig");
 const idlib = @import("idlib.zig");
-const Decl = @import("framework/decl_manager.zig").Decl;
-const DeclType = @import("framework/decl_manager.zig").DeclType;
+const decl_manager = @import("framework/decl_manager.zig");
+const Decl = decl_manager.Decl;
+const DeclLocal = decl_manager.DeclLocal;
+const DeclType = decl_manager.DeclType;
+const DeclManager = decl_manager.DeclManager;
+const DeclModelDef = @import("anim/animator.zig").DeclModelDef;
 const ztech_lib = @import("lib.zig");
+const Lexer = @import("lexer.zig").Lexer;
+const Token = @import("token.zig").Token;
 const MapFile = @import("map_file.zig").MapFile;
 const Allocator = std.mem.Allocator;
 
@@ -50,21 +56,85 @@ pub const DeclEntityDef = extern struct {
         self.* = .{};
     }
 
-    pub fn name(self: DeclEntityDef) []const u8 {
-        const c_str = c_declGetName(&self);
-
-        return std.mem.span(c_str);
+    pub fn freeData(self: *DeclEntityDef, allocator: Allocator) void {
+        self.dict.deinit(allocator);
     }
 
-    pub fn index(self: DeclEntityDef) usize {
-        return @intCast(c_declIndex(&self));
+    pub const ParseError =
+        error{UnexpectedToken} ||
+        Lexer.ReadTokenError ||
+        Lexer.LoadMemoryError ||
+        Allocator.Error;
+    pub fn parse(
+        self: *DeclEntityDef,
+        definition_text: []const u8,
+        allow_binary_version: bool,
+        allocator: Allocator,
+    ) ParseError!void {
+        _ = allow_binary_version;
+
+        var lexer = Lexer{ .flags = decl_manager.decl_lexer_flags };
+        defer lexer.deinit(allocator);
+
+        const decl_local = self.base.base.?;
+
+        try lexer.loadMemory(
+            definition_text,
+            decl_local.filename() orelse "*invalid*",
+            decl_local.source_line,
+            allocator,
+        );
+
+        try lexer.skipUntilString("{", allocator);
+
+        var token = Token{};
+        defer token.deinit(allocator);
+        var token2 = Token{};
+        defer token2.deinit(allocator);
+
+        while (true) {
+            try lexer.readToken(&token, allocator);
+            if (token.ieql("}")) break;
+
+            errdefer self.makeDefault(allocator) catch @panic("makeDefault fails");
+
+            if (token.type != .string) return error.UnexpectedToken;
+            try lexer.readToken(&token2, allocator);
+
+            if (self.dict.findKey(token.slice()) != null) {
+                std.debug.print("[PARSE] key '{s}' already defined\n", .{token.slice()});
+            }
+
+            try self.dict.set(token.slice(), token2.slice(), allocator);
+        }
+
+        // always set classname to decl name
+        try self.dict.set(
+            "classname",
+            decl_local.name.constSlice(),
+            allocator,
+        );
+
+        // TODO: inheritance (extension?) of definitions
+    }
+
+    fn makeDefault(
+        self: *DeclEntityDef,
+        allocator: Allocator,
+    ) DeclLocal.MakeDefaultError!void {
+        const decl_local = self.base.base.?;
+        const rt_decl_type = decl_manager.instance.getRuntimeType(decl_local.decl_type);
+        try decl_local.makeDefault(rt_decl_type, allocator);
+    }
+
+    pub fn name(self: *const DeclEntityDef) []const u8 {
+        return self.base.base.?.name.constSlice();
+    }
+
+    pub fn index(self: *const DeclEntityDef) usize {
+        return self.base.base.?.index;
     }
 };
-
-pub extern fn c_findEntityDef([*c]const u8) callconv(.C) ?*const DeclEntityDef;
-pub extern fn c_declByIndex(c_int) callconv(.C) ?*const DeclEntityDef;
-pub extern fn c_declGetName(*const anyopaque) callconv(.C) [*c]const u8;
-pub extern fn c_declIndex(*const anyopaque) callconv(.C) c_int;
 
 const pvs = @import("pvs.zig");
 
@@ -106,13 +176,34 @@ pub fn draw(game: *Game) DrawError!void {
     try render_world.renderScene(player_view.render_view);
 }
 
-pub fn init(game: *Game) void {
+pub fn init(
+    game: *Game,
+    allocator: Allocator,
+) DeclManager.RegisterDeclFolderError!void {
     _ = game;
+    try decl_manager.instance.registerDeclType(
+        "model",
+        .modeldef,
+        decl_manager.DeclInterface(DeclModelDef),
+    );
+    try decl_manager.instance.registerDeclType(
+        "export",
+        .modelexport,
+        decl_manager.DeclInterface(Decl),
+    );
+    try decl_manager.instance.registerDeclFolder(
+        "def",
+        ".def",
+        .entitydef,
+        allocator,
+    );
+
     ztech_lib.ztech_init();
 }
 
 pub const InitForMapError =
     Allocator.Error ||
+    SpawnEntityDefError ||
     MapFile.ParseError;
 pub fn initForMap(
     game: *Game,
@@ -129,21 +220,66 @@ pub fn initForMap(
     try map_file.resizeEntities(allocator);
 
     try map_file.parse(map_name, allocator);
+    try mapPopulate(&map_file, allocator);
+}
+
+fn mapPopulate(map_file: *MapFile, allocator: Allocator) SpawnEntityDefError!void {
+    // world_spawn is always at index 0
+    const world_spawn_entity = &map_file.entities.slice()[0];
+    try spawnEntityDef(&world_spawn_entity.kv_pairs, allocator);
+
+    for (map_file.entities.slice()[1..]) |*entity| {
+        try spawnEntityDef(&entity.kv_pairs, allocator);
+    }
+}
+
+pub const SpawnEntityDefError =
+    DeclManager.FindDeclError ||
+    Allocator.Error;
+fn spawnEntityDef(
+    spawn_args: *idlib.Dict,
+    allocator: Allocator,
+) SpawnEntityDefError!void {
+    const class_name = spawn_args.getString("classname") orelse {
+        std.debug.print("[ENTITY] map entity has no classname key-value pair\n", .{});
+        return;
+    };
+
+    const entity_def = try decl_manager.instance.findEntityDef(
+        class_name,
+        allocator,
+    ) orelse {
+        std.debug.print("[ENTITY] entity def '{s}' not found\n", .{
+            class_name,
+        });
+        return;
+    };
+
+    try spawn_args.setDefaults(&entity_def.dict, allocator);
 
     // debug
-    for (map_file.entities.constSlice(), 0..) |*entity, i| {
-        std.debug.print("entity#{}\n", .{i});
-        for (entity.kv_pairs.args.constSlice()) |kv| {
-            std.debug.print("{s} = {s}\n", .{
-                kv.key.?.str.constSlice(),
-                kv.value.?.str.constSlice(),
-            });
-        }
-
-        std.debug.print("---\n", .{});
+    std.debug.print("[SPAWN]\n", .{});
+    for (spawn_args.args.constSlice()) |kv| {
+        std.debug.print("{s} = {s}\n", .{
+            kv.key.?.str.constSlice(),
+            kv.value.?.str.constSlice(),
+        });
     }
 
-    // populate entities from map_file
+    const type_name = spawn_args.getString("spawnexternal") orelse {
+        std.debug.print(
+            "[ENTITY] map entity has no spawnexternal key-value pair\n",
+            .{},
+        );
+        return;
+    };
+
+    _ = global.entities.spawn(type_name, spawn_args) catch |err| {
+        std.debug.print("[ERR] {?}\n", .{err});
+        return;
+    };
+
+    std.debug.print("[OK]\n---\n", .{});
 }
 
 pub const MS2SEC: f32 = 0.001;

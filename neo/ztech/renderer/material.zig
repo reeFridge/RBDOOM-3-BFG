@@ -36,7 +36,7 @@ pub var r_use_constant_materials = CVar.init(
     "use pre-calculated material registers if possible",
 );
 
-pub const max_global_shader_parms: usize = 12;
+pub const max_global_shader_params: usize = 12;
 
 extern fn c_material_remapShaderBySkin(*const DeclSkin, *const Material) callconv(.C) ?*const Material;
 

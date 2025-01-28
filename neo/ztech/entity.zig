@@ -1,24 +1,22 @@
 const std = @import("std");
+const idlib = @import("idlib.zig");
 
 pub const EntityId = u32;
-pub const SpawnArgs = std.StringHashMap([]const u8);
 
 pub fn findEntryMatchedPrefix(
-    spawn_args: *const SpawnArgs,
+    dict: *const idlib.Dict,
     prefix: []const u8,
     last_index: *?usize,
-) ?SpawnArgs.Entry {
-    var iterator = spawn_args.iterator();
-
-    var index: usize = 0;
-    while (iterator.next()) |entry| : (index += 1) {
+) ?idlib.Dict.KeyValue {
+    for (dict.args.constSlice(), 0..) |entry, index| {
         if (last_index.*) |last| {
             if (index <= last) continue;
         }
 
-        if (entry.key_ptr.*.len < prefix.len) continue;
+        const key = entry.key orelse continue;
+        if (key.str.constSlice().len < prefix.len) continue;
 
-        if (std.mem.eql(u8, entry.key_ptr.*[0..prefix.len], prefix)) {
+        if (std.mem.eql(u8, key.str.constSlice()[0..prefix.len], prefix)) {
             last_index.* = index;
             return entry;
         }
@@ -345,15 +343,15 @@ pub fn Entities(comptime archetypes: anytype) type {
         pub fn spawn(
             self: *@This(),
             type_name: []const u8,
-            spawn_args: SpawnArgs,
-            c_dict_ptr: ?*anyopaque,
+            spawn_args: *const idlib.Dict,
         ) anyerror!EntityHandle {
             const info = @typeInfo(U).Union;
 
             inline for (info.fields) |field_info| {
                 if (std.mem.eql(u8, type_name, field_info.name)) {
                     const Archetype = field_info.type.Type;
-                    if (!std.meta.hasMethod(Archetype, "spawn")) return EntityError.NoSpawnMethod;
+                    if (!std.meta.hasMethod(Archetype, "spawn"))
+                        return EntityError.NoSpawnMethod;
 
                     const entities = self.getByType(Archetype);
                     const id = try entities.addUndefined();
@@ -364,9 +362,8 @@ pub fn Entities(comptime archetypes: anytype) type {
 
                     entities.field_storage.set(id, try Archetype.spawn(
                         handle,
-                        self.allocator,
                         spawn_args,
-                        c_dict_ptr,
+                        self.allocator,
                     ));
 
                     entities.initFields(handle);
@@ -390,7 +387,11 @@ pub fn Entities(comptime archetypes: anytype) type {
             return handle;
         }
 
-        pub fn spawnType(self: *@This(), Archetype: type, spawn_args: SpawnArgs) !EntityHandle {
+        pub fn spawnType(
+            self: *@This(),
+            Archetype: type,
+            spawn_args: *const idlib.Dict,
+        ) !EntityHandle {
             const entities = self.getByType(Archetype);
             const id = try entities.add(try Archetype.spawn(self.allocator, spawn_args, null));
             const handle = EntityHandle.fromType(Archetype, id);

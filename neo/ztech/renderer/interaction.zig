@@ -93,12 +93,12 @@ pub const Interaction = extern struct {
         if (inter.lightPrev) |light_prev|
             light_prev.lightNext = inter.lightNext
         else if (inter.lightDef) |light_def|
-            light_def.firstInteraction = inter.lightNext;
+            light_def.first_interaction = inter.lightNext;
 
         if (inter.lightNext) |light_next|
             light_next.lightPrev = inter.lightPrev
         else if (inter.lightDef) |light_def|
-            light_def.lastInteraction = inter.lightPrev;
+            light_def.last_interaction = inter.lightPrev;
 
         inter.lightPrev = null;
         inter.lightNext = null;
@@ -144,13 +144,13 @@ pub const Interaction = extern struct {
         inter.surfaces = null;
 
         // link at the start of the light's list
-        inter.lightNext = light_def.firstInteraction;
+        inter.lightNext = light_def.first_interaction;
         inter.lightPrev = null;
-        light_def.firstInteraction = inter;
+        light_def.first_interaction = inter;
         if (inter.lightNext) |light_next|
             light_next.lightPrev = inter
         else
-            light_def.lastInteraction = inter;
+            light_def.last_interaction = inter;
 
         // link at the start of the entity's list
         inter.entityNext = entity_def.firstInteraction;
@@ -275,12 +275,12 @@ pub const Interaction = extern struct {
         // link at the end of the light's list
         if (inter.lightDef) |light_def| {
             inter.lightNext = null;
-            inter.lightPrev = light_def.lastInteraction;
-            light_def.lastInteraction = inter;
+            inter.lightPrev = light_def.last_interaction;
+            light_def.last_interaction = inter;
             if (inter.lightPrev) |light_prev|
                 light_prev.lightNext = inter
             else
-                light_def.firstInteraction = inter;
+                light_def.first_interaction = inter;
         }
 
         // relink at the end of the entity's list
@@ -493,7 +493,7 @@ fn createInteractionLightSurfaceTriangles(
 
     try cull_info.calcCullBits(
         allocator,
-        light_def.baseLightProject,
+        light_def.base_light_project,
         &entity_def.modelMatrix,
         tri.*,
     );
@@ -625,7 +625,7 @@ fn createInteractionLightSurfaceTriangles(
 }
 
 pub fn cullModelBoundsToLight(light: RenderLightLocal, local_bounds: Bounds, model_render_matrix: RenderMatrix) bool {
-    var model_light_project = light.baseLightProject.multiply(model_render_matrix);
+    var model_light_project = light.base_light_project.multiply(model_render_matrix);
 
     return model_light_project.cullBoundsToMVP(local_bounds, true);
 }

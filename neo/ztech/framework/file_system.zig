@@ -85,6 +85,7 @@ pub const FileSystem = extern struct {
         try cmd.instance.addCommand(
             "path",
             cmd_printSearchPaths,
+            null,
             cmd.CmdFlags.system,
             "lists search paths",
             null,

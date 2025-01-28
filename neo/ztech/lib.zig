@@ -1,4 +1,5 @@
 const std = @import("std");
+const idlib = @import("idlib.zig");
 const entity = @import("entity.zig");
 const Game = @import("game.zig");
 const global = @import("global.zig");
@@ -39,29 +40,6 @@ export fn ztech_clearEntities() callconv(.C) void {
 
     std.debug.print("[ztech] clear: OK\n", .{});
 }
-
-pub const CopySpawnArgs = struct {
-    var target: *entity.SpawnArgs = undefined;
-    var dict_ptr: *anyopaque = undefined;
-
-    fn putKeyValue(c_key: [*c]const u8, c_value: [*c]const u8) callconv(.C) void {
-        const key: [:0]const u8 = std.mem.span(c_key);
-        const value: [:0]const u8 = std.mem.span(c_value);
-
-        target.put(key, value) catch return;
-    }
-
-    pub fn init(b: *anyopaque, a: *entity.SpawnArgs) void {
-        CopySpawnArgs.target = a;
-        CopySpawnArgs.dict_ptr = b;
-    }
-
-    pub fn copy() void {
-        c_copy_dict_to_zig(dict_ptr, CopySpawnArgs.putKeyValue);
-    }
-};
-
-extern fn c_copy_dict_to_zig(*anyopaque, *const fn ([*c]const u8, [*c]const u8) callconv(.C) void) void;
 
 export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
     std.debug.print("Spawn Player: {d}\n", .{client_num});
@@ -109,22 +87,11 @@ export fn ztech_getSpawnTransform(origin: *CVec3, axis: *CMat3) callconv(.C) boo
     return true;
 }
 
-export fn ztech_spawnExternal(c_type_name: [*c]const u8, c_dict_ptr: *anyopaque) callconv(.C) bool {
+export fn ztech_spawnExternal(c_type_name: [*c]const u8, spawn_args: *const idlib.Dict) bool {
     std.debug.print("[ztech] spawnExternal: {s}\n", .{c_type_name});
 
-    var spawn_args = entity.SpawnArgs.init(global.gpa.allocator());
-    defer spawn_args.deinit();
-
-    CopySpawnArgs.init(c_dict_ptr, &spawn_args);
-    CopySpawnArgs.copy();
-
-    var it = spawn_args.iterator();
-    while (it.next()) |kv| {
-        std.debug.print("[spawn_args] key: {s} = \"{s}\"\n", .{ kv.key_ptr.*, kv.value_ptr.* });
-    }
-
     const type_name: [:0]const u8 = std.mem.span(c_type_name);
-    _ = global.entities.spawn(type_name, spawn_args, c_dict_ptr) catch |err| {
+    _ = global.entities.spawn(type_name, spawn_args) catch |err| {
         std.debug.print("[error] {?}\n", .{err});
         return false;
     };

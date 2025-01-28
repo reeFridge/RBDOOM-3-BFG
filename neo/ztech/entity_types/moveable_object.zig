@@ -1,6 +1,6 @@
 const std = @import("std");
 const Vec3 = @import("../math/vector.zig").Vec3;
-const SpawnArgs = @import("../entity.zig").SpawnArgs;
+const idlib = @import("../idlib.zig");
 const PhysicsRigidBody = @import("../physics/rigid_body.zig");
 const TraceModel = @import("../physics/trace_model.zig").TraceModel;
 const ContactInfo = @import("../physics/collision_model.zig").ContactInfo;
@@ -65,16 +65,13 @@ inline fn createClipModel(model_path: []const u8) !ClipModel {
 
 pub fn spawn(
     handle: EntityHandle,
+    spawn_args: *const idlib.Dict,
     allocator: std.mem.Allocator,
-    spawn_args: SpawnArgs,
-    c_dict_ptr: ?*anyopaque,
 ) !MoveableObject {
     var c_render_entity = RenderEntity{};
-    if (c_dict_ptr) |ptr| {
-        c_render_entity.initFromSpawnArgs(ptr);
-    } else return error.CSpawnArgsIsUndefined;
+    c_render_entity.initFromSpawnArgs(spawn_args);
 
-    var clip_model: ClipModel = if (spawn_args.get("model")) |model_path|
+    var clip_model: ClipModel = if (spawn_args.getString("model")) |model_path|
         try MoveableObject.createClipModel(model_path)
     else
         return error.ClipModelIsUndefined;
@@ -91,7 +88,7 @@ pub fn spawn(
     return .{
         .transform = transform,
         .render_entity = c_render_entity,
-        .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
+        .name = spawn_args.getString("name") orelse "unnamed_" ++ @typeName(@This()),
         .physics = .{
             .rigid_body = PhysicsRigidBody.init(
                 transform,

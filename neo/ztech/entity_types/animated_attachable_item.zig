@@ -1,4 +1,5 @@
 const std = @import("std");
+const idlib = @import("../idlib.zig");
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
 const Transform = @import("../physics/physics.zig").Transform;
 const RenderEntity = @import("../renderer/render_entity.zig").RenderEntity;
@@ -24,25 +25,22 @@ const AnimatedAttachableItem = @This();
 
 pub fn spawn(
     _: EntityHandle,
+    spawn_args: *const idlib.Dict,
     allocator: std.mem.Allocator,
-    spawn_args: SpawnArgs,
-    c_dict_ptr: ?*anyopaque,
 ) !AnimatedAttachableItem {
     var render_entity = RenderEntity{};
-    if (c_dict_ptr) |ptr| {
-        render_entity.initFromSpawnArgs(ptr);
-    } else return error.CSpawnArgsIsUndefined;
+    render_entity.initFromSpawnArgs(spawn_args);
 
     const transform = transform: {
-        const origin = if (spawn_args.get("origin")) |origin_str|
-            common.c_parseVector(origin_str.ptr).toVec3f()
+        const origin = if (spawn_args.getString("origin")) |origin_str|
+            try common.parseVec3f(origin_str)
         else
             Vec3(f32){};
 
-        const rotation = if (spawn_args.get("rotation")) |rotation_str|
-            common.c_parseMatrix(rotation_str.ptr).toMat3f()
-        else if (spawn_args.get("angles")) |angles_str|
-            common.c_parseAngles(angles_str.ptr).toAngles().toMat3()
+        const rotation = if (spawn_args.getString("rotation")) |rotation_str|
+            try common.parseMat3f(rotation_str)
+        else if (spawn_args.getString("angles")) |angles_str|
+            (try common.parseAngles(angles_str)).toMat3()
         else
             Mat3(f32).identity();
 
@@ -50,7 +48,7 @@ pub fn spawn(
     };
 
     var animator = Animator.init(allocator);
-    if (spawn_args.get("model")) |model_str| {
+    if (spawn_args.getString("model")) |model_str| {
         const opt_render_model = try animator.setModel(model_str);
         if (opt_render_model) |render_model| {
             render_entity.hModel = render_model;

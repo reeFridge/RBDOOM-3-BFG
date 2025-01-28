@@ -3967,18 +3967,6 @@ bool idGameLocal::SpawnEntityDef( const idDict& args, idEntity** ent, bool setDe
 
 extern "C" bool ztech_spawnExternal(uint8_t const *const, void* const);
 
-extern "C" void c_copy_dict_to_zig(
-		const idDict* const dict,
-		void fn_put_key_value(uint8_t const* const, uint8_t const* const)
-) {
-	int num = dict->GetNumKeyVals();
-	for( int i = 0; i < num; ++i )
-	{
-		const idKeyValue* kv = dict->GetKeyVal( i );
-		fn_put_key_value((uint8_t*)kv->GetKey().c_str(), (uint8_t*)kv->GetValue().c_str());
-	}
-}
-
 bool idGameLocal::SpawnEntityDefExternal( const idDict& args )
 {
 	spawnArgs = args;
@@ -4004,12 +3992,6 @@ bool idGameLocal::SpawnEntityDefExternal( const idDict& args )
 	}
 
 	return false;
-}
-
-extern "C" const idDeclEntityDef* c_findEntityDef(uint8_t const * const name) {
-	const idDecl* decl = declManager->FindType(DECL_ENTITYDEF, (const char*)name, false);
-
-	return static_cast<const idDeclEntityDef*>(decl);
 }
 
 /*

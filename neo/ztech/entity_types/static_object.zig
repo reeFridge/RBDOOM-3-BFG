@@ -1,4 +1,5 @@
 const std = @import("std");
+const idlib = @import("../idlib.zig");
 const common = @import("common.zig");
 const Transform = @import("../physics/physics.zig").Transform;
 const Physics = @import("../physics/physics.zig").Physics;
@@ -21,16 +22,13 @@ clip_model: ClipModel,
 
 pub fn spawn(
     handle: EntityHandle,
+    spawn_args: *const idlib.Dict,
     _: std.mem.Allocator,
-    spawn_args: SpawnArgs,
-    c_dict_ptr: ?*anyopaque,
 ) !StaticObject {
     var c_render_entity = RenderEntity{};
-    if (c_dict_ptr) |ptr| {
-        c_render_entity.initFromSpawnArgs(ptr);
-    } else return error.CSpawnArgsIsUndefined;
+    c_render_entity.initFromSpawnArgs(spawn_args);
 
-    var clip_model: ClipModel = if (spawn_args.get("model")) |model_path|
+    var clip_model: ClipModel = if (spawn_args.getString("model")) |model_path|
         try ClipModel.fromModel(model_path)
     else
         return error.ClipModelIsUndefined;
@@ -48,7 +46,7 @@ pub fn spawn(
     return .{
         .transform = transform,
         .render_entity = c_render_entity,
-        .name = spawn_args.get("name") orelse "unnamed_" ++ @typeName(@This()),
+        .name = spawn_args.getString("name") orelse "unnamed_" ++ @typeName(@This()),
         .physics = .{
             .static = PhysicsStatic.init(transform),
         },

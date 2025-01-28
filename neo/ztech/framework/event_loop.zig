@@ -24,10 +24,14 @@ pub const EventLoop = extern struct {
         // TODO journaling events
     }
 
-    pub fn run(event_loop: *EventLoop, command_execution: bool) void {
+    pub fn run(
+        event_loop: *EventLoop,
+        command_execution: bool,
+        allocator: Allocator,
+    ) void {
         while (true) {
             if (command_execution) {
-                cmd_system.instance.executeCommandBuffer() catch |err| {
+                cmd_system.instance.executeCommandBuffer(allocator) catch |err| {
                     std.debug.print(
                         "[CMD] error inside event loop: {s}\n",
                         .{@errorName(err)},

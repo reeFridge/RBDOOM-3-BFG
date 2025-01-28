@@ -14,19 +14,14 @@ const Allocator = std.mem.Allocator;
 
 pub const CmdDecl = struct {
     name: []const u8,
-    function: *const CmdFn,
+    function: ?*const CmdFn = null,
+    function_with_allocator: ?*const CmdFnWithAllocator = null,
     flags: c_int,
     description: []const u8,
-    arg_completion: ?*const ArgCompletionFn,
+    arg_completion: ?*const ArgCompletionFn = null,
 };
 
 pub const CallbackFn = fn () callconv(.C) void;
-
-pub const CmdExecution = enum(c_int) {
-    now,
-    insert,
-    append,
-};
 
 pub const CmdFlags = struct {
     pub const all: c_int = -1;
@@ -147,33 +142,35 @@ pub const ArgCompletionFn = fn (
 ) callconv(.C) void;
 
 pub const CmdFn = fn (*const CmdArgs) callconv(.C) void;
+pub const CmdFnWithAllocator = fn (*const CmdArgs, Allocator) void;
 
 pub const CommandDef = extern struct {
     next: ?*CommandDef,
     name: [*:0]u8,
-    function: *const CmdFn,
-    arg_completion: ?*const ArgCompletionFn,
+    function: ?*const CmdFn = null,
+    function_with_allocator: ?*const CmdFnWithAllocator = null,
+    arg_completion: ?*const ArgCompletionFn = null,
     flags: c_int,
     description: [*:0]u8,
 };
 
-pub const CmdSystem = extern struct {
-    pub const MAX_CMD_BUFFER: usize = 0x10000;
+pub const CmdSystem = struct {
+    pub const max_cmd_buffer: usize = 0x10000;
 
-    vptr: *anyopaque,
-    commands: ?*CommandDef, // linked list
-    wait: c_int,
-    text_length: c_int,
-    text_buffer: [MAX_CMD_BUFFER]u8,
-    completion_string: idlib.Str,
-    completion_params: idlib.List(idlib.Str),
-    tokenized_cmds: idlib.List(CmdArgs),
-    post_reload: CmdArgs,
+    commands: ?*CommandDef = null, // linked list
+    wait: c_int = 0,
+    text_length: u32 = 0,
+    text_buffer: [max_cmd_buffer]u8 = undefined,
+    completion_string: idlib.Str = .{},
+    completion_params: idlib.List(idlib.Str) = .{},
+    tokenized_cmds: idlib.List(CmdArgs) = .{},
+    post_reload: CmdArgs = .{},
 
     pub fn init(cmd_system: *CmdSystem, allocator: Allocator) Allocator.Error!void {
         try cmd_system.addCommand(
             "listCmds",
             cmd_listAllCommands,
+            null,
             CmdFlags.system,
             "list commands",
             null,
@@ -183,6 +180,7 @@ pub const CmdSystem = extern struct {
         try cmd_system.addCommand(
             "exec",
             cmd_execFile,
+            null,
             CmdFlags.system,
             "executes a config file",
             null,
@@ -219,6 +217,7 @@ pub const CmdSystem = extern struct {
             try cmd_system.addCommand(
                 cmd_decl.name,
                 cmd_decl.function,
+                cmd_decl.function_with_allocator,
                 cmd_decl.flags,
                 cmd_decl.description,
                 cmd_decl.arg_completion,
@@ -233,6 +232,7 @@ pub const CmdSystem = extern struct {
     pub fn executeTokenizedString(
         cmd_system: *CmdSystem,
         tokenized_args: *const CmdArgs,
+        allocator: Allocator,
     ) void {
         if (tokenized_args.argc == 0) return;
 
@@ -241,7 +241,16 @@ pub const CmdSystem = extern struct {
         var opt_cmd = cmd_system.commands;
         while (opt_cmd) |cmd| : (opt_cmd = cmd.next) {
             if (std.mem.eql(u8, name, std.mem.span(cmd.name))) {
-                cmd.function(tokenized_args);
+                if (cmd.function_with_allocator) |function| {
+                    function(tokenized_args, allocator);
+                } else if (cmd.function) |function| {
+                    function(tokenized_args);
+                } else {
+                    std.debug.print(
+                        "[CMD][{s}] Cmd function is not bounded\n",
+                        .{name},
+                    );
+                }
                 return;
             }
         }
@@ -267,7 +276,8 @@ pub const CmdSystem = extern struct {
     pub fn addCommand(
         cmd_system: *CmdSystem,
         name: []const u8,
-        function: *const CmdFn,
+        function: ?*const CmdFn,
+        function_with_allocator: ?*const CmdFnWithAllocator,
         flags: c_int,
         description: []const u8,
         arg_completion: ?*const ArgCompletionFn,
@@ -295,6 +305,7 @@ pub const CmdSystem = extern struct {
 
         cmd.name = cmd_name.ptr;
         cmd.function = function;
+        cmd.function_with_allocator = function_with_allocator;
         cmd.arg_completion = arg_completion;
         cmd.flags = flags;
         cmd.description = cmd_desc.ptr;
@@ -336,29 +347,21 @@ pub const CmdSystem = extern struct {
         args_copy.copyFrom(args);
     }
 
-    pub fn bufferCommandText(
-        cmd_system: *CmdSystem,
-        exec: CmdExecution,
-        text: []const u8,
-    ) error{OutOfMemory}!void {
-        switch (exec) {
-            .now => try cmd_system.executeCommandText(text),
-            .insert => cmd_system.insertCommandText(text),
-            .append => cmd_system.appendCommandText(text),
-        }
-    }
-
     pub fn executeCommandText(
         cmd_system: *CmdSystem,
         text: []const u8,
+        allocator: Allocator,
     ) error{OutOfMemory}!void {
         var args: CmdArgs = .{};
         try args.tokenizeString(text);
 
-        cmd_system.executeTokenizedString(&args);
+        cmd_system.executeTokenizedString(&args, allocator);
     }
 
-    pub fn executeCommandBuffer(cmd_system: *CmdSystem) error{OutOfMemory}!void {
+    pub fn executeCommandBuffer(
+        cmd_system: *CmdSystem,
+        allocator: Allocator,
+    ) error{OutOfMemory}!void {
         var free_tokenized_cmds: u32 = 0;
         while (cmd_system.text_length != 0) {
             if (cmd_system.wait != 0) {
@@ -367,7 +370,7 @@ pub const CmdSystem = extern struct {
             }
 
             var quotes: usize = 0;
-            const text = cmd_system.text_buffer[0..@intCast(cmd_system.text_length)];
+            const text = cmd_system.text_buffer[0..cmd_system.text_length];
             const line = for (text, 0..) |char, i| {
                 switch (char) {
                     '"' => quotes += 1,
@@ -392,7 +395,7 @@ pub const CmdSystem = extern struct {
                 cmd_system.text_length = 0;
             } else {
                 const line_len_with_delimiter = line.len + 1;
-                const old_len: usize = @intCast(cmd_system.text_length);
+                const old_len: usize = cmd_system.text_length;
                 const len: usize = old_len - line_len_with_delimiter;
 
                 std.mem.copyForwards(
@@ -403,7 +406,7 @@ pub const CmdSystem = extern struct {
                 cmd_system.text_length = @intCast(len);
             }
 
-            cmd_system.executeTokenizedString(&args);
+            cmd_system.executeTokenizedString(&args, allocator);
         }
 
         // remove cmds from queue
@@ -420,8 +423,8 @@ pub const CmdSystem = extern struct {
     /// Adds a \n to the text
     pub fn insertCommandText(cmd_system: *CmdSystem, text: []const u8) void {
         const len = text.len + 1;
-        const current_len: usize = @intCast(cmd_system.text_length);
-        if (len + current_len > MAX_CMD_BUFFER) {
+        const current_len: usize = cmd_system.text_length;
+        if (len + current_len > max_cmd_buffer) {
             std.debug.print("[CMD][ERR] cmd_buffer overflow\n", .{});
             return;
         }
@@ -445,8 +448,8 @@ pub const CmdSystem = extern struct {
     /// Adds command text at the end of the buffer, does NOT add a final \n
     pub fn appendCommandText(cmd_system: *CmdSystem, text: []const u8) void {
         const len = text.len;
-        const current_len: usize = @intCast(cmd_system.text_length);
-        if (len + current_len > MAX_CMD_BUFFER) {
+        const current_len: usize = cmd_system.text_length;
+        if (len + current_len > max_cmd_buffer) {
             std.debug.print("[CMD][ERR] cmd_buffer overflow\n", .{});
             return;
         }
@@ -457,7 +460,7 @@ pub const CmdSystem = extern struct {
     }
 };
 
-pub const instance = @extern(*CmdSystem, .{ .name = "cmdSystemLocal" });
+pub var instance = CmdSystem{};
 
 pub const CommandLink = struct {
     next: ?*const CommandLink,
@@ -497,5 +500,5 @@ pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
 
     std.debug.print("[CMD] Execing file: {s}\n", .{filename});
 
-    instance.bufferCommandText(.insert, buffer) catch unreachable;
+    instance.insertCommandText(buffer);
 }

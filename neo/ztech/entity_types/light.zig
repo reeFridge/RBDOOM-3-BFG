@@ -1,6 +1,6 @@
 const std = @import("std");
 const common = @import("common.zig");
-const SpawnArgs = @import("../entity.zig").SpawnArgs;
+const idlib = @import("../idlib.zig");
 const Transform = @import("../physics/physics.zig").Transform;
 const RenderLight = @import("../renderer/render_light.zig").RenderLight;
 const Vec3 = @import("../math/vector.zig").Vec3;
@@ -16,27 +16,24 @@ render_light: RenderLight,
 
 pub fn spawn(
     _: EntityHandle,
-    _: std.mem.Allocator,
-    spawn_args: SpawnArgs,
-    c_dict_ptr: ?*anyopaque,
+    spawn_args: *const idlib.Dict,
+    allocator: std.mem.Allocator,
 ) !Light {
-    var c_render_light = std.mem.zeroes(RenderLight);
-    if (c_dict_ptr) |ptr| {
-        c_render_light.initFromSpawnArgs(ptr);
-    } else return error.CSpawnArgsIsUndefined;
+    var render_light = RenderLight{};
+    try render_light.initFromSpawnArgs(spawn_args, allocator);
 
-    const origin = if (spawn_args.get("origin")) |origin_str|
-        common.c_parseVector(origin_str.ptr).toVec3f()
+    const origin = if (spawn_args.getString("origin")) |origin_str|
+        try common.parseVec3f(origin_str)
     else
         Vec3(f32){};
 
-    const rotation = if (spawn_args.get("rotation")) |rotation_str|
-        common.c_parseMatrix(rotation_str.ptr).toMat3f()
+    const rotation = if (spawn_args.getString("rotation")) |rotation_str|
+        try common.parseMat3f(rotation_str)
     else
         Mat3(f32).identity();
 
     return .{
         .transform = .{ .origin = origin, .axis = rotation },
-        .render_light = c_render_light,
+        .render_light = render_light,
     };
 }

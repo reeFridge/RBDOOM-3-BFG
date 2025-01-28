@@ -682,7 +682,7 @@ pub const HashIndex = extern struct {
                 if (hash_index.hash[i] > max) {
                     max = @intCast(hash_index.hash[i]);
                 }
-                hash_index.hash -= 1;
+                hash_index.hash[i] -= 1;
             }
         }
 
@@ -959,7 +959,7 @@ pub const Dict = extern struct {
         }
     };
 
-    const KeyValue = extern struct {
+    pub const KeyValue = extern struct {
         key: ?*const StrPool.Entry = null,
         value: ?*const StrPool.Entry = null,
     };
@@ -1018,8 +1018,8 @@ pub const Dict = extern struct {
         } else {
             const key_entry = try global_keys.allocEntry(key, allocator);
             errdefer global_keys.freeEntry(key_entry, allocator);
-            const value_entry = try global_keys.allocEntry(value, allocator);
-            errdefer global_keys.freeEntry(value_entry, allocator);
+            const value_entry = try global_values.allocEntry(value, allocator);
+            errdefer global_values.freeEntry(value_entry, allocator);
 
             const kv = KeyValue{
                 .key = key_entry,
@@ -1029,6 +1029,59 @@ pub const Dict = extern struct {
             try dict.args_hash.add(
                 dict.args_hash.generateKey(key_entry.str.constSlice(), false),
                 @intCast(try dict.args.append(kv, allocator)),
+                allocator,
+            );
+        }
+    }
+
+    pub fn getString(dict: *const Dict, key: []const u8) ?[]const u8 {
+        const key_value = dict.findKey(key) orelse return null;
+
+        return if (key_value.value) |value|
+            value.str.constSlice()
+        else
+            null;
+    }
+
+    pub fn findKey(dict: *const Dict, key: []const u8) ?*const KeyValue {
+        if (key.len == 0) {
+            std.debug.print("[Dict][warn] empty key\n", .{});
+            return null;
+        }
+
+        const hash = dict.args_hash.generateKey(key, false);
+        var i = dict.args_hash.first(hash);
+        while (i != -1) : (i = dict.args_hash.next(@intCast(i))) {
+            const key_value = &dict.args.constSlice()[@intCast(i)];
+            const key_ = key_value.key orelse continue;
+            if (std.ascii.eqlIgnoreCase(key_.str.constSlice(), key)) {
+                return key_value;
+            }
+        }
+
+        return null;
+    }
+
+    pub fn setDefaults(
+        dict: *Dict,
+        defaults: *const Dict,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        for (defaults.args.constSlice()) |default_kv| {
+            const key = default_kv.key orelse continue;
+            if (dict.findKey(key.str.constSlice()) != null) continue;
+
+            const new_kv = KeyValue{
+                .key = try global_keys.copyEntry(key, allocator),
+                .value = if (default_kv.value) |value|
+                    try global_values.copyEntry(value, allocator)
+                else
+                    null,
+            };
+
+            try dict.args_hash.add(
+                dict.args_hash.generateKey(key.str.constSlice(), false),
+                @intCast(try dict.args.append(new_kv, allocator)),
                 allocator,
             );
         }
@@ -1058,8 +1111,9 @@ pub const Dict = extern struct {
                 global_keys.freeEntry(key, allocator);
                 kv.key = null;
             }
+
             if (kv.value) |value| {
-                global_keys.freeEntry(value, allocator);
+                global_values.freeEntry(value, allocator);
                 kv.value = null;
             }
         }

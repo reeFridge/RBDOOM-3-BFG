@@ -1418,14 +1418,6 @@ int idDeclManagerLocal::GetNumDecls( declType_t type )
 	return linearLists[ typeIndex ].Num();
 }
 
-extern "C" uint8_t const * const c_declGetName(const idDecl* decl) {
-	return (uint8_t*)decl->GetName();
-}
-
-extern "C" int c_declIndex(const idDecl* decl) {
-	return decl->Index();
-}
-
 /*
 ===================
 idDeclManagerLocal::DeclByIndex

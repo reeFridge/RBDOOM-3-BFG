@@ -9,8 +9,10 @@ const AnimatedWithHead = @import("animated_with_head.zig");
 const AttachableItem = @import("attachable_item.zig");
 const AnimatedAttachableItem = @import("animated_attachable_item.zig");
 const Emitter = @import("emitter.zig");
+const Worldspawn = @import("worldspawn.zig");
 
 pub const ExportedTypes = .{
+    Worldspawn,
     StaticObject,
     MoveableObject,
     PlayerSpawn,
