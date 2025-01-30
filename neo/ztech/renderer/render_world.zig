@@ -345,7 +345,7 @@ pub fn updateLightDef(
     }
 
     if (!just_update)
-        try light.createLightRefs();
+        try light.createLightRefs(render_world.allocator);
 }
 
 pub fn freeEntityDefByIndex(render_world: *RenderWorld, entity_index: usize) DefIndexAccessError!void {
@@ -1149,10 +1149,60 @@ fn addLights(render_world: *RenderWorld, view_def: *ViewDef) Material.EvaluateRe
     cullLightsMarkedAsRemoved(view_def);
 }
 
-extern fn R_SortViewEntities(?*ViewEntity) callconv(.C) ?*ViewEntity;
+fn sortViewEntities(view_entities: ?*ViewEntity) ?*ViewEntity {
+    var dynamics: ?*ViewEntity = null;
+    var areas: ?*ViewEntity = null;
+    var others: ?*ViewEntity = null;
+
+    {
+        var opt_view_entity = view_entities;
+        var opt_next: ?*ViewEntity = null;
+        while (opt_view_entity) |view_entity| : (opt_view_entity = opt_next) {
+            const entity_def = view_entity.entityDef orelse @panic("entityDef is undefined");
+            const model_handle = entity_def.parms.hModel orelse @panic("entity_def without model");
+
+            opt_next = view_entity.next;
+
+            if (model_handle.dynamicModelType() != .static) {
+                view_entity.next = dynamics;
+                dynamics = view_entity;
+            } else if (model_handle.is_static_world_model) {
+                view_entity.next = areas;
+                areas = view_entity;
+            } else {
+                view_entity.next = others;
+                others = view_entity;
+            }
+        }
+    }
+
+    var all: ?*ViewEntity = others;
+
+    {
+        var opt_view_entity = areas;
+        var opt_next: ?*ViewEntity = null;
+        while (opt_view_entity) |view_entity| : (opt_view_entity = opt_next) {
+            opt_next = view_entity.next;
+            view_entity.next = all;
+            all = view_entity;
+        }
+    }
+
+    {
+        var opt_view_entity = dynamics;
+        var opt_next: ?*ViewEntity = null;
+        while (opt_view_entity) |view_entity| : (opt_view_entity = opt_next) {
+            opt_next = view_entity.next;
+            view_entity.next = all;
+            all = view_entity;
+        }
+    }
+
+    return all;
+}
 
 fn addModels(render_world: *RenderWorld, view_def: *ViewDef) Material.EvaluateRegistersError!void {
-    view_def.viewEntitys = R_SortViewEntities(view_def.viewEntitys);
+    view_def.viewEntitys = sortViewEntities(view_def.viewEntitys);
 
     var opt_view_entity = view_def.viewEntitys;
     while (opt_view_entity) |view_entity| : (opt_view_entity = view_entity.next) {
@@ -1723,24 +1773,51 @@ fn addSingleModel(
     }
 }
 
-extern fn R_LinkDrawSurfToView(*DrawSurface, *ViewDef) callconv(.C) void;
-inline fn moveDrawSurfsToView(def: *ViewDef) void {
-    // clear the ambient surface list
-    def.numDrawSurfs = 0;
-    // will be set to INITIAL_DRAWSURFS on R_LinkDrawSurfToView
-    def.maxDrawSurfs = 0;
+const initial_draw_surfaces_num = 2048;
 
-    var opt_v_entity = def.viewEntitys;
+fn linkDrawSurfaceToView(surface: *DrawSurface, view_def: *ViewDef) void {
+    // resize the list
+    if (view_def.numDrawSurfs == view_def.maxDrawSurfs) {
+        const opt_old = view_def.drawSurfs;
+
+        const old_count: u32 = if (view_def.maxDrawSurfs == 0) old_count: {
+            view_def.maxDrawSurfs = initial_draw_surfaces_num;
+            break :old_count 0;
+        } else old_count: {
+            const count = view_def.maxDrawSurfs;
+            view_def.maxDrawSurfs *= 2;
+
+            break :old_count count;
+        };
+
+        const draw_surfs = FrameData.frameAlloc(*DrawSurface, view_def.maxDrawSurfs);
+
+        if (opt_old) |old_draw_surfs| {
+            @memcpy(draw_surfs[0..old_count], old_draw_surfs[0..old_count]);
+        }
+
+        view_def.drawSurfs = draw_surfs.ptr;
+    }
+
+    view_def.drawSurfs.?[view_def.numDrawSurfs] = surface;
+    view_def.numDrawSurfs += 1;
+}
+
+inline fn moveDrawSurfsToView(view_def: *ViewDef) void {
+    // clear the ambient surface list
+    view_def.numDrawSurfs = 0;
+    view_def.maxDrawSurfs = 0;
+
+    var opt_v_entity = view_def.viewEntitys;
     while (opt_v_entity) |v_entity| : (opt_v_entity = v_entity.next) {
         var opt_draw_surf = v_entity.drawSurfs;
         while (opt_draw_surf) |draw_surf| {
-            // save it before assign
             opt_draw_surf = draw_surf.nextOnLight;
             if (draw_surf.linkChain) |link_chain| {
                 draw_surf.nextOnLight = link_chain.*;
                 link_chain.* = draw_surf;
             } else {
-                R_LinkDrawSurfToView(draw_surf, def);
+                linkDrawSurfaceToView(draw_surf, view_def);
             }
         }
 
@@ -1780,16 +1857,16 @@ pub fn findViewLightsAndEntities(render_world: *RenderWorld, frustum_planes: []P
             ps.next = null;
             ps.p = null;
 
-            for (ps.portalPlanes[0..5], frustum_planes[0..5]) |*portal_plane, plane| {
+            for (ps.portal_planes[0..5], frustum_planes[0..5]) |*portal_plane, plane| {
                 portal_plane.* = plane;
             }
 
-            ps.numPortalPlanes = 5;
+            ps.num_portal_planes = 5;
             ps.rect = view_def.scissor;
 
             const portal_areas = render_world.portal_areas orelse unreachable;
-            render_world.addAreaToView(
-                portal_areas[@intCast(view_def.areaNum)],
+            addAreaToView(
+                &portal_areas[@intCast(view_def.areaNum)],
                 &ps,
             );
         }
@@ -1983,8 +2060,9 @@ fn addAreaViewEntities(
         if (ref == &area.entity_refs) break;
         const entity = ref.entity orelse continue;
 
-        if (c_cullEntityByPortals(&entity.inverseBaseModelProject, ps))
+        if (c_cullEntityByPortals(&entity.inverseBaseModelProject, ps)) {
             continue;
+        }
 
         var view_entity = setEntityDefViewEntity(entity);
         view_entity.scissorRect.unionWith(ps.rect);
@@ -2180,7 +2258,7 @@ pub fn updateEntityDef(
             // check for exact match (OPTIMIZE: check through pointers more)
             if (render_entity.joints == null and
                 render_entity.callbackData == null and
-                entity_def.dynamicModel == null and
+                entity_def.dynamic_model == null and
                 std.mem.eql(u8, std.mem.asBytes(&entity_def.parms), std.mem.asBytes(&render_entity)))
                 return;
 
@@ -2246,15 +2324,15 @@ pub fn pushFrustumIntoTree(
     render_world: *RenderWorld,
     def: ?*RenderEntityLocal,
     light: ?*RenderLightLocal,
-    frustumTransform: RenderMatrix,
-    frustumBounds: Bounds,
+    frustum_transform: RenderMatrix,
+    frustum_bounds: Bounds,
 ) !void {
     // TODO: properly check
     const area_nodes = render_world.area_nodes orelse return;
     const portal_areas = render_world.portal_areas orelse return;
 
     // calculate the corners of the frustum in world space
-    const corners = RenderMatrix.getFrustumCorners(frustumTransform, CBounds.fromBounds(frustumBounds));
+    const corners = RenderMatrix.getFrustumCorners(frustum_transform, CBounds.fromBounds(frustum_bounds));
 
     try render_world.pushFrustumIntoTree_r(
         def,

@@ -627,7 +627,7 @@ pub fn stripExtension(path: []const u8) []const u8 {
 
 const cmd = @import("cmd_system.zig");
 
-fn cmd_printSearchPaths(_: *const cmd.CmdArgs) callconv(.C) void {
+fn cmd_printSearchPaths(_: *const cmd.CmdArgs) void {
     std.debug.print("[FS] Current search paths:\n", .{});
 
     var paths_iterator = std.mem.reverseIterator(instance.searchPaths.constSlice());

@@ -1,5 +1,6 @@
 const std = @import("std");
 const decl_manager = @import("../framework/decl_manager.zig");
+const DeclManager = decl_manager.DeclManager;
 const common = @import("../entity_types/common.zig");
 const idlib = @import("../idlib.zig");
 const CVec3 = @import("../math/vector.zig").CVec3;
@@ -14,6 +15,8 @@ const RenderSystem = @import("render_system.zig");
 const Image = @import("image.zig").Image;
 const ViewLight = @import("common.zig").ViewLight;
 const Allocator = std.mem.Allocator;
+const axisToModelMatrix = @import("render_entity.zig").axisToModelMatrix;
+const localPlaneToGlobal = @import("interaction.zig").localPlaneToGlobal;
 
 pub const RenderLight = extern struct {
     axis: CMat3 = CMat3.fromMat3f(Mat3(f32).identity()),
@@ -58,6 +61,14 @@ pub const RenderLight = extern struct {
         const texture_str = dict.getString("texture") orelse "lights/squarelight1";
 
         self.shader = try decl_manager.instance.findMaterial(texture_str, allocator);
+
+        const got_target = false;
+        if (!got_target) {
+            self.point_light = true;
+            self.light_radius = .{ .x = 300, .y = 300, .z = 300 };
+        }
+
+        self.axis = CMat3.fromMat3f(common.parseMat3f("1 0 0 0 1 0 0 0 1") catch unreachable);
 
         // TODO: parse all args
     }
@@ -116,10 +127,126 @@ pub const RenderLightLocal = extern struct {
     last_interaction: ?*Interaction = null,
     fogged_portals: ?*DoublePortal = null,
 
-    extern fn R_DeriveLightData(*RenderLightLocal) void;
-    pub fn deriveLightData(light: *RenderLightLocal) void {
-        // TODO
-        R_DeriveLightData(light);
+    pub fn deriveLightData(light: *RenderLightLocal, allocator: Allocator) DeclManager.FindDeclError!void {
+        const light_shader = if (light.params.shader) |shader|
+            shader
+        else if (light.light_shader) |shader|
+            shader
+        else if (light.params.point_light)
+            RenderSystem.instance.default_point_light orelse @panic("default_point_light is undefined")
+        else
+            RenderSystem.instance.default_projected_light orelse @panic("default_projected_light is undefined");
+        light.light_shader = light_shader;
+
+        light.falloff_image = if (light_shader.light_falloff_image) |image|
+            image
+        else falloff_image: {
+            const default_shader = if (light.params.point_light)
+                RenderSystem.instance.default_point_light orelse @panic("default_point_light is undefined")
+            else
+                RenderSystem.instance.default_projected_light orelse @panic("default_projected_light is undefined");
+
+            try decl_manager.instance.touch(@ptrCast(default_shader), allocator);
+
+            break :falloff_image default_shader.light_falloff_image;
+        };
+
+        const local_project = light.computeProjectionMatrix();
+        var light_transform: [16]f32 = undefined;
+        axisToModelMatrix(light.params.axis, light.params.origin, &light_transform);
+
+        for (&light.light_project) |*plane| {
+            plane.* = localPlaneToGlobal(&light_transform, plane.*);
+        }
+
+        if (light.params.parallel) {
+            var dir, const len = light.params.light_center.toVec3f().normalizeLen();
+            if (len == 0.0) {
+                dir.v[2] = 1.0;
+            }
+
+            light.global_light_origin = CVec3.fromVec3f(
+                dir.scale(100000).add(light.params.origin.toVec3f()),
+            );
+        } else {
+            const axis = light.params.axis.toMat3f();
+            const light_center = light.params.light_center.toVec3f();
+            const origin = light.params.origin.toVec3f();
+            light.global_light_origin = CVec3.fromVec3f(
+                axis.multiplyVec3(light_center).add(origin),
+            );
+        }
+
+        const light_matrix = RenderMatrix.createFromOriginMatrix(
+            light.params.origin.toVec3f(),
+            light.params.axis.toMat3f(),
+        );
+
+        var inverse_light_matrix = std.mem.zeroes(RenderMatrix);
+        if (!RenderMatrix.inverse(&light_matrix, &inverse_light_matrix)) {
+            std.debug.print("[WARN] light_matrix invert failed\n", .{});
+        }
+
+        light.base_light_project = RenderMatrix.multiply(local_project, inverse_light_matrix);
+
+        if (!RenderMatrix.inverse(&light.base_light_project, &light.inverse_base_light_project)) {
+            std.debug.print("[WARN] base_light_project invert failed\n", .{});
+        }
+
+        RenderMatrix.projectedBounds(
+            &light.global_light_bounds,
+            light.inverse_base_light_project,
+            CBounds.fromBounds(Bounds.zero_one_cube),
+            false,
+        );
+    }
+
+    extern fn c_computeSpotLightProjectionMatrix(*RenderLightLocal, *RenderMatrix) f32;
+    fn computeProjectionMatrix(light: *RenderLightLocal) RenderMatrix {
+        var z_scale: f32 = 1.0;
+        var local_project = std.mem.zeroes(RenderMatrix);
+
+        if (light.params.parallel) {
+            local_project.r(0)[0] = 0.5 / light.params.light_radius.x;
+            local_project.r(1)[1] = 0.5 / light.params.light_radius.y;
+            local_project.r(2)[2] = 0.5 / light.params.light_radius.z;
+            local_project.r(0)[3] = 0.5;
+            local_project.r(1)[3] = 0.5;
+            local_project.r(2)[3] = 0.5;
+            local_project.r(3)[3] = 1;
+        } else if (light.params.point_light) {
+            local_project.r(0)[0] = 0.5 / light.params.light_radius.x;
+            local_project.r(1)[1] = 0.5 / light.params.light_radius.y;
+            local_project.r(2)[2] = 0.5 / light.params.light_radius.z;
+            local_project.r(0)[3] = 0.5;
+            local_project.r(1)[3] = 0.5;
+            local_project.r(2)[3] = 0.5;
+            local_project.r(3)[3] = 1;
+        } else {
+            z_scale = c_computeSpotLightProjectionMatrix(light, &local_project);
+        }
+
+        light.light_project[0].slice()[0] = local_project.r(0)[0];
+        light.light_project[0].slice()[1] = local_project.r(0)[1];
+        light.light_project[0].slice()[2] = local_project.r(0)[2];
+        light.light_project[0].slice()[3] = local_project.r(0)[3];
+
+        light.light_project[1].slice()[0] = local_project.r(1)[0];
+        light.light_project[1].slice()[1] = local_project.r(1)[1];
+        light.light_project[1].slice()[2] = local_project.r(1)[2];
+        light.light_project[1].slice()[3] = local_project.r(1)[3];
+
+        light.light_project[2].slice()[0] = local_project.r(3)[0];
+        light.light_project[2].slice()[1] = local_project.r(3)[1];
+        light.light_project[2].slice()[2] = local_project.r(3)[2];
+        light.light_project[2].slice()[3] = local_project.r(3)[3];
+
+        light.light_project[3].slice()[0] = local_project.r(2)[0] * z_scale;
+        light.light_project[3].slice()[1] = local_project.r(2)[1] * z_scale;
+        light.light_project[3].slice()[2] = local_project.r(2)[2] * z_scale;
+        light.light_project[3].slice()[3] = local_project.r(2)[3] * z_scale;
+
+        return local_project;
     }
 
     pub fn lightCastsShadows(light: *const RenderLightLocal) bool {
@@ -164,8 +291,8 @@ pub const RenderLightLocal = extern struct {
         light.references = null;
     }
 
-    pub fn createLightRefs(light: *RenderLightLocal) !void {
-        light.deriveLightData();
+    pub fn createLightRefs(light: *RenderLightLocal, allocator: Allocator) !void {
+        try light.deriveLightData(allocator);
 
         const world = light.world orelse return;
 

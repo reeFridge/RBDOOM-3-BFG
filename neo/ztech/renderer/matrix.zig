@@ -2,6 +2,7 @@ const std = @import("std");
 const CVec3 = @import("../math/vector.zig").CVec3;
 const Vec3 = @import("../math/vector.zig").Vec3;
 const CMat3 = @import("../math/matrix.zig").CMat3;
+const Mat3 = @import("../math/matrix.zig").Mat3;
 const Mat4 = @import("../math/matrix.zig").Mat4;
 const Plane = @import("../math/plane.zig").Plane;
 const CBounds = @import("../bounding_volume/bounds.zig").CBounds;
@@ -26,8 +27,39 @@ pub const RenderMatrix = extern struct {
     extern fn c_renderMatrix_cullPointToMVP(*const RenderMatrix, *const CVec3, bool) bool;
     extern fn c_renderMatrix_cullBoundsToMVP(*const RenderMatrix, *const CBounds, bool) bool;
     extern fn c_renderMatrix_getFrustumPlanes([*]Plane, *const RenderMatrix, bool, bool) void;
+    extern fn c_renderMatrix_inverse(*const RenderMatrix, *RenderMatrix) bool;
 
     m: [16]f32,
+
+    pub fn inverse(src: *const RenderMatrix, out: *RenderMatrix) bool {
+        return c_renderMatrix_inverse(src, out);
+    }
+
+    pub fn createFromOriginMatrix(origin: Vec3(f32), axis: Mat3(f32)) RenderMatrix {
+        var out = std.mem.zeroes(RenderMatrix);
+
+        out.r(0)[0] = axis.v[0].v[0];
+        out.r(0)[1] = axis.v[1].v[0];
+        out.r(0)[2] = axis.v[2].v[0];
+        out.r(0)[3] = origin.v[0];
+
+        out.r(1)[0] = axis.v[0].v[1];
+        out.r(1)[1] = axis.v[1].v[1];
+        out.r(1)[2] = axis.v[2].v[1];
+        out.r(1)[3] = origin.v[1];
+
+        out.r(2)[0] = axis.v[0].v[2];
+        out.r(2)[1] = axis.v[1].v[2];
+        out.r(2)[2] = axis.v[2].v[2];
+        out.r(2)[3] = origin.v[2];
+
+        out.r(3)[0] = 0.0;
+        out.r(3)[1] = 0.0;
+        out.r(3)[2] = 0.0;
+        out.r(3)[3] = 1.0;
+
+        return out;
+    }
 
     pub fn r(matrix: *RenderMatrix, row: usize) []f32 {
         return matrix.m[row * 4 .. (row * 4) + 4];

@@ -141,7 +141,7 @@ pub const ArgCompletionFn = fn (
     [*:0]const u8,
 ) callconv(.C) void;
 
-pub const CmdFn = fn (*const CmdArgs) callconv(.C) void;
+pub const CmdFn = fn (*const CmdArgs) void;
 pub const CmdFnWithAllocator = fn (*const CmdArgs, Allocator) void;
 
 pub const CommandDef = extern struct {
@@ -476,11 +476,11 @@ pub fn listCommandsByFlags(flags: c_int) void {
     }
 }
 
-pub fn cmd_listAllCommands(_: *const CmdArgs) callconv(.C) void {
+pub fn cmd_listAllCommands(_: *const CmdArgs) void {
     listCommandsByFlags(CmdFlags.all);
 }
 
-pub fn cmd_execFile(args: *const CmdArgs) callconv(.C) void {
+pub fn cmd_execFile(args: *const CmdArgs) void {
     if (args.argc != 2) {
         std.debug.print("[CMD] Usage: exec <filename>\n", .{});
         return;

@@ -2326,6 +2326,10 @@ void c_renderMatrix_projectedFullyClippedBounds(
 	idRenderMatrix::ProjectedFullyClippedBounds(*projected, *mvp, *bounds, windowSpace);
 }
 
+bool c_renderMatrix_inverse(const idRenderMatrix* src, idRenderMatrix* out) {
+	return idRenderMatrix::Inverse(*src, *out);
+}
+
 }
 
 /*

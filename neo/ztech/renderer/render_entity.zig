@@ -147,9 +147,9 @@ pub const RenderEntityLocal = extern struct {
     // in the cached memory
     lastModifiedFrameNum: c_int = 0,
     // if parms.model->IsDynamicModel(), this is the generated data
-    dynamicModel: ?*RenderModelStatic = null,
+    dynamic_model: ?*RenderModelStatic = null,
     // continuously animating dynamic models will recreate
-    dynamicModelFrameCount: c_int = 0,
+    dynamic_model_frame_count: c_int = 0,
     // dynamicModel if this doesn't == tr.viewCount
     cachedDynamicModel: ?*RenderModelStatic = null,
     // the local bounds used to place entityRefs, either from parms for dynamic entities, or a model bounds
@@ -182,7 +182,27 @@ pub const RenderEntityLocal = extern struct {
         entity: *RenderEntityLocal,
         view_def: *ViewDef,
     ) ?*RenderModelStatic {
-        return c_renderEntity_getDynamicModelForFrame(entity, view_def);
+        if (entity.dynamic_model_frame_count == RenderSystem.instance.frame_count) {
+            return entity.dynamic_model;
+        }
+
+        const callback_update = if (entity.parms.callback != null)
+            entity.issueEntityDefCallback(null)
+        else
+            false;
+
+        if (entity.parms.hModel) |model_handle| {
+            if (model_handle.dynamicModelType() == .static) {
+                entity.dynamic_model = null;
+                entity.dynamic_model_frame_count = 0;
+
+                return model_handle;
+            }
+        }
+
+        _ = callback_update;
+        _ = view_def;
+        @panic("dynamic models are not implemented yet");
     }
 
     pub fn isDirectlyVisible(entity: *const RenderEntityLocal) bool {
@@ -297,8 +317,8 @@ pub const RenderEntityLocal = extern struct {
         }
 
         // this is copied from cachedDynamicModel, so it doesn't need to be freed
-        if (entity.dynamicModel != null) entity.dynamicModel = null;
-        entity.dynamicModelFrameCount = 0;
+        if (entity.dynamic_model != null) entity.dynamic_model = null;
+        entity.dynamic_model_frame_count = 0;
     }
 
     /// Used by both FreeEntityDef and UpdateEntityDef
@@ -309,10 +329,10 @@ pub const RenderEntityLocal = extern struct {
         while (entity.firstInteraction) |interaction| {
             interaction.unlinkAndFree(render_world.allocator);
         }
-        entity.dynamicModelFrameCount = 0;
+        entity.dynamic_model_frame_count = 0;
 
         // clear the dynamic model if present
-        if (entity.dynamicModel != null) entity.dynamicModel = null;
+        if (entity.dynamic_model != null) entity.dynamic_model = null;
 
         if (!keep_decals) {
             entity.decals = null;

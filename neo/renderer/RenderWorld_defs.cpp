@@ -294,6 +294,10 @@ static float R_ComputeSpotLightProjectionMatrix( idRenderLightLocal* light, idRe
 	return 1.0f / ( zNear + zFar );
 }
 
+extern "C" float c_computeSpotLightProjectionMatrix(idRenderLightLocal* light, idRenderMatrix* localProject) {
+	return R_ComputeSpotLightProjectionMatrix(light, *localProject);
+}
+
 /*
 ========================
 R_ComputeParallelLightProjectionMatrix

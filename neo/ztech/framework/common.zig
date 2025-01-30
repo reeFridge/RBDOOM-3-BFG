@@ -26,8 +26,9 @@ const exit = @import("../main.zig").exit;
 const frameToMsec = @import("../game.zig").frameToMsec;
 const RenderWorld = @import("../renderer/render_world.zig");
 const Game = @import("../game.zig");
+const ztech_lib = @import("../lib.zig");
 
-fn cmd_quit(_: *const cmd.CmdArgs) callconv(.C) void {
+fn cmd_quit(_: *const cmd.CmdArgs) void {
     instance.quit();
 }
 pub const quit_command: cmd.CmdDecl = .{
@@ -52,6 +53,16 @@ pub const map_command: cmd.CmdDecl = .{
     .arg_completion = null,
 };
 
+fn cmd_spawnPlayer(_: *const cmd.CmdArgs) void {
+    _ = ztech_lib.ztech_spawnPlayer(0);
+}
+pub const spawn_player_command: cmd.CmdDecl = .{
+    .name = "spawn_player",
+    .function = cmd_spawnPlayer,
+    .flags = cmd.CmdFlags.game,
+    .description = "spawns the player at spawn point",
+};
+
 const GameThreadArgs = struct {
     num_frames: u32 = 0,
 };
@@ -63,6 +74,12 @@ fn runGameFramesAndDraw(self: *GameThread) u8 {
     for (0..self.args.num_frames) |frame_index| {
         _ = frame_index;
         Game.instance.runFrame();
+    }
+
+    if (map_spawned) {
+        Game.instance.draw() catch |err| {
+            std.debug.print("[GAME] err while draw: {s}\n", .{@errorName(err)});
+        };
     }
 
     if (self.allocator) |allocator| {
@@ -79,6 +96,7 @@ var game_time_residual: f64 = 0;
 var sync_next_frame: bool = true;
 var game_frame: u64 = 0;
 var no_sleep: bool = false;
+var map_spawned = false;
 pub var render_world: ?*RenderWorld = null;
 
 fn loadMap(map_name: []const u8, allocator: Allocator) !void {
@@ -100,6 +118,7 @@ fn loadMap(map_name: []const u8, allocator: Allocator) !void {
     try world.generateAllInteractions();
     // user_cmd.generator.clear();
 
+    map_spawned = true;
     // we are valid for game draws now
 }
 
@@ -178,7 +197,6 @@ pub const Common = opaque {
             game_thread.args.num_frames = num_frames;
             // always immediately return
             game_thread.wait();
-            // TODO: pass num_frames to the worker
             game_thread.signalWork();
         }
 

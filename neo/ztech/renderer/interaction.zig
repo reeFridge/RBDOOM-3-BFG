@@ -333,6 +333,16 @@ pub fn globalPlaneToLocal(model_matrix: []const f32, in: Plane) Plane {
     return out;
 }
 
+pub fn localPlaneToGlobal(model_matrix: []const f32, in: Plane) Plane {
+    var out: Plane = std.mem.zeroes(Plane);
+    out.a = in.a * model_matrix[0 * 4 + 0] + in.b * model_matrix[1 * 4 + 0] + in.c * model_matrix[2 * 4 + 0];
+    out.b = in.a * model_matrix[0 * 4 + 1] + in.b * model_matrix[1 * 4 + 1] + in.c * model_matrix[2 * 4 + 1];
+    out.c = in.a * model_matrix[0 * 4 + 2] + in.b * model_matrix[1 * 4 + 2] + in.c * model_matrix[2 * 4 + 2];
+    out.d = in.d - model_matrix[3 * 4 + 0] * out.a - model_matrix[3 * 4 + 1] * out.b - model_matrix[3 * 4 + 2] * out.c;
+
+    return out;
+}
+
 const SurfaceCullInfo = struct {
     const PlanesNum = 6;
     const BitSet = std.bit_set.StaticBitSet(PlanesNum);

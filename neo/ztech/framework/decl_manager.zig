@@ -972,6 +972,21 @@ pub const DeclManager = extern struct {
     pub const FindDeclError =
         Allocator.Error || DeclParseError || FindTypeError;
 
+    pub fn touch(
+        manager: *DeclManager,
+        decl: *const Decl,
+        allocator: Allocator,
+    ) FindDeclError!void {
+        const base = decl.base orelse @panic("decl is invalid");
+        if (base.decl_state != .unparsed) return;
+
+        _ = try manager.findTypeOrDefault(
+            base.decl_type,
+            base.name.constSlice(),
+            allocator,
+        );
+    }
+
     pub fn findType(
         manager: *DeclManager,
         decl_type: DeclType,

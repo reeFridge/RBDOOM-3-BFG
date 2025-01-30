@@ -770,30 +770,20 @@ pub const RenderBackend = extern struct {
         const r_skip_render = false;
         if (r_skip_render and view_def.viewEntitys != null) return;
 
+        // common
+        {
+            backend.resetViewportAndScissorToDefaultCamera(view_def);
+            setCommonShaderVars(view_def);
+        }
+
         if (view_def.viewEntitys != null) {
-            backend.drawView3d(view_def, stereo_eye);
+            try backend.drawView3d(view_def, stereo_eye, allocator);
         } else {
             try backend.drawViewGui(view_def, stereo_eye, allocator);
         }
     }
 
-    fn drawView3d(backend: *RenderBackend, view_def: *ViewDef, stereo_eye: i32) void {
-        _ = backend;
-        _ = view_def;
-        _ = stereo_eye;
-
-        @panic("not implemented");
-    }
-
-    fn drawViewGui(
-        backend: *RenderBackend,
-        view_def: *ViewDef,
-        _: i32,
-        allocator: Allocator,
-    ) Allocator.Error!void {
-        const command_list = backend.command_list.ptr_ orelse @panic("command_list not set");
-
-        // resetViewportAndScissorToDefaultCamera
+    fn resetViewportAndScissorToDefaultCamera(backend: *RenderBackend, view_def: *const ViewDef) void {
         {
             // set the window clipping
             const x: f32 = @floatFromInt(view_def.viewport.x1);
@@ -815,6 +805,76 @@ pub const RenderBackend = extern struct {
 
             backend.current_scissor = backend.view_def.?.scissor;
         }
+    }
+
+    fn setCommonShaderVars(view_def: *ViewDef) void {
+        render_prog_manager.instance.setUniformValue(
+            .globaleyepos,
+            &.{
+                view_def.renderView.view_origin.x,
+                view_def.renderView.view_origin.y,
+                view_def.renderView.view_origin.z,
+                1,
+            },
+        );
+
+        const overbright = 3 * 0.5;
+        render_prog_manager.instance.setUniformValue(
+            .overbright,
+            &.{
+                overbright,
+                overbright,
+                overbright,
+                overbright,
+            },
+        );
+
+        render_prog_manager.instance.setUniformValue(
+            .psx_distortions,
+            &.{ 0, 0, 0, 0 },
+        );
+
+        const projection_matrix: *RenderMatrix = @ptrCast(&view_def.projectionMatrix);
+        render_prog_manager.instance.setUniformValues(
+            .projmatrix_x,
+            4,
+            &projection_matrix.transpose().m,
+        );
+    }
+
+    fn drawView3d(
+        backend: *RenderBackend,
+        view_def: *ViewDef,
+        stereo_eye: i32,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        _ = backend;
+        _ = view_def;
+        _ = stereo_eye;
+        _ = allocator;
+
+        // fillDepthBufferFast
+        // ambientPass
+        // ssao
+        // ambientPass
+        // shadowAtlasPass
+        // drawInteractions
+        // drawShaderPasses
+        // fogAllLights
+        // postProcess -> drawShaderPasses
+        // motionVectors
+        // temporalAAPass or msaa
+        // blitTexture
+        @panic("not implemented");
+    }
+
+    fn drawViewGui(
+        backend: *RenderBackend,
+        view_def: *ViewDef,
+        _: i32,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const command_list = backend.command_list.ptr_ orelse @panic("command_list not set");
 
         backend.glSetState(gl_state.GLS_DEFAULT | gl_state.GLS_CULL_FRONTSIDED);
 
@@ -828,42 +888,6 @@ pub const RenderBackend = extern struct {
             gl_state.STENCIL_SHADOW_TEST_VALUE,
             false,
         );
-
-        // set common shader vars
-        {
-            render_prog_manager.instance.setUniformValue(
-                .globaleyepos,
-                &.{
-                    view_def.renderView.view_origin.x,
-                    view_def.renderView.view_origin.y,
-                    view_def.renderView.view_origin.z,
-                    1,
-                },
-            );
-
-            const overbright = 3 * 0.5;
-            render_prog_manager.instance.setUniformValue(
-                .overbright,
-                &.{
-                    overbright,
-                    overbright,
-                    overbright,
-                    overbright,
-                },
-            );
-
-            render_prog_manager.instance.setUniformValue(
-                .psx_distortions,
-                &.{ 0, 0, 0, 0 },
-            );
-
-            const projection_matrix: *RenderMatrix = @ptrCast(&view_def.projectionMatrix);
-            render_prog_manager.instance.setUniformValues(
-                .projmatrix_x,
-                4,
-                &projection_matrix.transpose().m,
-            );
-        }
 
         try backend.drawShaderPasses(
             command_list,
@@ -1469,14 +1493,23 @@ pub const RenderBackend = extern struct {
     }
 
     fn copyRender(backend: *RenderBackend, data: *anyopaque) void {
+        const skip_copy_render = true;
+        if (skip_copy_render) return;
+
         c_renderBackend_copyRender(backend, data);
     }
 
     fn postProcess(backend: *RenderBackend, data: *anyopaque) void {
+        const skip_post_process = true;
+        if (skip_post_process) return;
+
         c_renderBackend_postProcess(backend, data);
     }
 
     fn crtPostProcess(backend: *RenderBackend) void {
+        const skip_post_process = true;
+        if (skip_post_process) return;
+
         c_renderBackend_crtPostProcess(backend);
     }
 

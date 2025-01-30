@@ -1,4 +1,3 @@
-//! @exportConsoleCommands
 const std = @import("std");
 const RenderWorld = @import("renderer/render_world.zig");
 const RenderSystem = @import("renderer/render_system.zig");
@@ -16,31 +15,6 @@ const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("token.zig").Token;
 const MapFile = @import("map_file.zig").MapFile;
 const Allocator = std.mem.Allocator;
-
-const cmd = @import("framework/cmd_system.zig");
-const CmdDecl = cmd.CmdDecl;
-
-fn cmd_printCurrentTime(_: *const cmd.CmdArgs) callconv(.C) void {
-    std.debug.print("Current Game.time: {}\n", .{instance.time});
-}
-pub const print_current_time: CmdDecl = .{
-    .name = "printCurrentTime",
-    .function = cmd_printCurrentTime,
-    .flags = cmd.CmdFlags.game,
-    .description = "prints current game time in microsec",
-    .arg_completion = null,
-};
-
-fn cmd_printCurrentFrame(_: *const cmd.CmdArgs) callconv(.C) void {
-    std.debug.print("Current Game.frame: {}\n", .{instance.frame});
-}
-pub const print_current_frame = CmdDecl{
-    .name = "printCurrentFrame",
-    .function = cmd_printCurrentFrame,
-    .flags = cmd.CmdFlags.game,
-    .description = "prints current game frame",
-    .arg_completion = null,
-};
 
 pub const DeclEntityDef = extern struct {
     pub const default_definition =

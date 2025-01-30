@@ -41,7 +41,7 @@ export fn ztech_clearEntities() callconv(.C) void {
     std.debug.print("[ztech] clear: OK\n", .{});
 }
 
-export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
+pub export fn ztech_spawnPlayer(client_num: c_int) callconv(.C) bool {
     std.debug.print("Spawn Player: {d}\n", .{client_num});
 
     const spots = global.entities.getByType(PlayerSpawn).field_storage.items(.transform);

@@ -6,7 +6,7 @@ const cvar = @import("cvar_system.zig");
 const user_cmd = @import("user_cmd.zig");
 const Allocator = std.mem.Allocator;
 
-fn cmd_unbindAll(_: *const cmd.CmdArgs) callconv(.C) void {
+fn cmd_unbindAll(_: *const cmd.CmdArgs) void {
     const size: usize = @typeInfo(KeyNum).Enum.fields.len;
 
     const allocator = global.gpa.allocator();
@@ -15,7 +15,7 @@ fn cmd_unbindAll(_: *const cmd.CmdArgs) callconv(.C) void {
     }
 }
 
-fn cmd_bind(args: *const cmd.CmdArgs) callconv(.C) void {
+fn cmd_bind(args: *const cmd.CmdArgs) void {
     const keys = opt_keys orelse return;
 
     if (args.argc < 2) {
