@@ -170,7 +170,7 @@ pub const TextureStage = extern struct {
     image: ?*Image,
     texgen: TexGen,
     has_matrix: bool,
-    matrix: [2][3]c_int,
+    matrix: [2][3]u32,
     dynamic: DynamicImage,
     width: u32,
     height: u32,
@@ -385,7 +385,7 @@ pub const max_expression_registers: usize = 4096;
 pub const max_shader_stages: usize = 256;
 pub const max_texgen_registers: usize = 4;
 
-pub const MaterialSort = enum(c_int) {
+pub const MaterialSort = struct {
     pub const subview: f32 = -3;
     pub const gui: f32 = -2;
     pub const bad: f32 = -1;
@@ -466,6 +466,12 @@ pub const Material = extern struct {
     ref_count: u32 = 0,
 
     extern fn c_material_isLodVisibleForDistance(*const Material, f32, f32) bool;
+
+    pub fn getBumpStage(material: *const Material) ?*const ShaderStage {
+        return for (material.getStages()) |*stage| {
+            if (stage.lighting == .bump) break stage;
+        } else null;
+    }
 
     pub fn getStages(material: *const Material) []const ShaderStage {
         return if (material.stages) |stages|

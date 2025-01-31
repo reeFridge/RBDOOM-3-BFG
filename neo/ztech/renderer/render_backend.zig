@@ -848,13 +848,20 @@ pub const RenderBackend = extern struct {
         stereo_eye: i32,
         allocator: Allocator,
     ) Allocator.Error!void {
-        _ = backend;
-        _ = view_def;
+        std.debug.assert(view_def.numDrawSurfs > 0);
         _ = stereo_eye;
-        _ = allocator;
 
-        // fillDepthBufferFast
-        // ambientPass
+        const command_list = backend.command_list.ptr_ orelse @panic("command_list not set");
+        const draw_surfs = view_def.drawSurfs orelse @panic("draw_surfs is empty");
+
+        framebuffer.global_framebuffers.ldrFBO.bind(backend);
+
+        try backend.fillDepthBufferFast(
+            command_list,
+            draw_surfs[0..view_def.numDrawSurfs],
+            allocator,
+        );
+        // ambientPass fill geometry buffer
         // ssao
         // ambientPass
         // shadowAtlasPass
@@ -862,10 +869,220 @@ pub const RenderBackend = extern struct {
         // drawShaderPasses
         // fogAllLights
         // postProcess -> drawShaderPasses
+        // renderDebugTools
         // motionVectors
         // temporalAAPass or msaa
-        // blitTexture
-        @panic("not implemented");
+
+        // copy LDR result to swapchain image
+        {
+            const current_framebuffer_index = device_manager.instance().getCurrentBackBufferIndex();
+            const swap_framebuffers = framebuffer.global_framebuffers.swap_framebuffers.constSlice();
+            const blit_params: Pass.BlitParameters = .{
+                .source_texture = image_manager.instance.ldrImage.?.texture.ptr_,
+                .target_framebuffer = swap_framebuffers[current_framebuffer_index].getApiObject(),
+                .target_viewport = nvrhi.Viewport.fromWidthHeight(
+                    @floatFromInt(RenderSystem.instance.getWidth()),
+                    @floatFromInt(RenderSystem.instance.getHeight()),
+                ),
+            };
+
+            try backend.common_passes.blitTexture(
+                command_list,
+                blit_params,
+                &backend.binding_cache,
+                allocator,
+            );
+        }
+    }
+
+    fn fillDepthBufferFast(
+        backend: *RenderBackend,
+        command_list: *nvrhi.ICommandList,
+        surfaces: []*const DrawSurface,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        std.debug.assert(backend.view_def.?.viewEntitys != null);
+        if (surfaces.len == 0) return;
+
+        // force mvp change on first surface
+        backend.current_space = null;
+
+        backend.glSetState(gl_state.GLS_DEFAULT);
+
+        const non_subview_first_index = for (surfaces, 0..) |surface_ptr, i| {
+            const surface_material = surface_ptr.material orelse @panic("surface without material");
+            if (surface_material.sort != material.MaterialSort.subview) break i;
+
+            try backend.fillDepthBufferGeneric(command_list, surfaces[i..][0..1], allocator);
+        } else return;
+
+        backend.glSetState(gl_state.GLS_DEFAULT);
+        const prog_manager = render_prog_manager.instance;
+
+        const perforated_surfaces = try allocator.alloc(*const DrawSurface, surfaces.len);
+        defer allocator.free(perforated_surfaces);
+        var num_perforated_surfaces: u32 = 0;
+
+        for (surfaces[non_subview_first_index..]) |surface_ptr| {
+            const surface_material = surface_ptr.material orelse @panic("surface without material");
+
+            if (surface_material.coverage == .translucent) continue;
+            if (surface_material.coverage == .perforated) {
+                perforated_surfaces[num_perforated_surfaces] = surface_ptr;
+                num_perforated_surfaces += 1;
+                continue;
+            }
+
+            if (surface_ptr.space != backend.current_space) {
+                const surface_space = surface_ptr.space orelse @panic("surface without space");
+                prog_manager.setUniformValues(.mvpmatrix_x, 4, &surface_space.mvp.m);
+                backend.current_space = surface_space;
+            }
+
+            if (surface_ptr.jointCache.isDefined()) {
+                prog_manager.bindProgramBuiltin(.DEPTH_SKINNED);
+            } else {
+                prog_manager.bindProgramBuiltin(.DEPTH);
+            }
+
+            std.debug.assert((backend.gl_state_bits & gl_state.GLS_DEPTHFUNC_BITS) == gl_state.GLS_DEPTHFUNC_LESS);
+
+            try backend.drawElements(command_list, surface_ptr, allocator);
+        }
+
+        if (num_perforated_surfaces > 0) {
+            try backend.fillDepthBufferGeneric(
+                command_list,
+                perforated_surfaces[0..num_perforated_surfaces],
+                allocator,
+            );
+        }
+    }
+
+    fn fillDepthBufferGeneric(
+        backend: *RenderBackend,
+        command_list: *nvrhi.ICommandList,
+        surfaces: []*const DrawSurface,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const prog_manager = render_prog_manager.instance;
+
+        for (surfaces) |surface_ptr| {
+            const surface_material = surface_ptr.material orelse @panic("surface without material");
+
+            if (surface_material.coverage == .translucent) continue;
+            const regs = surface_ptr.shaderRegisters;
+
+            for (surface_material.getStages()) |*stage_ptr| {
+                if (regs[stage_ptr.condition_register] != 0) break;
+            } else continue;
+
+            if (surface_ptr.space != backend.current_space) {
+                const surface_space = surface_ptr.space orelse @panic("surface without space");
+                prog_manager.setUniformValues(.mvpmatrix_x, 4, &surface_space.mvp.m);
+                backend.current_space = surface_space;
+            }
+
+            var surface_gl_state: u64 = 0;
+
+            if (surface_material.material_flags.polygonoffset) {
+                surface_gl_state |= gl_state.GLS_POLYGON_OFFSET;
+                backend.slope_scale_bias = r_offset_factor;
+                backend.depth_bias = r_offset_units * surface_material.polygon_offset;
+            }
+
+            var color: [4]f32 = if (surface_material.sort == material.MaterialSort.subview) color: {
+                surface_gl_state |= gl_state.GLS_SRCBLEND_DST_COLOR |
+                    gl_state.GLS_DSTBLEND_ZERO |
+                    gl_state.GLS_DEPTHFUNC_LESS;
+
+                break :color [_]f32{1} ** 4;
+            } else .{ 0, 0, 0, 1 };
+
+            const draw_solid = if (surface_material.coverage == .@"opaque")
+                true
+            else if (surface_material.coverage == .perforated) draw_solid: {
+                var did_draw: bool = false;
+
+                for (surface_material.getStages()) |*stage_ptr| {
+                    if (!stage_ptr.has_alpha_test) continue;
+                    if (regs[stage_ptr.condition_register] == 0) continue;
+
+                    did_draw = true;
+
+                    color[3] = regs[stage_ptr.color.registers[3]];
+
+                    if (color[3] <= 0) continue;
+
+                    var stage_gl_state = surface_gl_state;
+
+                    if (stage_ptr.private_polygon_offset != 0) {
+                        backend.slope_scale_bias = r_offset_factor;
+                        backend.depth_bias = r_offset_units * stage_ptr.private_polygon_offset;
+                        stage_gl_state |= gl_state.GLS_POLYGON_OFFSET;
+                    }
+
+                    prog_manager.setUniformValue(.color, &color);
+                    backend.glSetState(stage_gl_state);
+                    prog_manager.setUniformValue(.alpha_test, &([_]f32{regs[stage_ptr.alpha_test_register]} ** 4));
+
+                    if (surface_ptr.jointCache.isDefined()) {
+                        prog_manager.bindProgramBuiltin(.TEXTURE_VERTEXCOLOR_SKINNED);
+                    } else {
+                        prog_manager.bindProgramBuiltin(.TEXTURE_VERTEXCOLOR);
+                    }
+
+                    setVertexColorParams(.ignore, prog_manager);
+
+                    nvrhi_context.current_image_param = 0;
+                    try setCurrentImage(
+                        stage_ptr.texture.image orelse @panic("texture stage without image"),
+                        command_list,
+                        allocator,
+                    );
+
+                    prepareTexturingStage(prog_manager, stage_ptr, surface_ptr);
+
+                    std.debug.assert(
+                        (backend.gl_state_bits & gl_state.GLS_DEPTHFUNC_BITS) == gl_state.GLS_DEPTHFUNC_LESS,
+                    );
+
+                    try backend.drawElements(command_list, surface_ptr, allocator);
+
+                    finishTexturingStage(prog_manager, stage_ptr, surface_ptr);
+
+                    // reset polygon offset
+                    if (stage_ptr.private_polygon_offset != 0) {
+                        backend.slope_scale_bias = r_offset_factor;
+                        backend.depth_bias = r_offset_units * surface_material.polygon_offset;
+                    }
+                }
+
+                break :draw_solid !did_draw;
+            } else false;
+
+            if (draw_solid) {
+                if (surface_material.sort == material.MaterialSort.subview) {
+                    prog_manager.bindProgramBuiltin(.COLOR);
+                    prog_manager.setUniformValue(.color, &color);
+                    backend.glSetState(surface_gl_state);
+                } else {
+                    if (surface_ptr.jointCache.isDefined()) {
+                        prog_manager.bindProgramBuiltin(.DEPTH_SKINNED);
+                    } else {
+                        prog_manager.bindProgramBuiltin(.DEPTH);
+                    }
+
+                    backend.glSetState(surface_gl_state | gl_state.GLS_ALPHAMASK);
+
+                    std.debug.assert((backend.gl_state_bits & gl_state.GLS_DEPTHFUNC_BITS) == gl_state.GLS_DEPTHFUNC_LESS);
+
+                    try backend.drawElements(command_list, surface_ptr, allocator);
+                }
+            }
+        }
+
+        prog_manager.setUniformValue(.alpha_test, &.{ 0, 0, 0, 0 });
     }
 
     fn drawViewGui(
@@ -914,6 +1131,23 @@ pub const RenderBackend = extern struct {
                 &backend.binding_cache,
                 allocator,
             );
+        }
+    }
+
+    fn setVertexColorParams(stage_vertex_color: material.StageVertexColor, prog_manager: *RenderProgManager) void {
+        switch (stage_vertex_color) {
+            .ignore => {
+                prog_manager.setUniformValue(.vertexcolor_modulate, &zero);
+                prog_manager.setUniformValue(.vertexcolor_add, &one);
+            },
+            .modulate => {
+                prog_manager.setUniformValue(.vertexcolor_modulate, &one);
+                prog_manager.setUniformValue(.vertexcolor_add, &zero);
+            },
+            .inverse_modulate => {
+                prog_manager.setUniformValue(.vertexcolor_modulate, &neg_one);
+                prog_manager.setUniformValue(.vertexcolor_add, &one);
+            },
         }
     }
 
@@ -988,13 +1222,13 @@ pub const RenderBackend = extern struct {
                 break :current_space space;
             } else backend.current_space.?;
 
-            for (shader.getStages()) |stage| {
+            for (shader.getStages()) |*stage_ptr| {
                 var stage_gl_state = surface_gl_state;
                 if ((surface_gl_state & gl_state.GLS_OVERRIDE) == 0) {
-                    stage_gl_state |= stage.draw_state_bits;
+                    stage_gl_state |= stage_ptr.draw_state_bits;
                 }
 
-                if (stage.new_stage) |new_stage| {
+                if (stage_ptr.new_stage) |new_stage| {
                     prog_manager.bindProgramIndex(
                         @intCast(new_stage.program),
                     );
@@ -1013,14 +1247,14 @@ pub const RenderBackend = extern struct {
                     try backend.drawElements(command_list, draw_surface, allocator);
                 } else {
                     const color: [4]f32 = .{
-                        regs[stage.color.registers[0]],
-                        regs[stage.color.registers[1]],
-                        regs[stage.color.registers[2]],
-                        regs[stage.color.registers[3]],
+                        regs[stage_ptr.color.registers[0]],
+                        regs[stage_ptr.color.registers[1]],
+                        regs[stage_ptr.color.registers[2]],
+                        regs[stage_ptr.color.registers[3]],
                     };
 
                     prog_manager.setUniformValue(.color, &color);
-                    var stage_vertex_color = stage.vertex_color;
+                    var stage_vertex_color = stage_ptr.vertex_color;
 
                     if (current_space.isGuiSurface) {
                         stage_vertex_color = .modulate;
@@ -1030,51 +1264,119 @@ pub const RenderBackend = extern struct {
                         .TEXTURE_VERTEXCOLOR_SRGB,
                     );
 
-                    switch (stage_vertex_color) {
-                        .ignore => {
-                            prog_manager.setUniformValue(.vertexcolor_modulate, &zero);
-                            prog_manager.setUniformValue(.vertexcolor_add, &one);
-                        },
-                        .modulate => {
-                            prog_manager.setUniformValue(.vertexcolor_modulate, &one);
-                            prog_manager.setUniformValue(.vertexcolor_add, &zero);
-                        },
-                        .inverse_modulate => {
-                            prog_manager.setUniformValue(.vertexcolor_modulate, &neg_one);
-                            prog_manager.setUniformValue(.vertexcolor_add, &one);
-                        },
-                    }
+                    setVertexColorParams(stage_vertex_color, prog_manager);
 
-                    try bindVariableStageImage(&stage.texture, command_list, allocator);
+                    try bindVariableStageImage(&stage_ptr.texture, command_list, allocator);
 
-                    if (stage.private_polygon_offset != 0) {
+                    if (stage_ptr.private_polygon_offset != 0) {
                         backend.slope_scale_bias = r_offset_factor;
-                        backend.depth_bias = r_offset_units * stage.private_polygon_offset;
+                        backend.depth_bias = r_offset_units * stage_ptr.private_polygon_offset;
                         stage_gl_state |= gl_state.GLS_POLYGON_OFFSET;
                     }
 
                     backend.glSetState(stage_gl_state);
 
-                    // TODO: texgen
-                    {
-                        const use_tex_gen_param: [4]f32 = .{ 0, 0, 0, 0 };
-                        const tex_s: [4]f32 = .{ 1, 0, 0, 0 };
-                        const tex_t: [4]f32 = .{ 0, 1, 0, 0 };
-
-                        prog_manager.setUniformValue(.texturematrix_s, &tex_s);
-                        prog_manager.setUniformValue(.texturematrix_t, &tex_t);
-                        prog_manager.setUniformValue(.texgen_0_enabled, &use_tex_gen_param);
-                    }
+                    prepareTexturingStage(prog_manager, stage_ptr, draw_surface);
 
                     try backend.drawElements(command_list, draw_surface, allocator);
 
+                    finishTexturingStage(prog_manager, stage_ptr, draw_surface);
+
                     // reset polygon offset
-                    if (stage.private_polygon_offset != 0) {
+                    if (stage_ptr.private_polygon_offset != 0) {
                         backend.slope_scale_bias = r_offset_factor;
                         backend.depth_bias = r_offset_units * shader.polygon_offset;
                     }
                 }
             }
+        }
+    }
+
+    fn getShaderTextureMatrix(shader_registers: []const f32, texture_stage: *const material.TextureStage) [16]f32 {
+        var matrix: [16]f32 = undefined;
+
+        matrix[0 * 4 + 0] = shader_registers[texture_stage.matrix[0][0]];
+        matrix[1 * 4 + 0] = shader_registers[texture_stage.matrix[0][1]];
+        matrix[2 * 4 + 0] = 0.0;
+        matrix[3 * 4 + 0] = shader_registers[texture_stage.matrix[0][2]];
+
+        matrix[0 * 4 + 1] = shader_registers[texture_stage.matrix[1][0]];
+        matrix[1 * 4 + 1] = shader_registers[texture_stage.matrix[1][1]];
+        matrix[2 * 4 + 1] = 0.0;
+        matrix[3 * 4 + 1] = shader_registers[texture_stage.matrix[1][2]];
+
+        // we attempt to keep scrolls from generating incredibly large texture values, but
+        // center rotations and center scales can still generate offsets that need to be > 1
+        if (matrix[3 * 4 + 0] < -40.0 or matrix[12] > 40.0) {
+            matrix[3 * 4 + 0] -= @floor(matrix[3 * 4 + 0]);
+        }
+        if (matrix[13] < -40.0 or matrix[13] > 40.0) {
+            matrix[13] -= @floor(matrix[13]);
+        }
+
+        matrix[0 * 4 + 2] = 0.0;
+        matrix[1 * 4 + 2] = 0.0;
+        matrix[2 * 4 + 2] = 1.0;
+        matrix[3 * 4 + 2] = 0.0;
+
+        matrix[0 * 4 + 3] = 0.0;
+        matrix[1 * 4 + 3] = 0.0;
+        matrix[2 * 4 + 3] = 0.0;
+        matrix[3 * 4 + 3] = 1.0;
+
+        return matrix;
+    }
+
+    fn prepareTexturingStage(
+        prog_manager: *RenderProgManager,
+        stage_ptr: *const material.ShaderStage,
+        surface_ptr: *const DrawSurface,
+    ) void {
+        var tex_s: [4]f32 = .{ 1, 0, 0, 0 };
+        var tex_t: [4]f32 = .{ 0, 1, 0, 0 };
+
+        if (stage_ptr.texture.has_matrix) {
+            const matrix = getShaderTextureMatrix(
+                surface_ptr.shaderRegisters[0..surface_ptr.material.?.num_registers],
+                &stage_ptr.texture,
+            );
+            tex_s[0] = matrix[0 * 4 + 0];
+            tex_s[1] = matrix[1 * 4 + 0];
+            tex_s[2] = matrix[2 * 4 + 0];
+            tex_s[3] = matrix[3 * 4 + 0];
+
+            tex_t[0] = matrix[0 * 4 + 1];
+            tex_t[1] = matrix[1 * 4 + 1];
+            tex_t[2] = matrix[2 * 4 + 1];
+            tex_t[3] = matrix[3 * 4 + 1];
+        }
+
+        prog_manager.setUniformValue(.texturematrix_s, &tex_s);
+        prog_manager.setUniformValue(.texturematrix_t, &tex_t);
+
+        if (stage_ptr.texture.texgen != .explicit) {
+            @panic("texgen is not implemented yet");
+        }
+
+        const use_tex_gen_param: [4]f32 = .{ 0, 0, 0, 0 };
+        prog_manager.setUniformValue(.texgen_0_enabled, &use_tex_gen_param);
+    }
+
+    fn finishTexturingStage(
+        prog_manager: *RenderProgManager,
+        stage_ptr: *const material.ShaderStage,
+        surface_ptr: *const DrawSurface,
+    ) void {
+        if (stage_ptr.texture.cinematic != null) {
+            nvrhi_context.current_image_param = 0;
+        }
+
+        if (stage_ptr.texture.texgen == .reflect_cube) {
+            if (surface_ptr.material.?.getBumpStage() != null) {
+                nvrhi_context.current_image_param = 0;
+            }
+
+            prog_manager.unbind();
         }
     }
 
@@ -1443,7 +1745,25 @@ pub const RenderBackend = extern struct {
                     bindings[0].resourceHandle = @ptrCast(backend.common_passes.linear_clamp_sampler.ptr_);
                 }
             },
-            else => @panic("not implemented"),
+            .CONSTANT_BUFFER_ONLY => {
+                if (descs[0].bindings.current_size == 0) {
+                    descs[0].bindings = Bindings.fromSlice(&.{
+                        nvrhi.BindingSetItem.createConstantBuffer(
+                            0,
+                            constant_buffer,
+                            range,
+                        ),
+                    });
+                } else {
+                    const bindings = descs[0].bindings.slice();
+                    bindings[0].resourceHandle = @ptrCast(constant_buffer);
+                    bindings[0].unnamed_0.range = range;
+                }
+            },
+            else => |leftover_layout_type| {
+                std.debug.print("layout type: {}\n", .{leftover_layout_type});
+                @panic("not implemented");
+            },
         }
     }
 
