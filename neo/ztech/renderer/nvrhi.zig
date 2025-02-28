@@ -154,7 +154,7 @@ pub const BindingSetItem = extern struct {
             .slot = slot,
             .type = if (is_volatile) .VolatileConstantBuffer else .ConstantBuffer,
             .resourceHandle = @ptrCast(opt_buffer),
-            .format = .UNKNOWN,
+            .format = .unknown,
             .dimension = .Unknown,
             .unnamed_0 = .{
                 .range = range,
@@ -188,7 +188,7 @@ pub const BindingSetItem = extern struct {
             .slot = slot,
             .type = .PushConstants,
             .resourceHandle = null,
-            .format = .UNKNOWN,
+            .format = .unknown,
             .dimension = .Unknown,
             .unused = 0,
             .unnamed_0 = .{
@@ -202,7 +202,7 @@ pub const BindingSetItem = extern struct {
             .slot = slot,
             .type = .Sampler,
             .resourceHandle = @ptrCast(sampler),
-            .format = .UNKNOWN,
+            .format = .unknown,
             .dimension = .Unknown,
             .unused = 0,
             .unnamed_0 = .{
@@ -408,7 +408,7 @@ pub const TextureDesc = extern struct {
     mipLevels: u32 = 1,
     sampleCount: u32 = 1,
     sampleQuality: u32 = 0,
-    format: Format = .UNKNOWN,
+    format: Format = .unknown,
     dimension: TextureDimension = .Texture2D,
     componentMapping: ComponentMapping = .{},
     debugName: CppString = std.mem.zeroes(CppString),
@@ -426,77 +426,7 @@ pub const TextureDesc = extern struct {
     padding_: [7]u8 = undefined,
 };
 
-pub const Format = enum(u8) {
-    UNKNOWN,
-    R8_UINT,
-    R8_SINT,
-    R8_UNORM,
-    R8_SNORM,
-    RG8_UINT,
-    RG8_SINT,
-    RG8_UNORM,
-    RG8_SNORM,
-    R16_UINT,
-    R16_SINT,
-    R16_UNORM,
-    R16_SNORM,
-    R16_FLOAT,
-    BGRA4_UNORM,
-    B5G6R5_UNORM,
-    B5G5R5A1_UNORM,
-    RGBA8_UINT,
-    RGBA8_SINT,
-    RGBA8_UNORM,
-    RGBA8_SNORM,
-    BGRA8_UNORM,
-    SRGBA8_UNORM,
-    SBGRA8_UNORM,
-    R10G10B10A2_UNORM,
-    R11G11B10_FLOAT,
-    RG16_UINT,
-    RG16_SINT,
-    RG16_UNORM,
-    RG16_SNORM,
-    RG16_FLOAT,
-    R32_UINT,
-    R32_SINT,
-    R32_FLOAT,
-    RGBA16_UINT,
-    RGBA16_SINT,
-    RGBA16_FLOAT,
-    RGBA16_UNORM,
-    RGBA16_SNORM,
-    RG32_UINT,
-    RG32_SINT,
-    RG32_FLOAT,
-    RGB32_UINT,
-    RGB32_SINT,
-    RGB32_FLOAT,
-    RGBA32_UINT,
-    RGBA32_SINT,
-    RGBA32_FLOAT,
-    D16,
-    D24S8,
-    X24G8_UINT,
-    D32,
-    D32S8,
-    X32G8_UINT,
-    BC1_UNORM,
-    BC1_UNORM_SRGB,
-    BC2_UNORM,
-    BC2_UNORM_SRGB,
-    BC3_UNORM,
-    BC3_UNORM_SRGB,
-    BC4_UNORM,
-    BC4_SNORM,
-    BC5_UNORM,
-    BC5_SNORM,
-    BC6H_UFLOAT,
-    BC6H_SFLOAT,
-    BC7_UNORM,
-    BC7_UNORM_SRGB,
-    COUNT,
-};
+pub const Format = @import("rhi/interface.zig").Format;
 
 pub const FormatKind = enum(u8) {
     Integer,
@@ -508,17 +438,17 @@ pub const FormatKind = enum(u8) {
 pub const FormatInfo = extern struct {
     format: Format,
     name: [*:0]const u8,
-    bytesPerBlock: u8,
-    blockSize: u8,
+    bytes_per_block: u8,
+    block_size: u8,
     kind: FormatKind,
-    hasRed: bool,
-    hasGreen: bool,
-    hasBlue: bool,
-    hasAlpha: bool,
-    hasDepth: bool,
-    hasStencil: bool,
-    isSigned: bool,
-    isSRGB: bool,
+    has_red: bool,
+    has_green: bool,
+    has_blue: bool,
+    has_alpha: bool,
+    has_depth: bool,
+    has_stencil: bool,
+    is_signed: bool,
+    is_srgb: bool,
 };
 
 extern fn c_nvrhi_getFormatInfo(Format) *const FormatInfo;
@@ -540,7 +470,7 @@ pub fn cppString_get(ptr: *const CppString) [:0]const u8 {
 
 pub const VertexAttributeDesc = extern struct {
     name: CppString = std.mem.zeroes(CppString),
-    format: Format = .UNKNOWN,
+    format: Format = .unknown,
     arraySize: u32 = 1,
     bufferIndex: u32 = 0,
     offset: u32 = 0,
@@ -761,11 +691,9 @@ pub const ObjectTypes = struct {
     pub const VK_Micromap: ObjectType = 0x00030014;
 };
 
-pub const Object = extern struct {
-    u: extern union {
-        integer: u64,
-        pointer: ?*anyopaque,
-    },
+pub const Object = extern union {
+    integer: u64,
+    pointer: ?*anyopaque,
 };
 
 pub const InputLayoutHandle = RefCountPtr(IInputLayout);
@@ -798,7 +726,7 @@ pub const IShader = opaque {};
 
 pub const FramebufferInfo = extern struct {
     colorFormats: static_vector(Format, c_MaxRenderTargets) = .{},
-    depthFormat: Format = .UNKNOWN,
+    depthFormat: Format = .unknown,
     sampleCount: u32 = 1,
     sampleQuality: u32 = 0,
 };
@@ -939,7 +867,7 @@ pub const VertexBufferBinding = extern struct {
 
 pub const IndexBufferBinding = extern struct {
     buffer: ?*IBuffer = null,
-    format: Format = .UNKNOWN,
+    format: Format = .unknown,
     offset: u32 = 0,
 };
 
@@ -1287,7 +1215,6 @@ pub const CommandQueue = enum(u8) {
     Graphics = 0,
     Compute,
     Copy,
-    Count,
 };
 
 pub const CommandListParameters = extern struct {
@@ -1549,7 +1476,7 @@ pub const BufferDesc = extern struct {
     structStride: u32 = 0,
     maxVersions: u32 = 0,
     debugName: CppString = std.mem.zeroes(CppString),
-    format: Format = .UNKNOWN,
+    format: Format = .unknown,
     canHaveUAVs: bool = false,
     canHaveTypedViews: bool = false,
     canHaveRawViews: bool = false,
@@ -1571,7 +1498,7 @@ pub const BufferDesc = extern struct {
 pub const FramebufferAttachment = extern struct {
     texture: ?*ITexture = null,
     subresources: TextureSubresourceSet = .{},
-    format: Format = .UNKNOWN,
+    format: Format = .unknown,
     isReadOnly: bool = false,
 
     pub inline fn valid(attach: *const FramebufferAttachment) bool {

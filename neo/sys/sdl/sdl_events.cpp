@@ -38,7 +38,7 @@ If you have questions concerning this license or the applicable additional terms
 #undef vsnprintf
 // DG end
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 #include "renderer/RenderCommon.h"
 #include "sdl_local.h"

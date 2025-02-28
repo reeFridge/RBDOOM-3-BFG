@@ -1487,7 +1487,7 @@ pub const RenderBackend = extern struct {
         const prog_manager = render_prog_manager.instance;
         const program = prog_manager.getCurrentProgram() orelse @panic("no current program");
         const binding_layout_type = program.binding_layout_type;
-        const layouts = prog_manager.bindingLayouts.constSlice()[binding_layout_type.toIndex()].constSlice();
+        const layouts = prog_manager.binding_layouts.constSlice()[binding_layout_type.toIndex()].constSlice();
 
         if (change_state or
             @intFromEnum(binding_layout_type) != backend.prev_binding_layout_type or
@@ -1520,7 +1520,10 @@ pub const RenderBackend = extern struct {
         var pipeline = pipeline: {
             const key = PipelineCache.PipelineKey{
                 .state = backend.gl_state_bits,
-                .program = prog_manager.currentIndex,
+                .program = if (prog_manager.current_index) |current_index|
+                    @as(c_int, @intCast(current_index))
+                else
+                    -1,
                 .depth_bias = @intFromFloat(backend.depth_bias),
                 .slope_bias = backend.slope_scale_bias,
                 .framebuffer = backend.current_framebuffer,
@@ -1570,7 +1573,7 @@ pub const RenderBackend = extern struct {
                 .framebuffer = backend.current_framebuffer.getApiObject(),
                 .indexBuffer = .{
                     .buffer = backend.current_index_buffer.ptr_,
-                    .format = .R16_UINT,
+                    .format = .r16_uint,
                     .offset = 0,
                 },
                 .vertexBuffers = VertexBuffers.fromSlice(&.{
@@ -1666,7 +1669,7 @@ pub const RenderBackend = extern struct {
                         nvrhi.BindingSetItem.createTextureSrv(
                             0,
                             nvrhi_context.image_params[0].?.texture.ptr_.?,
-                            .UNKNOWN,
+                            .unknown,
                             nvrhi.AllSubresources,
                             .Unknown,
                         ),
@@ -1705,21 +1708,21 @@ pub const RenderBackend = extern struct {
                         nvrhi.BindingSetItem.createTextureSrv(
                             0,
                             nvrhi_context.image_params[0].?.texture.ptr_.?,
-                            .UNKNOWN,
+                            .unknown,
                             nvrhi.AllSubresources,
                             .Unknown,
                         ),
                         nvrhi.BindingSetItem.createTextureSrv(
                             1,
                             nvrhi_context.image_params[1].?.texture.ptr_.?,
-                            .UNKNOWN,
+                            .unknown,
                             nvrhi.AllSubresources,
                             .Unknown,
                         ),
                         nvrhi.BindingSetItem.createTextureSrv(
                             2,
                             nvrhi_context.image_params[2].?.texture.ptr_.?,
-                            .UNKNOWN,
+                            .unknown,
                             nvrhi.AllSubresources,
                             .Unknown,
                         ),

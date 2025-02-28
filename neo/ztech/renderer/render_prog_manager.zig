@@ -292,7 +292,7 @@ pub const RenderParam = enum(u32) {
     user7,
 };
 
-pub const RenderProgManager = extern struct {
+pub const RenderProgManager = struct {
     const VertexAttribDescList = idlib.List(nvrhi.VertexAttributeDesc);
     const BindingLayoutList = idlib.StaticList(nvrhi.BindingLayoutHandle, nvrhi.c_MaxBindingLayouts);
     const NUM_VERTEX_LAYOUTS: usize = @intCast(@intFromEnum(common.VertexLayoutType.NUM_VERTEX_LAYOUTS));
@@ -300,29 +300,25 @@ pub const RenderProgManager = extern struct {
     const MAX_BUILTINS: usize = @intCast(@intFromEnum(BuiltinShader.MAX_BUILTINS));
     const MAX_UNIFORMS: usize = @typeInfo(RenderParam).Enum.fields.len;
 
-    vptr: *anyopaque,
-    renderParmUbo: buffer_object.UniformBuffer,
-    bindingParmUbo: [NUM_BINDING_LAYOUTS]buffer_object.UniformBuffer,
-    mappedRenderParms: [NUM_BINDING_LAYOUTS]?*CVec4,
-    builtinShaders: [MAX_BUILTINS]c_int,
-    currentIndex: c_int,
-    renderProgs: idlib.List(RenderProg),
-    shaders: idlib.List(Shader),
-    uniforms: idlib.StaticList(CVec4, MAX_UNIFORMS),
-    uniforms_changed: bool,
-    device: *nvrhi.IDevice,
-    vertexLayoutDescs: idlib.StaticList(
+    render_param_ubo: buffer_object.UniformBuffer = .{},
+    binding_param_ubo: [NUM_BINDING_LAYOUTS]buffer_object.UniformBuffer = [_]buffer_object.UniformBuffer{.{}} ** NUM_BINDING_LAYOUTS,
+    mapped_render_params: [NUM_BINDING_LAYOUTS]?*CVec4 = [_]?*CVec4{null} ** NUM_BINDING_LAYOUTS,
+    builtin_shaders: [MAX_BUILTINS]?u32 = undefined,
+    current_index: ?u32 = null,
+    render_progs: idlib.List(RenderProg) = .{},
+    shaders: idlib.List(Shader) = .{},
+    uniforms: idlib.StaticList(CVec4, MAX_UNIFORMS) = .{},
+    uniforms_changed: bool = false,
+    device: *nvrhi.IDevice = undefined,
+    vertex_layout_descs: idlib.StaticList(
         VertexAttribDescList,
         NUM_VERTEX_LAYOUTS,
-    ),
-    bindingLayouts: idlib.StaticList(
+    ) = .{},
+    binding_layouts: idlib.StaticList(
         BindingLayoutList,
         NUM_BINDING_LAYOUTS,
-    ),
-    constant_buffer: nvrhi.BufferHandle,
-
-    extern fn c_renderProgManager_shutdown(*RenderProgManager) void;
-    extern fn c_renderProgManager_unbind(*RenderProgManager) void;
+    ) = .{},
+    constant_buffer: nvrhi.BufferHandle = .{},
 
     pub fn setUniformValues(
         prog_manager: *RenderProgManager,
@@ -359,11 +355,11 @@ pub const RenderProgManager = extern struct {
     }
 
     pub fn bindProgramIndex(prog_manager: *RenderProgManager, index: u32) void {
-        prog_manager.currentIndex = @intCast(index);
+        prog_manager.current_index = index;
     }
 
     pub fn unbind(prog_manager: *RenderProgManager) void {
-        prog_manager.currentIndex = -1;
+        prog_manager.current_index = null;
     }
 
     pub fn commitConstantBuffer(
@@ -391,8 +387,8 @@ pub const RenderProgManager = extern struct {
         device: *nvrhi.IDevice,
         allocator: Allocator,
     ) LoadShaderError!void {
-        for (&prog_manager.builtinShaders) |*builtin| {
-            builtin.* = -1;
+        for (&prog_manager.builtin_shaders) |*builtin| {
+            builtin.* = null;
         }
 
         prog_manager.device = device;
@@ -409,15 +405,14 @@ pub const RenderProgManager = extern struct {
             prog_manager.constant_buffer = device.createBuffer(&constBufferDesc);
         }
 
-        prog_manager.vertexLayoutDescs.setNum(NUM_VERTEX_LAYOUTS);
-        const desc_lists = prog_manager.vertexLayoutDescs.slice();
+        prog_manager.vertex_layout_descs.setNum(NUM_VERTEX_LAYOUTS);
+        const desc_lists = prog_manager.vertex_layout_descs.slice();
         for (desc_lists) |*list| list.* = .{};
 
         const descs = &desc_lists[common.VertexLayoutType.DRAW_VERT.toIndex()];
-
         {
             const index = try descs.append(.{
-                .format = .RGB32_FLOAT,
+                .format = .rgb32_float,
                 .offset = @offsetOf(DrawVertex, "xyz"),
                 .elementStride = @sizeOf(DrawVertex),
             }, allocator);
@@ -426,7 +421,7 @@ pub const RenderProgManager = extern struct {
 
         {
             const index = try descs.append(.{
-                .format = .RG16_FLOAT,
+                .format = .rg16_float,
                 .offset = @offsetOf(DrawVertex, "st"),
                 .elementStride = @sizeOf(DrawVertex),
             }, allocator);
@@ -435,7 +430,7 @@ pub const RenderProgManager = extern struct {
 
         {
             const index = try descs.append(.{
-                .format = .RGBA8_UNORM,
+                .format = .rgba8_unorm,
                 .offset = @offsetOf(DrawVertex, "normal"),
                 .elementStride = @sizeOf(DrawVertex),
             }, allocator);
@@ -444,7 +439,7 @@ pub const RenderProgManager = extern struct {
 
         {
             const index = try descs.append(.{
-                .format = .RGBA8_UNORM,
+                .format = .rgba8_unorm,
                 .offset = @offsetOf(DrawVertex, "tangent"),
                 .elementStride = @sizeOf(DrawVertex),
             }, allocator);
@@ -454,7 +449,7 @@ pub const RenderProgManager = extern struct {
         {
             const index = try descs.append(.{
                 .arraySize = 2,
-                .format = .RGBA8_UNORM,
+                .format = .rgba8_unorm,
                 .offset = @offsetOf(DrawVertex, "color"),
                 .elementStride = @sizeOf(DrawVertex),
             }, allocator);
@@ -493,8 +488,8 @@ pub const RenderProgManager = extern struct {
         });
 
         const LayoutType = common.BindingLayoutType;
-        prog_manager.bindingLayouts.setNum(LayoutType.num);
-        const layouts = prog_manager.bindingLayouts.slice();
+        prog_manager.binding_layouts.setNum(LayoutType.num);
+        const layouts = prog_manager.binding_layouts.slice();
         layouts[LayoutType.DEFAULT.toIndex()] = BindingLayoutList.fromSlice(&.{
             uniforms_layout,
             default_layout,
@@ -960,9 +955,9 @@ pub const RenderProgManager = extern struct {
             .{ .EXPOSURE_CS, "builtin/post/exposure", "", &.{&.{ "HISTOGRAM_BINS", "256" }}, false, Shader.Stage.compute, .UNKNOWN, .EXPOSURE },
         };
 
-        try prog_manager.renderProgs.setNum(builtins.len, allocator);
+        try prog_manager.render_progs.setNum(builtins.len, allocator);
 
-        for (prog_manager.renderProgs.slice(), &builtins, 0..) |*prog, *builtin, i| {
+        for (prog_manager.render_progs.slice(), &builtins, 0..) |*prog, *builtin, i| {
             const builtin_shader, const name, const suffix, const macros, const gpu_skinning, const stage, const vertex_layout, const binding_layout = builtin.*;
 
             prog.name = idlib.Str{};
@@ -971,7 +966,7 @@ pub const RenderProgManager = extern struct {
             prog.uses_joints = gpu_skinning;
             prog.vertex_layout = vertex_layout;
             prog.binding_layout_type = binding_layout;
-            prog_manager.builtinShaders[builtin_shader.toIndex()] = @intCast(i);
+            prog_manager.builtin_shaders[builtin_shader.toIndex()] = @intCast(i);
 
             const opt_vertex_index = if ((stage & Shader.Stage.vertex) != 0)
                 prog_manager.findShader(
@@ -1009,7 +1004,7 @@ pub const RenderProgManager = extern struct {
             else
                 null;
 
-            const progs = prog_manager.renderProgs.slice();
+            const progs = prog_manager.render_progs.slice();
             if (opt_vertex_index != null and opt_fragment_index != null) {
                 prog_manager.loadProgram(
                     &progs[i],
@@ -1027,7 +1022,8 @@ pub const RenderProgManager = extern struct {
     }
 
     pub fn shutdown(prog_manager: *RenderProgManager) void {
-        c_renderProgManager_shutdown(prog_manager);
+        _ = prog_manager;
+        @panic("not implemented");
     }
 
     const ProgramInfo = struct {
@@ -1040,7 +1036,7 @@ pub const RenderProgManager = extern struct {
     };
 
     pub fn getProgramInfo(prog_manager: *const RenderProgManager, index: u32) ProgramInfo {
-        const prog = &prog_manager.renderProgs.constSlice()[index];
+        const prog = &prog_manager.render_progs.constSlice()[index];
         const shaders = prog_manager.shaders.constSlice();
 
         return .{
@@ -1063,10 +1059,10 @@ pub const RenderProgManager = extern struct {
     }
 
     pub fn getCurrentProgram(prog_manager: *const RenderProgManager) ?*const RenderProg {
-        return if (prog_manager.currentIndex == -1)
-            null
+        return if (prog_manager.current_index) |current_index|
+            &prog_manager.render_progs.constSlice()[current_index]
         else
-            &prog_manager.renderProgs.constSlice()[@intCast(prog_manager.currentIndex)];
+            null;
     }
 
     pub fn findProgramOrCreate(
@@ -1077,7 +1073,7 @@ pub const RenderProgManager = extern struct {
         binding_type: common.BindingLayoutType,
         allocator: Allocator,
     ) Allocator.Error!usize {
-        for (prog_manager.renderProgs.constSlice(), 0..) |prog, i| {
+        for (prog_manager.render_progs.constSlice(), 0..) |prog, i| {
             if (prog.vertex_shader_index == vertex_index and
                 prog.fragment_shader_index == fragment_index)
             {
@@ -1085,12 +1081,12 @@ pub const RenderProgManager = extern struct {
             }
         }
 
-        const index = try prog_manager.renderProgs.append(.{
+        const index = try prog_manager.render_progs.append(.{
             .vertex_layout = .DRAW_VERT,
             .binding_layout_type = binding_type,
         }, allocator);
 
-        const program = &prog_manager.renderProgs.slice()[index];
+        const program = &prog_manager.render_progs.slice()[index];
         try program.name.assignSlice(name, allocator);
 
         prog_manager.loadProgram(program, vertex_index, fragment_index);
@@ -1107,14 +1103,14 @@ pub const RenderProgManager = extern struct {
         prog.vertex_shader_index = @intCast(vertex_index);
         prog.fragment_shader_index = @intCast(fragment_index);
         if (prog.vertex_layout != .UNKNOWN) {
-            const descs = prog_manager.vertexLayoutDescs.constSlice();
+            const descs = prog_manager.vertex_layout_descs.constSlice();
             const shaders = prog_manager.shaders.constSlice();
             prog.input_layout = prog_manager.device.createInputLayout(
                 descs[prog.vertex_layout.toIndex()].constSlice(),
                 shaders[@intCast(prog.vertex_shader_index)].handle.ptr_,
             );
         }
-        const binding_layouts = prog_manager.bindingLayouts.constSlice();
+        const binding_layouts = prog_manager.binding_layouts.constSlice();
         prog.binding_layouts = binding_layouts[prog.binding_layout_type.toIndex()];
     }
 
@@ -1125,14 +1121,14 @@ pub const RenderProgManager = extern struct {
     ) void {
         prog.compute_shader_index = @intCast(compute_index);
         if (prog.vertex_layout != .UNKNOWN) {
-            const descs = prog_manager.vertexLayoutDescs.constSlice();
+            const descs = prog_manager.vertex_layout_descs.constSlice();
             const shaders = prog_manager.shaders.constSlice();
             prog.input_layout = prog_manager.device.createInputLayout(
                 descs[prog.vertex_layout.toIndex()].constSlice(),
                 shaders[@intCast(prog.vertex_shader_index)].handle.ptr_,
             );
         }
-        const binding_layouts = prog_manager.bindingLayouts.constSlice();
+        const binding_layouts = prog_manager.binding_layouts.constSlice();
         prog.binding_layouts = binding_layouts[prog.binding_layout_type.toIndex()];
     }
 
@@ -1253,4 +1249,5 @@ pub const RenderProgManager = extern struct {
     }
 };
 
-pub const instance = @extern(*RenderProgManager, .{ .name = "renderProgManager" });
+var global_prog_manager = RenderProgManager{};
+pub const instance = &global_prog_manager;

@@ -55,7 +55,6 @@ pub fn build(b: *std.Build) !void {
     exe.addIncludePath(b.path("libs/rapidjson/include"));
     exe.addIncludePath(b.path("libs/imgui"));
     exe.addIncludePath(b.path("libs/optick"));
-    exe.addIncludePath(b.path("libs/vma/include"));
     exe.addIncludePath(b.path("libs/libbinkdec/include"));
     exe.addIncludePath(b.path("cnvrhi"));
     exe.addIncludePath(b.path("./"));
@@ -266,7 +265,7 @@ pub fn build(b: *std.Build) !void {
     nvrhi_pkg.link(exe);
     idlib_pkg.link(exe);
 
-    exe.linkSystemLibrary("sdl2");
+    exe.linkSystemLibrary("SDL2");
     exe.linkSystemLibrary("vulkan");
     exe.linkSystemLibrary("openal");
     exe.linkLibC();
@@ -282,8 +281,9 @@ pub fn build(b: *std.Build) !void {
     });
     exe.root_module.addImport("vulkan", vulkan_zig);
 
+    exe.addIncludePath(b.dependency("vma", .{}).path("include"));
+
     b.installArtifact(exe);
-    //_ = ztech_lib.getEmittedH();
 
     const shaders_cmd = b.addRunArtifact(shader_make_pkg.shader_make);
     shaders_cmd.addArg("--config=shaders/shaders.cfg");

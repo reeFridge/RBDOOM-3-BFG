@@ -5,6 +5,8 @@ const fs = @import("../framework/file_system.zig");
 const device_manager = @import("../sys/device_manager.zig");
 const image_manager = @import("image_manager.zig");
 const nvrhi = @import("nvrhi.zig");
+const rhi_vulkan = @import("rhi/vulkan.zig");
+const rhi_common = @import("rhi/common.zig");
 const idlib = @import("../idlib.zig");
 const material = @import("material.zig");
 const frame_data = @import("frame_data.zig");
@@ -598,27 +600,27 @@ pub const Image = extern struct {
         image.createSamplerDesc();
 
         const format: nvrhi.Format = switch (image.opts.format) {
-            .rgba8 => .RGBA8_UNORM,
-            .xrgb8 => .X32G8_UINT,
-            .rgb565 => .B5G6R5_UNORM,
-            .alpha, .lum8, .int8, .r8 => .R8_UNORM,
-            .l8a8 => .RG8_UNORM,
-            .dxt1 => .BC1_UNORM,
-            .dxt5 => .BC3_UNORM,
-            .depth, .shadow_array => .D32,
+            .rgba8 => .rgba8_unorm,
+            .xrgb8 => .x32g8_uint,
+            .rgb565 => .b5g6r5_unorm,
+            .alpha, .lum8, .int8, .r8 => .r8_unorm,
+            .l8a8 => .rg8_unorm,
+            .dxt1 => .bc1_unorm,
+            .dxt5 => .bc3_unorm,
+            .depth, .shadow_array => .d32,
             .depth_stencil => if (device_manager.instance().device_params.enable_image_format_d24s8)
-                .D24S8
+                .d24s8
             else
-                .D32S8,
-            .rg16f => .RG16_FLOAT,
-            .rgba16f => .RGBA16_FLOAT,
-            .rgba16s => .RGBA16_SNORM,
-            .rgba32f => .RGBA32_FLOAT,
-            .r32f => .R32_FLOAT,
-            .x16, .y16_x16 => .RGBA8_UINT,
+                .d32s8,
+            .rg16f => .rg16_float,
+            .rgba16f => .rgba16_float,
+            .rgba16s => .rgba16_snorm,
+            .rgba32f => .rgba32_float,
+            .r32f => .r32_float,
+            .x16, .y16_x16 => .rgba8_uint,
             // see http://what-when-how.com/Tutorial/topic-615ll9ug/Praise-for-OpenGL-ES-30-Programming-Guide-291.html
-            .r11g11b10f => .R11G11B10_FLOAT,
-            .srgb8 => .SRGBA8_UNORM,
+            .r11g11b10f => .r11g11b10_float,
+            .srgb8 => .srgba8_unorm,
             else => {
                 std.debug.print(
                     "[IMAGE][ERR] Unhandled image format {} in {s}\n",
@@ -722,7 +724,7 @@ pub const Image = extern struct {
                 else
                     .{},
                 .image_type = .@"2d",
-                .format = @enumFromInt(nvrhi.vulkan.convertFormat(format)),
+                .format = rhi_vulkan.convertFormat(format),
                 .extent = .{
                     .width = scaled_width,
                     .height = scaled_height,
@@ -754,7 +756,7 @@ pub const Image = extern struct {
             const device = device_manager.instance().getDevice();
             image.texture = device.createHandleForNativeTexture(
                 nvrhi.ObjectTypes.VK_Image,
-                .{ .u = .{ .integer = @intFromEnum(image.image) } },
+                .{ .integer = @intFromEnum(image.image) },
                 &texture_desc,
             );
         }
@@ -1106,7 +1108,7 @@ pub fn emptyGarbage() void {
 }
 
 fn selectImageUsage(desc: *const nvrhi.TextureDesc) vulkan.ImageUsageFlags {
-    const format_info = nvrhi.getFormatInfo(desc.format);
+    const format_info = rhi_common.getFormatInfo(desc.format);
     var usage_flags = vulkan.ImageUsageFlags{
         .transfer_src_bit = true,
         .transfer_dst_bit = true,
@@ -1114,7 +1116,7 @@ fn selectImageUsage(desc: *const nvrhi.TextureDesc) vulkan.ImageUsageFlags {
     };
 
     if (desc.isRenderTarget) {
-        if (format_info.hasDepth or format_info.hasStencil) {
+        if (format_info.has_depth or format_info.has_stencil) {
             usage_flags.depth_stencil_attachment_bit = true;
         } else {
             usage_flags.color_attachment_bit = true;

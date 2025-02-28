@@ -11,6 +11,7 @@ const ResolutionScale = @import("resolution_scale.zig");
 const decl_manager = @import("../framework/decl_manager.zig");
 const getMilliseconds = @import("../main.zig").Sys_Milliseconds;
 const vulkan_impl = @import("../sys/sdl/vulkan.zig");
+const rhi_vulkan = @import("rhi/vulkan.zig");
 const Image = @import("image.zig").Image;
 const Allocator = std.mem.Allocator;
 
@@ -473,7 +474,11 @@ const JobListId = @import("parallel_job_list.zig").JobListId;
 const JobListPriority = @import("parallel_job_list.zig").JobListPriority;
 const global = @import("../global.zig");
 
-pub const InitBackendError = RenderBackend.InitError || Image.ActuallyLoadImageError;
+pub const InitBackendError =
+    rhi_vulkan.CommandList.OpenError ||
+    rhi_vulkan.CommandList.CloseError ||
+    RenderBackend.InitError ||
+    Image.ActuallyLoadImageError;
 pub fn initBackend(
     render_system: *RenderSystem,
     allocator: Allocator,
@@ -497,6 +502,16 @@ pub fn initBackend(
     try image_manager.instance.reloadImages(true, command_list_ptr, allocator);
     command_list_ptr.close();
     device.executeCommandList(command_list_ptr);
+
+    { // rhi
+        const rhi_device = device_manager.instance().rhi_device;
+        const cmd_list = try rhi_device.createCommandList(&.{}, allocator);
+        defer cmd_list.destroy(allocator);
+
+        try cmd_list.open(allocator);
+        try cmd_list.close(allocator);
+        _ = rhi_device.executeCommandLists(&.{cmd_list}, .graphics);
+    }
 }
 
 extern fn c_renderSystem_initColorMappings(f32, f32, [*]c_ushort) void;

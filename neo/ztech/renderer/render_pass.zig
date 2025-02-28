@@ -226,28 +226,28 @@ pub const CommonRenderPasses = extern struct {
         });
 
         common_pass.black_texture = device.createTexture(&.{
-            .format = .RGBA8_UNORM,
+            .format = .rgba8_unorm,
             .width = 1,
             .height = 1,
             .mipLevels = 1,
         });
 
         common_pass.gray_texture = device.createTexture(&.{
-            .format = .RGBA8_UNORM,
+            .format = .rgba8_unorm,
             .width = 1,
             .height = 1,
             .mipLevels = 1,
         });
 
         common_pass.white_texture = device.createTexture(&.{
-            .format = .RGBA8_UNORM,
+            .format = .rgba8_unorm,
             .width = 1,
             .height = 1,
             .mipLevels = 1,
         });
 
         common_pass.black_cube_map_array = device.createTexture(&.{
-            .format = .RGBA8_UNORM,
+            .format = .rgba8_unorm,
             .width = 1,
             .height = 1,
             .mipLevels = 1,
@@ -256,7 +256,7 @@ pub const CommonRenderPasses = extern struct {
         });
 
         common_pass.black_texture_2d_array = device.createTexture(&.{
-            .format = .RGBA8_UNORM,
+            .format = .rgba8_unorm,
             .width = 1,
             .height = 1,
             .mipLevels = 1,
@@ -265,7 +265,7 @@ pub const CommonRenderPasses = extern struct {
         });
 
         common_pass.white_texture_2d_array = device.createTexture(&.{
-            .format = .RGBA8_UNORM,
+            .format = .rgba8_unorm,
             .width = 1,
             .height = 1,
             .mipLevels = 1,
@@ -526,7 +526,7 @@ pub const CommonRenderPasses = extern struct {
                     nvrhi.BindingSetItem.createTextureSrv(
                         0,
                         source_texture,
-                        .UNKNOWN,
+                        .unknown,
                         source_subresources,
                         source_dimension,
                     ),

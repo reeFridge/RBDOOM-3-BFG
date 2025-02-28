@@ -123,7 +123,7 @@ pub fn BufferObject(buffer_object_type: BufferObjectType) type {
                     .initialState = .{ .CopyDest = true },
                     .canHaveRawViews = true,
                     .canHaveTypedViews = true,
-                    .format = .R16_UINT,
+                    .format = .r16_uint,
                     .cpuAccess = if (usage == .DYNAMIC) .Write else .None,
                     .keepInitialState = usage == .STATIC,
                 },
@@ -271,7 +271,7 @@ pub fn BufferObject(buffer_object_type: BufferObjectType) type {
 
             self.buffer_handle = device.createHandleForNativeBuffer(
                 nvrhi.ObjectTypes.VK_Buffer,
-                .{ .u = .{ .integer = @intFromEnum(self.vk_buffer) } },
+                .{ .integer = @intFromEnum(self.vk_buffer) },
                 desc,
             );
         }
