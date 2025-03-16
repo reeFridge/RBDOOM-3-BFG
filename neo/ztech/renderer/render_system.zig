@@ -477,6 +477,7 @@ const global = @import("../global.zig");
 pub const InitBackendError =
     rhi_vulkan.CommandList.OpenError ||
     rhi_vulkan.CommandList.CloseError ||
+    rhi_vulkan.Device.ExecuteCommandListsError ||
     RenderBackend.InitError ||
     Image.ActuallyLoadImageError;
 pub fn initBackend(
@@ -505,12 +506,12 @@ pub fn initBackend(
 
     { // rhi
         const rhi_device = device_manager.instance().rhi_device;
-        const cmd_list = try rhi_device.createCommandList(&.{}, allocator);
-        defer cmd_list.destroy(allocator);
+        const cmd_list_ptr = try rhi_device.createCommandList(&.{}, allocator);
+        defer cmd_list_ptr.destroy(allocator);
 
-        try cmd_list.open(allocator);
-        try cmd_list.close(allocator);
-        _ = rhi_device.executeCommandLists(&.{cmd_list}, .graphics);
+        try cmd_list_ptr.open(allocator);
+        try cmd_list_ptr.close(allocator);
+        _ = try rhi_device.executeCommandLists(&.{cmd_list_ptr}, .graphics, allocator);
     }
 }
 

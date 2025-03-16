@@ -53,6 +53,46 @@ pub const CommandListResourceStateTracker = struct {
     texture_barriers: std.ArrayListUnmanaged(TextureBarrier) = .{},
     buffer_barriers: std.ArrayListUnmanaged(BufferBarrier) = .{},
 
+    pub fn commandListSubmitted(tracker: *CommandListResourceStateTracker) void {
+        for (tracker.permanent_texture_states.items) |pair| {
+            const texture, const state = pair;
+
+            if (@as(u32, @bitCast(texture.permanent_state)) != 0 and
+                @as(u32, @bitCast(texture.permanent_state)) != @as(u32, @bitCast(state)))
+            {
+                @panic("attempted to switch permanent state of texture");
+            }
+
+            texture.permanent_state = state;
+        }
+        tracker.permanent_texture_states.clearRetainingCapacity();
+
+        for (tracker.permanent_buffer_states.items) |pair| {
+            const buffer, const state = pair;
+
+            if (@as(u32, @bitCast(buffer.permanent_state)) != 0 and
+                @as(u32, @bitCast(buffer.permanent_state)) != @as(u32, @bitCast(state)))
+            {
+                @panic("attempted to switch permanent state of buffer");
+            }
+
+            buffer.permanent_state = state;
+        }
+        tracker.permanent_buffer_states.clearRetainingCapacity();
+
+        var iter = tracker.texture_states.keyIterator();
+        while (iter.next()) |key_ptr| {
+            const texture = key_ptr.*;
+
+            if (texture.desc_ptr.keep_initial_state and !texture.state_initialized) {
+                texture.state_initialized = true;
+            }
+        }
+
+        tracker.texture_states.clearRetainingCapacity();
+        tracker.buffer_states.clearRetainingCapacity();
+    }
+
     pub fn clearBarriers(tracker: *CommandListResourceStateTracker, allocator: Allocator) void {
         tracker.texture_barriers.clearAndFree(allocator);
         tracker.buffer_barriers.clearAndFree(allocator);

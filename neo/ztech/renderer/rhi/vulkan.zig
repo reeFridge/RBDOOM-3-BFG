@@ -78,6 +78,7 @@ const Dispatch = struct {
                 .cmdPipelineBarrier = true,
                 .cmdPipelineBarrier2 = true,
                 .flushMappedMemoryRanges = true,
+                .queueSubmit = true,
             },
         },
         vulkan.extensions.ext_debug_utils,
@@ -96,10 +97,25 @@ const Dispatch = struct {
     pub const InstanceProxy = vulkan.InstanceProxy(apis);
     pub const DeviceProxy = vulkan.DeviceProxy(apis);
     pub const CommandBufferProxy = vulkan.CommandBufferProxy(apis);
+    pub const QueueProxy = vulkan.QueueProxy(apis);
 
     base: BaseDispatch,
     instance: InstanceProxy,
     device: DeviceProxy,
+};
+
+const Version = packed struct(u64) {
+    id: u60 = 0,
+    queue_id: u3 = 0,
+    submitted: bool = false,
+
+    fn make(id: u64, queue_id: interface.CommandQueue, submitted: bool) Version {
+        return .{
+            .id = @truncate(id),
+            .queue_id = @intCast(@intFromEnum(queue_id)),
+            .submitted = submitted,
+        };
+    }
 };
 
 pub const CommandList = struct {
@@ -122,7 +138,7 @@ pub const CommandList = struct {
 
     const BufferChunk = struct {
         buffer: Buffer.Handle,
-        version: u64 = 0,
+        version: Version = .{},
         buffer_size: u64 = 0,
         write_pointer: u64 = 0,
         mapped_memory: ?*anyopaque = null,
@@ -138,6 +154,29 @@ pub const CommandList = struct {
         is_scratch_buffer: bool = false,
         chunk_pool: std.SinglyLinkedList(*BufferChunk) = .{},
         current_chunk: ?*BufferChunk = null,
+
+        fn submitChunks(
+            upload_manager: *UploadManager,
+            current_version: Version,
+            submitted_version: Version,
+            allocator: Allocator,
+        ) Allocator.Error!void {
+            if (upload_manager.current_chunk) |current_chunk| {
+                const node = try allocator.create(std.SinglyLinkedList(*BufferChunk).Node);
+                node.* = .{ .data = current_chunk };
+                upload_manager.chunk_pool.prepend(node);
+
+                // TODO: check shared refs
+                upload_manager.current_chunk = null;
+            }
+
+            var it = upload_manager.chunk_pool.first;
+            while (it) |node| : (it = node.next) {
+                if (@as(u64, @bitCast(node.data.version)) == @as(u64, @bitCast(current_version))) {
+                    node.data.version = submitted_version;
+                }
+            }
+        }
     };
 
     ref_counter: RefCounter = .{},
@@ -348,6 +387,78 @@ pub const CommandList = struct {
         tracker.clearBarriers(allocator);
     }
 
+    fn executed(
+        command_list: *CommandList,
+        queue: *Queue,
+        submission_id: u64,
+        allocator: Allocator,
+    ) Allocator.Error!void {
+        const current_cmd_buf = command_list.current_cmd_buf orelse @panic("no current cmd buffer");
+
+        current_cmd_buf.submission_id = submission_id;
+
+        const queue_id = queue.queue_id;
+        const recording_id = current_cmd_buf.recording_id;
+
+        command_list.current_cmd_buf = null;
+
+        command_list.submitVolatileBuffers(recording_id, submission_id);
+        command_list.resource_state_tracker.commandListSubmitted();
+
+        try command_list.upload_manager.submitChunks(
+            Version.make(recording_id, queue_id, false),
+            Version.make(submission_id, queue_id, true),
+            allocator,
+        );
+
+        try command_list.scratch_manager.submitChunks(
+            Version.make(recording_id, queue_id, false),
+            Version.make(submission_id, queue_id, true),
+            allocator,
+        );
+
+        command_list.volatile_buffer_states.clearRetainingCapacity();
+    }
+
+    fn submitVolatileBuffers(
+        command_list: *CommandList,
+        recording_id: u64,
+        submitted_id: u64,
+    ) void {
+        const state_to_find = Version.make(
+            recording_id,
+            command_list.parameters.queue_type,
+            false,
+        );
+        const state_to_replace = Version.make(
+            submitted_id,
+            command_list.parameters.queue_type,
+            true,
+        );
+
+        var iter = command_list.volatile_buffer_states.iterator();
+        while (iter.next()) |entry| {
+            const buffer = entry.key_ptr.*;
+            const state = entry.value_ptr;
+
+            if (!state.initialized) continue;
+
+            var version = state.min_version;
+            while (version <= state.max_version) : (version += 1) {
+                const version_ptr = &buffer.version_tracking.items[@intCast(version)];
+                // TODO(0.14.0): buffer.version_tracking.items[@intCast(version)].cmpxchgStrong(...)
+                _ = @cmpxchgStrong(
+                    u64,
+                    @as(*u64, @ptrCast(&version_ptr.raw)),
+                    @as(u64, @bitCast(state_to_find)),
+                    @as(u64, @bitCast(state_to_replace)),
+                    .seq_cst,
+                    .seq_cst,
+                );
+            }
+        }
+    }
+
     const FlushVolatileBufferWritesError =
         Allocator.Error ||
         Dispatch.DeviceProxy.FlushMappedMemoryRangesError;
@@ -429,7 +540,7 @@ const EventQuery = struct {
     }
 };
 
-const BufferVersionItem = std.atomic.Value(u64);
+const BufferVersionItem = std.atomic.Value(Version);
 
 const Heap = struct {
     const Handle = RefCount(Heap);
@@ -818,32 +929,31 @@ const Context = struct {
         context.extensions.buffer_device_address = desc.buffer_device_address_supported;
 
         var p_next: ?*anyopaque = null;
-        var accel_struct_properties: vulkan.PhysicalDeviceAccelerationStructurePropertiesKHR = undefined;
+        var accel_struct_properties = undefinedInit(vulkan.PhysicalDeviceAccelerationStructurePropertiesKHR);
         if (context.extensions.khr_acceleration_structure)
             linkProperties(&accel_struct_properties, &p_next);
 
-        var ray_tracing_pipeline_properties: vulkan.PhysicalDeviceRayTracingPipelinePropertiesKHR = undefined;
+        var ray_tracing_pipeline_properties = undefinedInit(vulkan.PhysicalDeviceRayTracingPipelinePropertiesKHR);
         if (context.extensions.khr_ray_tracing_pipeline)
             linkProperties(&ray_tracing_pipeline_properties, &p_next);
 
-        var shading_rate_properties: vulkan.PhysicalDeviceFragmentShadingRatePropertiesKHR = undefined;
+        var shading_rate_properties = undefinedInit(vulkan.PhysicalDeviceFragmentShadingRatePropertiesKHR);
         if (context.extensions.khr_fragment_shading_rate)
             linkProperties(&shading_rate_properties, &p_next);
 
-        var conservative_rasterization_properties: vulkan.PhysicalDeviceConservativeRasterizationPropertiesEXT = undefined;
+        var conservative_rasterization_properties = undefinedInit(vulkan.PhysicalDeviceConservativeRasterizationPropertiesEXT);
         if (context.extensions.ext_conservative_rasterization)
             linkProperties(&conservative_rasterization_properties, &p_next);
 
-        var opacity_micromap_properties: vulkan.PhysicalDeviceOpacityMicromapPropertiesEXT = undefined;
+        var opacity_micromap_properties = undefinedInit(vulkan.PhysicalDeviceOpacityMicromapPropertiesEXT);
         if (context.extensions.ext_opacity_micromap)
             linkProperties(&opacity_micromap_properties, &p_next);
 
-        var nv_ray_tracing_invocation_reorder_properties: vulkan.PhysicalDeviceRayTracingInvocationReorderPropertiesNV = undefined;
+        var nv_ray_tracing_invocation_reorder_properties = undefinedInit(vulkan.PhysicalDeviceRayTracingInvocationReorderPropertiesNV);
         if (context.extensions.nv_ray_tracing_invocation_reorder)
             linkProperties(&nv_ray_tracing_invocation_reorder_properties, &p_next);
 
-        var device_properties: vulkan.PhysicalDeviceProperties2 = undefined;
-        device_properties.p_next = p_next;
+        var device_properties: vulkan.PhysicalDeviceProperties2 = .{ .p_next = p_next, .properties = undefined };
 
         context.dispatch.instance.getPhysicalDeviceProperties2(
             context.physical_device,
@@ -859,10 +969,9 @@ const Context = struct {
         context.nv_ray_tracing_invocation_reorder_properties = nv_ray_tracing_invocation_reorder_properties;
 
         if (ctx_ext.khr_fragment_shading_rate) {
-            var device_features: vulkan.PhysicalDeviceFeatures2 = undefined;
-            var shading_rate_features: vulkan.PhysicalDeviceFragmentShadingRateFeaturesKHR = undefined;
+            var shading_rate_features = undefinedInit(vulkan.PhysicalDeviceFragmentShadingRateFeaturesKHR);
+            var device_features: vulkan.PhysicalDeviceFeatures2 = .{ .p_next = &shading_rate_features, .features = undefined };
 
-            device_features.p_next = &shading_rate_features;
             context.dispatch.instance.getPhysicalDeviceFeatures2(
                 context.physical_device,
                 &device_features,
@@ -921,8 +1030,10 @@ const Queue = struct {
     queue_id: interface.CommandQueue = undefined,
     queue_family_index: u32 = 0,
     mutex: std.Thread.Mutex = .{},
+    // maybe use SoA approach?
     wait_semaphores: std.ArrayListUnmanaged(vulkan.Semaphore) = .{},
     wait_semaphore_values: std.ArrayListUnmanaged(u64) = .{},
+    // maybe use SoA approach?
     signal_semaphores: std.ArrayListUnmanaged(vulkan.Semaphore) = .{},
     signal_semaphore_values: std.ArrayListUnmanaged(u64) = .{},
     last_recording_id: u64 = 0,
@@ -974,6 +1085,87 @@ const Queue = struct {
         queue.signal_semaphore_values.deinit(allocator);
 
         allocator.destroy(queue);
+    }
+
+    const SubmitError =
+        Dispatch.QueueProxy.QueueSubmitError ||
+        Allocator.Error;
+    fn submit(queue: *Queue, cmd_lists: []const *const CommandList, allocator: Allocator) SubmitError!u64 {
+        var wait_stage_array = wait_stage_array: {
+            const array = try std.ArrayListUnmanaged(vulkan.PipelineStageFlags).initCapacity(
+                allocator,
+                queue.wait_semaphores.items.len,
+            );
+
+            for (array.items) |*flags| {
+                flags.* = .{ .top_of_pipe_bit = true };
+            }
+
+            break :wait_stage_array array;
+        };
+        defer wait_stage_array.deinit(allocator);
+
+        var command_buffers = try std.ArrayListUnmanaged(vulkan.CommandBuffer).initCapacity(
+            allocator,
+            cmd_lists.len,
+        );
+        defer command_buffers.deinit(allocator);
+
+        queue.last_submitted_id += 1;
+
+        for (cmd_lists) |cmd_list| {
+            const command_buffer = cmd_list.current_cmd_buf orelse @panic("no current cmd buffer");
+            command_buffers.appendAssumeCapacity(command_buffer.cmd_buf);
+
+            const node = try allocator.create(std.SinglyLinkedList(*TrackedCommandBuffer).Node);
+            node.* = .{ .data = command_buffer };
+            queue.command_buffers_in_flight.prepend(node);
+
+            for (command_buffer.referenced_staging_buffers.items) |buffer_ref| {
+                const buffer = buffer_ref.opt_ptr orelse @panic("empty buffer ref");
+                buffer.last_use_queue = queue.queue_id;
+                buffer.last_use_command_list_id = queue.last_submitted_id;
+            }
+        }
+
+        try queue.signal_semaphores.append(allocator, queue.tracking_semaphore);
+        try queue.signal_semaphore_values.append(allocator, queue.last_submitted_id);
+
+        const timeline_semaphore_info = vulkan.TimelineSemaphoreSubmitInfo{
+            .wait_semaphore_value_count = @intCast(queue.wait_semaphore_values.items.len),
+            .p_wait_semaphore_values = queue.wait_semaphore_values.items.ptr,
+            .signal_semaphore_value_count = @intCast(queue.signal_semaphore_values.items.len),
+            .p_signal_semaphore_values = queue.signal_semaphore_values.items.ptr,
+        };
+
+        const queue_proxy = Dispatch.QueueProxy.init(
+            queue.queue,
+            queue.context.dispatch.device.wrapper,
+        );
+
+        try queue_proxy.submit(
+            1,
+            &.{
+                .{
+                    .p_next = &timeline_semaphore_info,
+                    .wait_semaphore_count = @intCast(queue.wait_semaphores.items.len),
+                    .p_wait_semaphores = queue.wait_semaphores.items.ptr,
+                    .p_wait_dst_stage_mask = wait_stage_array.items.ptr,
+                    .command_buffer_count = @intCast(command_buffers.items.len),
+                    .p_command_buffers = command_buffers.items.ptr,
+                    .signal_semaphore_count = @intCast(queue.signal_semaphores.items.len),
+                    .p_signal_semaphores = queue.signal_semaphores.items.ptr,
+                },
+            },
+            .null_handle,
+        );
+
+        queue.wait_semaphores.clearRetainingCapacity();
+        queue.wait_semaphore_values.clearRetainingCapacity();
+        queue.signal_semaphores.clearRetainingCapacity();
+        queue.signal_semaphore_values.clearRetainingCapacity();
+
+        return queue.last_submitted_id;
     }
 
     fn addWaitSemaphore(queue: *Queue, semaphore: vulkan.Semaphore, value: u64, allocator: Allocator) Allocator.Error!void {
@@ -1227,14 +1419,18 @@ pub const Device = struct {
         );
     }
 
-    pub fn executeCommandLists(device: *Device, command_lists: []const *CommandList, exec_queue: interface.CommandQueue) u64 {
+    pub const ExecuteCommandListsError = Allocator.Error || Queue.SubmitError;
+    pub fn executeCommandLists(
+        device: *Device,
+        command_lists: []const *CommandList,
+        exec_queue: interface.CommandQueue,
+        allocator: Allocator,
+    ) ExecuteCommandListsError!u64 {
         const queue_ptr = device.queues[@intFromEnum(exec_queue)] orelse @panic("queue not exists");
-        // easy
-        const submission_id = queue_ptr.submit(command_lists);
+        const submission_id = try queue_ptr.submit(command_lists, allocator);
 
         for (command_lists) |cmd_list_ptr| {
-            // easy
-            cmd_list_ptr.executed(queue_ptr, submission_id);
+            try cmd_list_ptr.executed(queue_ptr, submission_id, allocator);
         }
 
         return submission_id;
@@ -1621,3 +1817,24 @@ const constants = struct {
         .{ .bc7_unorm_srgb, .bc7_srgb_block },
     };
 };
+
+fn undefinedInit(T: type) T {
+    const struct_info = @typeInfo(T).Struct;
+
+    var value: T = if (struct_info.layout == .@"extern") std.mem.zeroes(T) else undefined;
+
+    inline for (struct_info.fields) |field| {
+        if (field.is_comptime) {
+            continue;
+        }
+
+        if (field.default_value) |default_value_ptr| {
+            const default_value = @as(*align(1) const field.type, @ptrCast(default_value_ptr)).*;
+            @field(value, field.name) = default_value;
+        } else {
+            @field(value, field.name) = undefined;
+        }
+    }
+
+    return value;
+}
