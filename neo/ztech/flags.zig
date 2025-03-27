@@ -1,6 +1,6 @@
 pub fn Flags(comptime FlagsType: type) type {
     return struct {
-        pub const IntType = @typeInfo(FlagsType).Struct.backing_integer.?;
+        pub const IntType = @typeInfo(FlagsType).@"struct".backing_integer.?;
         pub fn toInt(self: FlagsType) IntType {
             return @bitCast(self);
         }

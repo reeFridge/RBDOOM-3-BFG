@@ -368,7 +368,7 @@ pub const ExpRegisters = enum {
     global6,
     global7,
 
-    pub const num_predefined = @typeInfo(ExpRegisters).Enum.fields.len;
+    pub const num_predefined = @typeInfo(ExpRegisters).@"enum".fields.len;
 };
 
 const MtrParsingData = extern struct {
@@ -1132,14 +1132,6 @@ pub const Material = extern struct {
         }
     }
 
-    pub fn getDecalInfo(material: *const Material) DecalInfo {
-        return material.decal_info;
-    }
-
-    pub fn coverage(material: *const Material) MaterialCoverage {
-        return material.coverage;
-    }
-
     pub fn isLod(material: *const Material) bool {
         return material.material_flags.lod1 or
             material.material_flags.lod2 or
@@ -1236,15 +1228,15 @@ pub const Material = extern struct {
                     @panic("not implemented");
                     //if( r_forceSoundOpAmplitude.GetFloat() > 0 )
                     //{
-                    //	registers[op->c] = r_forceSoundOpAmplitude.GetFloat();
+                    //registers[op->c] = r_forceSoundOpAmplitude.GetFloat();
                     //}
                     //else if( soundEmitter )
                     //{
-                    //	registers[op->c] = soundEmitter->CurrentAmplitude();
+                    //registers[op->c] = soundEmitter->CurrentAmplitude();
                     //}
                     //else
                     //{
-                    //	registers[op->c] = 0;
+                    //registers[op->c] = 0;
                     //}
                 },
                 .gt => {
@@ -2246,9 +2238,9 @@ pub const Material = extern struct {
     pub fn lightCastsShadows(material: *const Material) bool {
         return material.material_flags.forceshadows or
             (!material.fog_light and
-            !material.ambient_light and
-            !material.blend_light and
-            !material.material_flags.noshadows);
+                !material.ambient_light and
+                !material.blend_light and
+                !material.material_flags.noshadows);
     }
 
     pub fn surfaceCastsShadow(material: *const Material) bool {

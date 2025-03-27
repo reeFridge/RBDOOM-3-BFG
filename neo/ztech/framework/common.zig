@@ -43,6 +43,7 @@ fn cmd_map(args: *const cmd.CmdArgs, allocator: Allocator) void {
     std.debug.print("Load map: {s}\n", .{args.argv[1]});
     loadMap(std.mem.span(args.argv[1]), allocator) catch |err| {
         std.debug.print("[ERR] while map loading: {s}\n", .{@errorName(err)});
+        @panic("load map failed");
     };
 }
 pub const map_command: cmd.CmdDecl = .{
@@ -89,6 +90,7 @@ fn runGameFramesAndDraw(self: *GameThread) u8 {
     return 0;
 }
 
+const skip_render = false;
 var opt_last_frame_time: ?c_int = null;
 
 pub var game_thread: GameThread = .{ .payload_fn = runGameFramesAndDraw, .args = .{} };
@@ -222,15 +224,18 @@ pub const Common = opaque {
         cmd.instance.appendCommandText("exec autoexec.cfg\n");
         try cmd.instance.executeCommandBuffer(allocator);
         cvar.instance.modifiedFlags &= ~cvar.CVarFlags.archive;
-        try RenderSystem.instance.initBackend(allocator);
-        try sound_system.instance.init();
-        try RenderSystem.instance.init(allocator);
 
-        try renderSplash(
-            &RenderSystem.instance,
-            decl_manager.instance,
-            allocator,
-        );
+        if (!skip_render) {
+            try RenderSystem.instance.initBackend(allocator);
+            try sound_system.instance.init();
+            try RenderSystem.instance.init(allocator);
+
+            try renderSplash(
+                &RenderSystem.instance,
+                decl_manager.instance,
+                allocator,
+            );
+        }
 
         try decl_manager.instance.postInit(allocator);
 
@@ -244,18 +249,22 @@ pub const Common = opaque {
 
         // TODO system.setRumble(0, 0, 0);
 
-        try ui_manager.instance.init(
-            &RenderSystem.instance,
-            decl_manager.instance,
-            allocator,
-        );
+        if (!skip_render) {
+            try ui_manager.instance.init(
+                &RenderSystem.instance,
+                decl_manager.instance,
+                allocator,
+            );
+        }
 
         // TODO common.initCommands(); // tools
 
         try Game.instance.init(allocator);
 
         // TODO ! fs.instance.unloadResourceContainer("_ordered");
-        render_world = try RenderSystem.instance.createRenderWorld(allocator);
+        if (!skip_render) {
+            render_world = try RenderSystem.instance.createRenderWorld(allocator);
+        }
 
         // TODO common.sound_world = sound_system.instance.allocSoundWorld();
         // TODO common.menu_sound_world = sound_system.instance.allocSoundWorld();
@@ -430,7 +439,7 @@ pub const Common = opaque {
         RenderSystem.instance.deinit(common_allocator);
     }
 
-    pub fn parseCommandLine(args: [][:0]const u8) void {
+    pub fn parseCommandLine(args: []const [:0]u8) void {
         num_console_lines.* = 0;
 
         for (args) |arg_str| {

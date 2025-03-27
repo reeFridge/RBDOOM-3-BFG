@@ -37,7 +37,7 @@ pub const DecalProjectionParams = extern struct {
     force: bool,
 };
 
-pub const Decal align(16) = extern struct {
+pub const Decal = extern struct {
     verts: [MAX_DECAL_VERTS]DrawVertex align(16),
     indexes: [MAX_DECAL_INDEXES]sys_types.TriIndex align(16),
     vertDepthFade: [MAX_DECAL_VERTS]f32,
@@ -48,7 +48,7 @@ pub const Decal align(16) = extern struct {
 };
 
 pub const ModelDecal = extern struct {
-    decals: [MAX_DECALS]Decal,
+    decals: [MAX_DECALS]Decal align(16),
     firstDecal: c_uint,
     nextDecal: c_uint,
 
@@ -152,7 +152,7 @@ pub const ModelDecal = extern struct {
             new_tri.indexCache,
         )));
 
-        const decal_info = material.getDecalInfo();
+        const decal_info = &material.decal_info;
         const max_time = decal_info.stayTime + decal_info.fadeTime;
         const time = view_def.renderView.time[0];
 
@@ -181,7 +181,7 @@ pub const ModelDecal = extern struct {
             for (&fade_color, 0..) |*color, j| {
                 color.* = 255.0 *
                     (decal_info.start[j] +
-                    (decal_info.end[j] - decal_info.start[j]) * f);
+                        (decal_info.end[j] - decal_info.start[j]) * f);
             }
 
             copyDecalSurface(

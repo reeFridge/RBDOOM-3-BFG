@@ -940,7 +940,7 @@ pub const DeviceManagerVulkan = struct {
         };
 
         const allocator_create_info = c.VmaAllocatorCreateInfo{
-            .vulkanApiVersion = vulkan.API_VERSION_1_3,
+            .vulkanApiVersion = @bitCast(vulkan.API_VERSION_1_3),
             .physicalDevice = @ptrFromInt(@intFromEnum(device_manager.physical_device)),
             .device = @ptrFromInt(@intFromEnum(device_manager.device.handle)),
             .instance = @ptrFromInt(@intFromEnum(device_manager.instance.handle)),
@@ -1151,10 +1151,10 @@ pub const DeviceManagerVulkan = struct {
 
         const app_info: vulkan.ApplicationInfo = .{
             .p_application_name = "rbdoom3",
-            .application_version = vulkan.makeApiVersion(0, 0, 0, 0),
+            .application_version = @bitCast(vulkan.makeApiVersion(0, 0, 0, 0)),
             .p_engine_name = "ztech",
-            .engine_version = vulkan.makeApiVersion(0, 0, 0, 0),
-            .api_version = vulkan.API_VERSION_1_3,
+            .engine_version = @bitCast(vulkan.makeApiVersion(0, 0, 0, 0)),
+            .api_version = @bitCast(vulkan.API_VERSION_1_3),
         };
 
         const create_info = vulkan.InstanceCreateInfo{
@@ -1361,10 +1361,11 @@ pub const DeviceManagerVulkan = struct {
             if (queue_family.present == null) {
                 if (family_props.queue_count > 0 and
                     try device_manager.instance.getPhysicalDeviceSurfaceSupportKHR(
-                    device,
-                    family_index,
-                    surface,
-                ) == vulkan.TRUE) {
+                        device,
+                        family_index,
+                        surface,
+                    ) == vulkan.TRUE)
+                {
                     queue_family.present = family_index;
                 }
             }

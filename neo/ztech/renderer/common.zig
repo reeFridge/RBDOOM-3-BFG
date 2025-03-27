@@ -92,7 +92,7 @@ pub const BindingLayoutType = enum(c_int) {
         return @intCast(@intFromEnum(e));
     }
 
-    pub const num = @typeInfo(BindingLayoutType).Enum.fields.len;
+    pub const num = @typeInfo(BindingLayoutType).@"enum".fields.len;
 };
 
 const max_entity_shader_params = @import("render_entity.zig").max_entity_shader_params;
@@ -594,7 +594,7 @@ pub const ViewDef = extern struct {
                 1.005 * lambda *
                 (z_near_start * std.math.pow(f32, ratio, si)) +
                 (1 - lambda) *
-                (z_near_start + (z_far_end - z_near_start) * si);
+                    (z_near_start + (z_far_end - z_near_start) * si);
 
             if (i <= r_shadow_map_splits) {
                 view_def.frustumSplitDistances[i - 1] = z_far;

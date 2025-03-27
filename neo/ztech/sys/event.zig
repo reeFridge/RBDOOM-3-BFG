@@ -74,7 +74,7 @@ var uni_str_pos: usize = 0;
 
 pub fn getEvent() ?Event {
     if (uni_str[0] != 0) {
-        const result_event = .{
+        const result_event = Event{
             .type = .char,
             .first_value = uni_str[uni_str_pos],
         };
@@ -97,7 +97,7 @@ pub fn getEvent() ?Event {
                 if (sdl_event.text.text[0] != 0) {
                     convertUtf8toUtf32(@ptrCast(&sdl_event.text.text), @ptrCast(&uni_str));
 
-                    const result_event = .{
+                    const result_event = Event{
                         .type = .char,
                         .first_value = uni_str[0],
                     };

@@ -93,7 +93,7 @@ pub const Generator = extern struct {
     toggled_run: ButtonState = .{},
     toggled_zoom: ButtonState = .{},
 
-    button_state: [@typeInfo(Button).Enum.fields.len]i32 = std.mem.zeroes([@typeInfo(Button).Enum.fields.len]i32),
+    button_state: [@typeInfo(Button).@"enum".fields.len]i32 = std.mem.zeroes([@typeInfo(Button).@"enum".fields.len]i32),
     key_state: [@intCast(@intFromEnum(key_input.KeyNum.last_key))]bool = std.mem.zeroes([@intCast(@intFromEnum(key_input.KeyNum.last_key))]bool),
     inhibit_commands: i32 = @intFromBool(false), // bool
     initialized: bool = false,
@@ -104,7 +104,7 @@ pub const Generator = extern struct {
     mouse_down: bool = false,
     mouse_dx: i32 = 0,
     mouse_dy: i32 = 0,
-    joystick_axis: [@typeInfo(key_input.JoystickAxis).Enum.fields.len]f32 = std.mem.zeroes([@typeInfo(key_input.JoystickAxis).Enum.fields.len]f32),
+    joystick_axis: [@typeInfo(key_input.JoystickAxis).@"enum".fields.len]f32 = std.mem.zeroes([@typeInfo(key_input.JoystickAxis).@"enum".fields.len]f32),
     poll_time: i32 = 0,
     last_poll_time: i32 = 0,
     last_look_value_pitch: f32 = 0,

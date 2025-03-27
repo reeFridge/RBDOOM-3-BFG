@@ -477,7 +477,7 @@ pub const DeclModelDef = extern struct {
         return if (opt_ptr) |ptr| ptr[0..joints_len] else null;
     }
 
-    pub fn joints(def: *const DeclModelDef) *idList(JointInfo) {
+    pub fn jointsList(def: *const DeclModelDef) *idList(JointInfo) {
         return c_declModelDef_getJointsList(def);
     }
 

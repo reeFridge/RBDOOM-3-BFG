@@ -126,6 +126,33 @@ void R_WriteTGA( const char* filename, const byte* data, int width, int height, 
 	fileSystem->WriteFile( filename, buffer, bufferSize, basePath );
 }
 
+extern "C" void c_encodeTga(uint8_t const * const data, uint8_t* buffer, uint32_t width, uint32_t height, bool flipVertical) {
+	int		i;
+	int		bufferSize = width * height * 4 + 18;
+	int     imgStart = 18;
+
+	memset( buffer, 0, 18 );
+	buffer[2] = 2;		// uncompressed type
+	buffer[12] = width & 255;
+	buffer[13] = width >> 8;
+	buffer[14] = height & 255;
+	buffer[15] = height >> 8;
+	buffer[16] = 32;	// pixel size
+	if( !flipVertical )
+	{
+		buffer[17] = ( 1 << 5 );	// flip bit, for normal top to bottom raster order
+	}
+
+	// swap rgb to bgr
+	for( i = imgStart ; i < bufferSize ; i += 4 )
+	{
+		buffer[i] = data[i - imgStart + 2];		// blue
+		buffer[i + 1] = data[i - imgStart + 1];		// green
+		buffer[i + 2] = data[i - imgStart + 0];		// red
+		buffer[i + 3] = data[i - imgStart + 3];		// alpha
+	}
+}
+
 void LoadTGA( const char* name, byte** pic, int* width, int* height, ID_TIME_T* timestamp );
 
 /*

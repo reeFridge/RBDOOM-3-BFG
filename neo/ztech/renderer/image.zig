@@ -946,10 +946,10 @@ pub const Image = extern struct {
         // use bimage if it exists
         if (in_prod or
             (binary_file_time != fs.not_found_time and
-            im.header.color_format == image.opts.color_format and
-            (im.header.format == image.opts.format or
-            (im.header.format == .rgb565 and image.opts.format == .rgba8)) and
-            im.header.texture_type == image.opts.texture_type))
+                im.header.color_format == image.opts.color_format and
+                (im.header.format == image.opts.format or
+                    (im.header.format == .rgb565 and image.opts.format == .rgba8)) and
+                im.header.texture_type == image.opts.texture_type))
         {
             image.opts.width = im.header.width;
             image.opts.height = im.header.height;

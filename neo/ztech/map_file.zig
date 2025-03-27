@@ -438,6 +438,9 @@ pub const Brush = extern struct {
             try lexer.parse2DMatrix(2, 3, @as(*[6]f32, @ptrCast(&side.tex_mat)), allocator);
             side.origin = CVec3.fromVec3f(origin);
 
+            // material
+            try lexer.readTokenOnLine(&token, allocator);
+
             if (version < 2) {
                 try side.material.assignSlice("textures/", allocator);
                 try side.material.appendSlice(token.slice(), allocator);

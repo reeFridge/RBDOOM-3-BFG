@@ -4941,4 +4941,25 @@ const idDecl* c_declManager_findType(idDeclManagerLocal* manager, declType_t typ
 	return manager->FindType(type, (const char*)name, makeDefault);
 }
 
+void c_decompressDxt5Image(uint8_t const * const data, uint8_t* rgba, uint32_t width, uint32_t height) {
+	idDxtDecoder dxt;
+	dxt.DecompressImageDXT5(data, rgba, width, height);
+}
+
+void c_decompressDxt1Image(uint8_t const * const data, uint8_t* rgba, uint32_t width, uint32_t height) {
+	idDxtDecoder dxt;
+	dxt.DecompressImageDXT1(data, rgba, width, height);
+}
+
+void c_decompressYcocgDxt5Image(uint8_t const * const data, uint8_t* rgba, uint32_t width, uint32_t height) {
+	idDxtDecoder dxt;
+	dxt.DecompressYCoCgDXT5(data, rgba, width, height);
+	idColorSpace::ConvertCoCg_YToRGB(rgba, rgba, width, height);
+}
+
+void c_decompressNormalMapDxt5Image(uint8_t const * const data, uint8_t* rgba, uint32_t width, uint32_t height) {
+	idDxtDecoder dxt;
+	dxt.DecompressNormalMapDXT5(data, rgba, width, height);
+}
+
 }

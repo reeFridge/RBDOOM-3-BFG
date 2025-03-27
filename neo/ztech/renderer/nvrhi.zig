@@ -571,7 +571,7 @@ pub const ShaderDesc = extern struct {
     useSpecificShaderExt: bool = false,
     numCustomSemantics: u32 = 0,
     pCustomSemantics: ?*CustomSemantic = null,
-    fastGSFlags: @typeInfo(FastGeometryShaderFlags).Enum.tag_type = 0,
+    fastGSFlags: @typeInfo(FastGeometryShaderFlags).@"enum".tag_type = 0,
     pCoordinateSwizzling: ?*u32 = null,
 };
 

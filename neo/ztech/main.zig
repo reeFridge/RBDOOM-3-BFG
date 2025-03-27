@@ -14,23 +14,21 @@ extern var set_exit: c_int;
 var sys_time_base: c_uint = 0;
 const clock_to_use = posix.CLOCK.MONOTONIC_RAW;
 fn initTime() posix.ClockGetTimeError!void {
-    var timespec: posix.timespec = std.mem.zeroes(posix.timespec);
-    try posix.clock_gettime(clock_to_use, &timespec);
+    const timespec = try posix.clock_gettime(clock_to_use);
 
     if (sys_time_base == 0) {
-        sys_time_base = @intCast(timespec.tv_sec);
+        sys_time_base = @intCast(timespec.sec);
     }
 }
 
 pub export fn Sys_Milliseconds() c_int {
     if (sys_time_base == 0) @panic("Clock is not initialized");
 
-    var timespec: posix.timespec = std.mem.zeroes(posix.timespec);
-    posix.clock_gettime(clock_to_use, &timespec) catch unreachable;
+    const timespec = posix.clock_gettime(clock_to_use) catch unreachable;
 
     const current_time =
-        (timespec.tv_sec - sys_time_base) * 1000 +
-        @divTrunc(timespec.tv_nsec, 1000000);
+        (timespec.sec - sys_time_base) * 1000 +
+        @divTrunc(timespec.nsec, 1000000);
     return @intCast(current_time);
 }
 
@@ -102,13 +100,9 @@ fn initSignals() void {
         if (sig == posix.SIG.FPE) {
             var fpe_action = action;
             fpe_action.handler = .{ .sigaction = signalHandlerFPE };
-            posix.sigaction(sig, &fpe_action, null) catch {
-                std.debug.print("Failed to set handler for SIG: {}\n", .{sig});
-            };
+            posix.sigaction(sig, &fpe_action, null);
         } else {
-            posix.sigaction(sig, &action, null) catch {
-                std.debug.print("Failed to set handler for SIG: {}\n", .{sig});
-            };
+            posix.sigaction(sig, &action, null);
         }
     }
 
@@ -126,9 +120,7 @@ fn clearSignals() void {
     };
 
     for (sig_list) |sig| {
-        posix.sigaction(sig, &action, null) catch {
-            std.debug.print("Failed to clear handler for SIG: {}\n", .{sig});
-        };
+        posix.sigaction(sig, &action, null);
     }
 }
 

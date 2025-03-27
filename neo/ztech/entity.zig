@@ -28,7 +28,7 @@ pub fn findEntryMatchedPrefix(
 pub inline fn assertFields(comptime Required: type, comptime T: type) bool {
     inline for (std.meta.fields(Required)) |field_info| {
         if (std.meta.fieldIndex(T, field_info.name)) |field_index| {
-            if (@typeInfo(T).Struct.fields[field_index].type != field_info.type)
+            if (@typeInfo(T).@"struct".fields[field_index].type != field_info.type)
                 return false;
         } else return false;
     }
@@ -92,7 +92,7 @@ fn QueryMeta(comptime query_fields: []const QueryField) type {
             .type = field.type,
             .is_comptime = false,
             .alignment = 0,
-            .default_value = null,
+            .default_value_ptr = null,
         }};
 
         out_fields = out_fields ++ [_]StructField{.{
@@ -103,13 +103,13 @@ fn QueryMeta(comptime query_fields: []const QueryField) type {
             },
             .is_comptime = false,
             .alignment = 0,
-            .default_value = null,
+            .default_value_ptr = null,
         }};
     }
 
     return struct {
         pub const Required = @Type(.{
-            .Struct = .{
+            .@"struct" = .{
                 .layout = .auto,
                 .fields = required_fields,
                 .decls = &.{},
@@ -118,7 +118,7 @@ fn QueryMeta(comptime query_fields: []const QueryField) type {
         });
 
         pub const Out = @Type(.{
-            .Struct = .{
+            .@"struct" = .{
                 .layout = .auto,
                 .fields = out_fields,
                 .decls = &.{},
@@ -212,7 +212,7 @@ pub fn Entities(comptime archetypes: anytype) type {
     }
 
     const E = @Type(.{
-        .Enum = .{
+        .@"enum" = .{
             .decls = &.{},
             .fields = enum_fields,
             .is_exhaustive = true,
@@ -251,7 +251,7 @@ pub fn Entities(comptime archetypes: anytype) type {
     }
 
     const U = @Type(.{
-        .Union = .{
+        .@"union" = .{
             .layout = .auto,
             .decls = &.{},
             .fields = union_fields,
@@ -345,7 +345,7 @@ pub fn Entities(comptime archetypes: anytype) type {
             type_name: []const u8,
             spawn_args: *const idlib.Dict,
         ) anyerror!EntityHandle {
-            const info = @typeInfo(U).Union;
+            const info = @typeInfo(U).@"union";
 
             inline for (info.fields) |field_info| {
                 if (std.mem.eql(u8, type_name, field_info.name)) {
@@ -417,7 +417,7 @@ pub fn Entities(comptime archetypes: anytype) type {
 
         pub fn processWithQuery(self: *@This(), query: type, f: *const fn (anytype) void) void {
             @setEvalBranchQuota(2000);
-            const info = @typeInfo(U).Union;
+            const info = @typeInfo(U).@"union";
 
             inline for (info.fields) |field_info| {
                 const Archetype = field_info.type.Type;
@@ -430,7 +430,7 @@ pub fn Entities(comptime archetypes: anytype) type {
 
         pub fn process(self: *@This(), f: *const fn (type, anytype) void) void {
             @setEvalBranchQuota(2000);
-            const info = @typeInfo(U).Union;
+            const info = @typeInfo(U).@"union";
 
             inline for (info.fields) |field_info| {
                 const Archetype = field_info.type.Type;
@@ -439,7 +439,7 @@ pub fn Entities(comptime archetypes: anytype) type {
         }
 
         pub fn clear(self: *@This()) void {
-            const info = @typeInfo(U).Union;
+            const info = @typeInfo(U).@"union";
 
             inline for (info.fields) |field_info| {
                 const Archetype = field_info.type.Type;
@@ -449,7 +449,7 @@ pub fn Entities(comptime archetypes: anytype) type {
         }
 
         pub fn deinit(self: *@This()) void {
-            const info = @typeInfo(U).Union;
+            const info = @typeInfo(U).@"union";
 
             inline for (info.fields) |field_info| {
                 const Archetype = field_info.type.Type;

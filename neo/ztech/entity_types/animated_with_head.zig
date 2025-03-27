@@ -60,7 +60,7 @@ pub fn spawn(
     var c_render_entity = RenderEntity{};
     c_render_entity.initFromSpawnArgs(spawn_args);
 
-    const transform = transform: {
+    const transform: Transform = transform: {
         const origin = if (spawn_args.getString("origin")) |origin_str|
             try common.parseVec3f(origin_str)
         else

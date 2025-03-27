@@ -20,10 +20,10 @@ pub fn package(
         .optimize = optimize,
     });
 
-    idlib.defineCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", null);
-    idlib.defineCMacro("__IDLIB__", null);
-    idlib.defineCMacro("__DOOM_DLL__", null);
-    idlib.defineCMacro("USE_NVRHI", null);
+    idlib.root_module.addCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", "1");
+    idlib.root_module.addCMacro("__IDLIB__", "");
+    idlib.root_module.addCMacro("__DOOM_DLL__", "");
+    idlib.root_module.addCMacro("USE_NVRHI", "1");
 
     const flags = [_][]const u8{"-fno-sanitize=undefined"};
 

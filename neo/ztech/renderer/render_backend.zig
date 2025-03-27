@@ -898,7 +898,7 @@ pub const RenderBackend = extern struct {
     fn fillDepthBufferFast(
         backend: *RenderBackend,
         command_list: *nvrhi.ICommandList,
-        surfaces: []*const DrawSurface,
+        surfaces: []const *const DrawSurface,
         allocator: Allocator,
     ) Allocator.Error!void {
         std.debug.assert(backend.view_def.?.viewEntitys != null);
@@ -962,7 +962,7 @@ pub const RenderBackend = extern struct {
     fn fillDepthBufferGeneric(
         backend: *RenderBackend,
         command_list: *nvrhi.ICommandList,
-        surfaces: []*const DrawSurface,
+        surfaces: []const *const DrawSurface,
         allocator: Allocator,
     ) Allocator.Error!void {
         const prog_manager = render_prog_manager.instance;
@@ -1158,7 +1158,7 @@ pub const RenderBackend = extern struct {
     fn drawShaderPasses(
         backend: *RenderBackend,
         command_list: *nvrhi.ICommandList,
-        draw_surfaces: []*const DrawSurface,
+        draw_surfaces: []const *const DrawSurface,
         allocator: Allocator,
     ) Allocator.Error!void {
         const prog_manager = render_prog_manager.instance;

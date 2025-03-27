@@ -13,14 +13,16 @@ pub fn build(b: *std.Build) !void {
     const gen_static_cmds_exe = b.addExecutable(.{
         .name = "gen_static_cmds",
         .root_source_file = b.path("gen_cmd_index.zig"),
-        .target = b.host,
+        .target = target,
+        .optimize = optimize,
     });
     const gen_static_cmds = b.addRunArtifact(gen_static_cmds_exe);
 
     const gen_static_cvars_exe = b.addExecutable(.{
         .name = "gen_static_cvars",
         .root_source_file = b.path("gen_cvar_index.zig"),
-        .target = b.host,
+        .target = target,
+        .optimize = optimize,
     });
     const gen_static_cvars = b.addRunArtifact(gen_static_cvars_exe);
 
@@ -37,14 +39,14 @@ pub fn build(b: *std.Build) !void {
     exe.step.dependOn(&gen_static_cmds.step);
     exe.step.dependOn(&gen_static_cvars.step);
 
-    exe.defineCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", null);
-    exe.defineCMacro("USE_NVRHI", null);
-    exe.defineCMacro("USE_AMD_ALLOCATOR", null);
-    exe.defineCMacro("VULKAN_USE_PLATFORM_SDL", null);
-    exe.defineCMacro("USE_VK", null);
-    exe.defineCMacro("USE_BINKDEC", null);
-    exe.defineCMacro("USE_OPENAL", null);
-    exe.defineCMacro("__DOOM__", null);
+    exe.root_module.addCMacro("RAPIDJSON_HAS_CXX11_RVALUE_REFS", "1");
+    exe.root_module.addCMacro("USE_NVRHI", "1");
+    exe.root_module.addCMacro("USE_AMD_ALLOCATOR", "1");
+    exe.root_module.addCMacro("VULKAN_USE_PLATFORM_SDL", "1");
+    exe.root_module.addCMacro("USE_VK", "1");
+    exe.root_module.addCMacro("USE_BINKDEC", "1");
+    exe.root_module.addCMacro("USE_OPENAL", "1");
+    //exe.root_module.addCMacro("__DOOM__", "");
 
     exe.addIncludePath(b.path("extern/nvrhi/include"));
     exe.addIncludePath(b.path("extern/ShaderMake/include"));

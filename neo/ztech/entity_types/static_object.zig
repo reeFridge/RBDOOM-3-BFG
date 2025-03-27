@@ -39,7 +39,7 @@ pub fn spawn(
         .id = handle.id,
     };
 
-    const transform = .{
+    const transform = Transform{
         .origin = c_render_entity.origin.toVec3f(),
     };
 

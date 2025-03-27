@@ -192,7 +192,7 @@ pub const CmdSystem = struct {
             const tree = @import("../static_cmds.zig").root;
 
             for (tree) |mod| {
-                for (@typeInfo(mod).Struct.decls) |decl| {
+                for (@typeInfo(mod).@"struct".decls) |decl| {
                     if (@TypeOf(@field(mod, decl.name)) == CmdDecl) {
                         count += 1;
                     }
@@ -202,7 +202,7 @@ pub const CmdSystem = struct {
             var array: [count]*const CmdDecl = undefined;
             var i: usize = 0;
             for (tree) |mod| {
-                for (@typeInfo(mod).Struct.decls) |decl| {
+                for (@typeInfo(mod).@"struct".decls) |decl| {
                     if (@TypeOf(@field(mod, decl.name)) == CmdDecl) {
                         array[i] = &@field(mod, decl.name);
                         i += 1;

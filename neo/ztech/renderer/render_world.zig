@@ -722,7 +722,7 @@ fn findClosestEnvironmentProbes(_: RenderWorld, view_def: *ViewDef) void {
 /// It is important to do this after all drawSurfs for the current
 /// view have been generated, because it may create a subview which
 /// would change tr.viewCount.
-fn generateSubviews(_: *RenderWorld, draw_surfs: []*const DrawSurface) void {
+fn generateSubviews(_: *RenderWorld, draw_surfs: []const *const DrawSurface) void {
     const skip_subviews = false;
     if (skip_subviews) return;
 
@@ -1694,7 +1694,7 @@ fn addSingleModel(
             // surface shadows
             if (!shader.surfaceCastsShadow() and
                 !(r_force_shadow_maps_on_alpha_surfs and
-                shader.coverage == .perforated))
+                    shader.coverage == .perforated))
             {
                 continue;
             }

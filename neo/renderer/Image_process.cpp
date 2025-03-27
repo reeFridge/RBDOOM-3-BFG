@@ -105,6 +105,29 @@ byte* R_ResampleTexture( const byte* in, int inwidth, int inheight,
 	return out;
 }
 
+extern "C" void c_dropSample(
+		uint8_t const * const in, uint8_t* out_p, int inwidth, int inheight,
+		int outwidth, int outheight
+) {
+	int		i, j, k;
+	const byte*	inrow;
+	const byte*	pix1;
+
+	for( i = 0 ; i < outheight ; i++, out_p += outwidth * 4 )
+	{
+		inrow = in + 4 * inwidth * ( int )( ( i + 0.25 ) * inheight / outheight );
+		for( j = 0 ; j < outwidth ; j++ )
+		{
+			k = j * inwidth / outwidth;
+			pix1 = inrow + k * 4;
+			out_p[j * 4 + 0] = pix1[0];
+			out_p[j * 4 + 1] = pix1[1];
+			out_p[j * 4 + 2] = pix1[2];
+			out_p[j * 4 + 3] = pix1[3];
+		}
+	}
+}
+
 /*
 ================
 R_Dropsample

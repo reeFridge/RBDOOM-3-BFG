@@ -310,7 +310,7 @@ pub const CVarSystem = extern struct {
             const tree = @import("../static_cvars.zig").root;
 
             for (tree) |mod| {
-                for (@typeInfo(mod).Struct.decls) |decl| {
+                for (@typeInfo(mod).@"struct".decls) |decl| {
                     if (@TypeOf(@field(mod, decl.name)) == CVar) {
                         count += 1;
                     }
@@ -320,7 +320,7 @@ pub const CVarSystem = extern struct {
             var array: [count]*CVar = undefined;
             var i: usize = 0;
             for (tree) |mod| {
-                for (@typeInfo(mod).Struct.decls) |decl| {
+                for (@typeInfo(mod).@"struct".decls) |decl| {
                     if (@TypeOf(@field(mod, decl.name)) == CVar) {
                         array[i] = &@field(mod, decl.name);
                         i += 1;

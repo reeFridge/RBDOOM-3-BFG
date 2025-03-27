@@ -7,7 +7,7 @@ const user_cmd = @import("user_cmd.zig");
 const Allocator = std.mem.Allocator;
 
 fn cmd_unbindAll(_: *const cmd.CmdArgs) void {
-    const size: usize = @typeInfo(KeyNum).Enum.fields.len;
+    const size: usize = @typeInfo(KeyNum).@"enum".fields.len;
 
     const allocator = global.gpa.allocator();
     for (0..size) |i| {

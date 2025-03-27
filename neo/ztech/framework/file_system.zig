@@ -1,11 +1,272 @@
 //! @exportCVars
+//! @exportConsoleCommands
 const std = @import("std");
 const idlib = @import("../idlib.zig");
 const cvar = @import("cvar_system.zig");
 const global = @import("../global.zig");
 const ResourceContainer = @import("file_resource.zig");
+const BinaryImage = @import("../renderer/binary_image.zig").BinaryImage;
 const CVar = cvar.CVar;
 const Allocator = std.mem.Allocator;
+
+extern fn c_decompressDxt5Image([*]const u8, [*]u8, u32, u32) void;
+extern fn c_decompressDxt1Image([*]const u8, [*]u8, u32, u32) void;
+extern fn c_decompressYcocgDxt5Image([*]const u8, [*]u8, u32, u32) void;
+extern fn c_decompressNormalMapDxt5Image([*]const u8, [*]u8, u32, u32) void;
+extern fn c_dropSample([*]const u8, [*]u8, u32, u32, u32, u32) void;
+extern fn c_encodeTga([*]const u8, [*]u8, u32, u32, bool) void;
+
+fn cmd_decompressBimages(_: *const cmd.CmdArgs) void {
+    std.debug.print("running decompressBimages\n", .{});
+    const allocator = global.gpa.allocator();
+    const extension = ".bimage";
+
+    var paths_iterator = std.mem.reverseIterator(instance.searchPaths.constSlice());
+    while (paths_iterator.next()) |search| {
+        var out_path = std.ArrayList(u8).init(allocator);
+        defer out_path.deinit();
+
+        out_path.appendSlice(search.path.constSlice()) catch unreachable;
+        out_path.append('/') catch unreachable;
+        out_path.appendSlice(search.gamedir.constSlice()) catch unreachable;
+
+        var generated_path = out_path.clone() catch unreachable;
+        generated_path.appendSlice("/generated/images") catch unreachable;
+
+        var dir = std.fs.openDirAbsolute(
+            generated_path.items,
+            .{ .iterate = true },
+        ) catch @panic("fail to open generated dir");
+        defer dir.close();
+
+        var dir_iterator = dir.walk(
+            allocator,
+        ) catch @panic("fail to create recursive walker");
+        defer dir_iterator.deinit();
+
+        var array = std.ArrayListUnmanaged([]u8){};
+        defer {
+            for (array.items) |item| allocator.free(item);
+            array.deinit(allocator);
+        }
+
+        while (dir_iterator.next() catch @panic("fail to walk dir")) |entry| {
+            if (entry.kind != .file) continue;
+
+            const ext = std.fs.path.extension(entry.path);
+
+            if (!std.ascii.eqlIgnoreCase(ext, extension)) continue;
+
+            const copy = allocator.dupe(
+                u8,
+                stripExtension(entry.path),
+            ) catch @panic("fail to clone name");
+            array.append(allocator, copy) catch @panic("fail to append name");
+        }
+
+        var out_dir = std.fs.openDirAbsolute(
+            out_path.items,
+            .{},
+        ) catch @panic("fail to open out dir");
+        defer out_dir.close();
+
+        for (array.items) |filename| {
+            var im = BinaryImage{};
+            im.init(filename, allocator) catch @panic("fail to init bimage");
+            defer im.deinit(allocator);
+
+            const file_time = im.loadFromGenerated(not_found_time, allocator);
+            if (file_time == not_found_time) {
+                @panic("not found");
+            }
+
+            if (im.header.format == .dxt5 or im.header.format == .dxt1 and
+                im.header.color_format != .green_alpha)
+            {
+                const images = im.images.constSlice();
+                const image = &images[0];
+
+                var dxt_width: u32 = 0;
+                var dxt_height: u32 = 0;
+
+                if (((image.header.width & @as(u32, 3)) != 0) or ((image.header.height & @as(u32, 3)) != 0)) {
+                    dxt_width = (image.header.width + 3) & ~@as(u32, 3);
+                    dxt_height = (image.header.height + 3) & ~@as(u32, 3);
+                } else {
+                    dxt_width = image.header.width;
+                    dxt_height = image.header.height;
+                }
+
+                // alloc rgba buffer
+                const rgba = rgba: {
+                    const buf = allocator.alloc(
+                        u8,
+                        dxt_width * dxt_height * 4,
+                    ) catch @panic("fail to alloc rgba buffer");
+                    for (buf) |*byte| byte.* = 255;
+
+                    if (im.header.format == .dxt1) {
+                        c_decompressDxt1Image(
+                            image.data.?.ptr,
+                            buf.ptr,
+                            dxt_width,
+                            dxt_height,
+                        );
+                    } else {
+                        if (im.header.color_format == .normal_dxt5) {
+                            c_decompressNormalMapDxt5Image(
+                                image.data.?.ptr,
+                                buf.ptr,
+                                dxt_width,
+                                dxt_height,
+                            );
+                        } else if (im.header.color_format == .ycocg_dxt5) {
+                            c_decompressYcocgDxt5Image(
+                                image.data.?.ptr,
+                                buf.ptr,
+                                dxt_width,
+                                dxt_height,
+                            );
+                        } else {
+                            c_decompressDxt5Image(
+                                image.data.?.ptr,
+                                buf.ptr,
+                                dxt_width,
+                                dxt_height,
+                            );
+                        }
+                    }
+                    for (0..(dxt_width * dxt_height)) |i| {
+                        buf[i * 4 + 3] = 255;
+                    }
+
+                    if (dxt_width == image.header.width and
+                        dxt_height == image.header.height)
+                    {
+                        break :rgba buf;
+                    }
+
+                    const scaled = allocator.alloc(
+                        u8,
+                        image.header.width * image.header.height * 4,
+                    ) catch @panic("fail to alloc scaled rgba buffer");
+                    c_dropSample(
+                        buf.ptr,
+                        scaled.ptr,
+                        dxt_width,
+                        dxt_height,
+                        image.header.width,
+                        image.header.height,
+                    );
+                    allocator.free(buf);
+
+                    break :rgba scaled;
+                };
+                defer allocator.free(rgba);
+
+                if (std.fs.path.dirname(filename)) |dirname| {
+                    out_dir.makePath(dirname) catch @panic("fail to make out path");
+                }
+
+                var out_file_path = std.ArrayList(u8).init(allocator);
+                defer out_file_path.deinit();
+                out_file_path.appendSlice(out_path.items) catch unreachable;
+                out_file_path.append('/') catch unreachable;
+                out_file_path.appendSlice(stripSentinel(filename, '#')) catch unreachable;
+
+                //if (image.width > 16 and image.height > 16) {
+                if (false) {
+                    out_file_path.appendSlice(".png") catch unreachable;
+                    var out_file = try std.fs.createFileAbsolute(out_file_path.items, .{});
+                    defer out_file.close();
+                    //R_WritePNG( exportName, rgba.Ptr(), 4, img.width, img.height, "fs_basepath" );
+                } else {
+                    const temp_buf = allocator.alloc(
+                        u8,
+                        image.header.width * image.header.height * 4 + 18,
+                    ) catch @panic("fail to alloc out buffer");
+                    defer allocator.free(temp_buf);
+                    c_encodeTga(
+                        rgba.ptr,
+                        temp_buf.ptr,
+                        image.header.width,
+                        image.header.height,
+                        false,
+                    );
+
+                    out_file_path.appendSlice(".tga") catch unreachable;
+                    var out_file = std.fs.createFileAbsolute(
+                        out_file_path.items,
+                        .{},
+                    ) catch @panic("fail to open output file");
+                    defer out_file.close();
+
+                    out_file.writeAll(temp_buf) catch @panic("fail to write out buffer to file");
+                }
+
+                std.debug.print("{s} (format: {}, lvls: {}, {}x{})\n", .{
+                    filename,
+                    im.header.format,
+                    im.header.num_levels,
+                    dxt_width,
+                    dxt_height,
+                });
+                std.debug.print("-> {s}\n", .{out_file_path.items});
+            }
+        }
+    }
+}
+
+pub const decompress_bimages_command: cmd.CmdDecl = .{
+    .name = "decompressBimages",
+    .function = cmd_decompressBimages,
+    .flags = cmd.CmdFlags.system,
+    .description = "unpacks bimage files",
+    .arg_completion = null,
+};
+
+fn cmd_unpackResource(args: *const cmd.CmdArgs) void {
+    std.debug.assert(args.argc == 2);
+    std.debug.print("Unpack resource file: {s}\n", .{
+        args.argv[1],
+    });
+
+    var container, const search = res_file: {
+        var paths_iterator = std.mem.reverseIterator(instance.searchPaths.constSlice());
+        while (paths_iterator.next()) |search_path| {
+            var res_files_iterator = std.mem.reverseIterator(search_path.resourceFiles.constSlice());
+            while (res_files_iterator.next()) |res_file| {
+                if (std.mem.eql(u8, res_file.filename.constSlice(), std.mem.span(args.argv[1]))) {
+                    break :res_file .{ res_file, search_path };
+                }
+            }
+        }
+
+        std.debug.print("not found!\n", .{});
+        return;
+    };
+
+    const allocator = global.gpa.allocator();
+    var out_path = std.ArrayList(u8).init(allocator);
+    defer out_path.deinit();
+
+    out_path.appendSlice(search.path.constSlice()) catch @panic("error out");
+    out_path.append('/') catch @panic("error out");
+    out_path.appendSlice(search.gamedir.constSlice()) catch @panic("error out");
+
+    container.unpack(
+        out_path.items,
+        allocator,
+    ) catch @panic("error while unpacking");
+}
+
+pub const unpack_resource_command: cmd.CmdDecl = .{
+    .name = "unpackResource",
+    .function = cmd_unpackResource,
+    .flags = cmd.CmdFlags.system,
+    .description = "unpacks resource file",
+    .arg_completion = null,
+};
 
 pub const SearchPath = extern struct {
     path: idlib.Str = .{},
@@ -19,6 +280,13 @@ pub const not_found_time: idlib.Time = -1;
 
 pub var fs_basepath: CVar = CVar.init(
     "fs_basepath",
+    "",
+    cvar.CVarFlags.system | cvar.CVarFlags.init,
+    "",
+);
+
+pub var fs_game: CVar = CVar.init(
+    "fs_game",
     "",
     cvar.CVarFlags.system | cvar.CVarFlags.init,
     "",
@@ -73,11 +341,16 @@ pub const FileSystem = extern struct {
         try fs.startup(allocator);
     }
 
-    const BASE_GAMEDIR: []const u8 = "base";
+    const BASE_DIR: []const u8 = "base";
+    const GAME_DIR: []const u8 = "game";
     fn startup(fs: *FileSystem, allocator: Allocator) AddDirectoryError!void {
         fs.numFilesOpenedAsCached = 0;
 
-        try fs.setupGameDirectories(BASE_GAMEDIR, allocator);
+        try fs.setupGameDirectories(BASE_DIR, allocator);
+
+        if (fs_game.getString().len > 0) {
+            try fs.addGameDirectory(fs_game.getString(), GAME_DIR, allocator);
+        }
 
         // TODO: setupGameDirectories(fs_game_base);
         // TODO: setupGameDirectories(fs_game);
@@ -160,8 +433,9 @@ pub const FileSystem = extern struct {
             resources_path.constSlice(),
             .{ .iterate = true },
         );
-        var dir_iterator = resources_dir.iterate();
         defer resources_dir.close();
+        var dir_iterator = try resources_dir.walk(allocator);
+        defer dir_iterator.deinit();
 
         var file_list = std.ArrayList([]const u8).init(allocator);
         var arena = std.heap.ArenaAllocator.init(allocator);
@@ -172,12 +446,12 @@ pub const FileSystem = extern struct {
         }
 
         while (try dir_iterator.next()) |entry| {
-            if (entry.kind == .directory) continue;
+            if (entry.kind != .file) continue;
 
-            const ext = std.fs.path.extension(entry.name);
+            const ext = std.fs.path.extension(entry.path);
 
             if (std.mem.eql(u8, ext, ".resources")) {
-                try file_list.append(try file_list_allocator.dupe(u8, entry.name));
+                try file_list.append(try file_list_allocator.dupe(u8, entry.path));
             }
         }
 
@@ -336,7 +610,7 @@ pub const FileSystem = extern struct {
         var slice = path[0..];
         while (slice.len > 0 and
             (slice[slice.len - 1] == std.fs.path.sep_windows or
-            slice[slice.len - 1] == std.fs.path.sep_posix))
+                slice[slice.len - 1] == std.fs.path.sep_posix))
         {
             slice = slice[0 .. slice.len - 1];
         }
@@ -620,6 +894,11 @@ fn sliceLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
 
 pub fn stripExtension(path: []const u8) []const u8 {
     const dot_index = std.mem.lastIndexOfScalar(u8, path, '.') orelse return path;
+    return path[0..dot_index];
+}
+
+pub fn stripSentinel(path: []const u8, sym: u8) []const u8 {
+    const dot_index = std.mem.lastIndexOfScalar(u8, path, sym) orelse return path;
     return path[0..dot_index];
 }
 

@@ -110,7 +110,7 @@ pub const DeclEntityDef = extern struct {
     }
 };
 
-const pvs = @import("pvs.zig");
+const pvs_mod = @import("pvs.zig");
 
 // Latched version of cvar, updated between map loads
 pub const com_engineHz_latched: f32 = 60;
@@ -127,11 +127,11 @@ pub inline fn frameToMsec(frame: usize) usize {
 num_clients: usize = 0,
 frame: usize = 0,
 render_world: ?*RenderWorld = null,
-pvs: pvs.PotentialVisibleSet = .{},
+pvs: pvs_mod.PotentialVisibleSet = .{},
 // merged pvs of all players
-player_pvs: pvs.Handle = .{},
+player_pvs: pvs_mod.Handle = .{},
 // all areas connected to any player area
-player_connected_areas: pvs.Handle = .{},
+player_connected_areas: pvs_mod.Handle = .{},
 new_frame: bool = true,
 time: usize = 0,
 prev_time: usize = 0,

@@ -298,7 +298,7 @@ pub const RenderProgManager = struct {
     const NUM_VERTEX_LAYOUTS: usize = @intCast(@intFromEnum(common.VertexLayoutType.NUM_VERTEX_LAYOUTS));
     const NUM_BINDING_LAYOUTS: usize = common.BindingLayoutType.num;
     const MAX_BUILTINS: usize = @intCast(@intFromEnum(BuiltinShader.MAX_BUILTINS));
-    const MAX_UNIFORMS: usize = @typeInfo(RenderParam).Enum.fields.len;
+    const MAX_UNIFORMS: usize = @typeInfo(RenderParam).@"enum".fields.len;
 
     render_param_ubo: buffer_object.UniformBuffer = .{},
     binding_param_ubo: [NUM_BINDING_LAYOUTS]buffer_object.UniformBuffer = [_]buffer_object.UniformBuffer{.{}} ** NUM_BINDING_LAYOUTS,

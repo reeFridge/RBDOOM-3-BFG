@@ -1,18 +1,19 @@
 .{
-    .name = "ztech",
+    .fingerprint = 0xd2b8e07d84c113b7,
+    .name = .ztech,
     .version = "0.0.0",
     .dependencies = .{
         .vulkan_headers = .{
-            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.305.tar.gz",
-            .hash = "12206dac2471bb08de8fc35d472f844b1029b3c3c8c0fc822003436dd62bda1b3b5b",
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.310.tar.gz",
+            .hash = "N-V-__8AADbA5gF863I7MRSqotxqVwuZf1uWjkNVclEFKVRJ",
         },
         .vulkan = .{
-            .url = "https://github.com/Snektron/vulkan-zig/archive/5559cccea667a2c159354bdb99cc398c2d893a1b.tar.gz",
-            .hash = "1220ed8dbf35b9391f2d11c984493f80ecef1287bf07c9e29fba967c6912e54bb9b3",
+            .url = "https://github.com/Snektron/vulkan-zig/archive/57d587c8a4b6ff5493613b1cf0c64ce34461696e.tar.gz",
+            .hash = "vulkan-0.0.0-r7Ytx5GAAwBIBpjW4Ipd81FiM24t7UxlVomrGkubzW3v",
         },
         .vma = .{
             .url = "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.2.1.tar.gz",
-            .hash = "122087e89339d26bfd23f5eac7f1ca4c6ce05d3e1f59ee18b70150cddd8e779f8509",
+            .hash = "N-V-__8AACOiQQCH6JM50mv9I_Xqx_HKTGzgXT4fWe4YtwFQ",
         },
     },
     .paths = .{

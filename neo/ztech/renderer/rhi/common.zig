@@ -395,7 +395,7 @@ inline fn calcSubresource(
 }
 
 pub inline fn getFormatInfo(format: interface.Format) *const FormatInfo {
-    std.debug.assert(@intFromEnum(format) < @typeInfo(interface.Format).Enum.fields.len);
+    std.debug.assert(@intFromEnum(format) < @typeInfo(interface.Format).@"enum".fields.len);
 
     return &format_info[@intFromEnum(format)];
 }

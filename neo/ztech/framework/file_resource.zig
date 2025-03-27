@@ -96,6 +96,41 @@ pub fn init(rc: *ResourceContainer, filename: []const u8, allocator: Allocator) 
     return true;
 }
 
+pub fn unpack(rc: *ResourceContainer, out_dir: []const u8, allocator: Allocator) !void {
+    const file = &rc.resource_file.?;
+    const entries = rc.cache_table.constSlice();
+
+    var dir = try std.fs.openDirAbsolute(out_dir, .{});
+    defer dir.close();
+
+    for (entries, 0..) |*entry, i| {
+        std.debug.print("{s}\n", .{entry.filename.constSlice()});
+        try file.seekTo(entry.offset);
+        const buf = try allocator.alloc(u8, entry.length);
+        defer allocator.free(buf);
+
+        _ = try file.read(buf);
+
+        if (std.fs.path.dirname(entry.filename.constSlice())) |dirname| {
+            try dir.makePath(dirname);
+        }
+
+        var out_file_path = std.ArrayList(u8).init(allocator);
+        defer out_file_path.deinit();
+        try out_file_path.appendSlice(out_dir);
+        try out_file_path.append('/');
+        try out_file_path.appendSlice(entry.filename.constSlice());
+
+        std.debug.print("-> {s}\n", .{out_file_path.items});
+
+        var out_file = try std.fs.createFileAbsolute(out_file_path.items, .{});
+        defer out_file.close();
+
+        try out_file.writeAll(buf);
+        std.debug.print("[{}/{}] OK\n", .{ i + 1, entries.len });
+    }
+}
+
 inline fn readFail(var_name: []const u8) void {
     @panic("[FATAL] Fail to read " ++ var_name ++ " from resource file");
 }

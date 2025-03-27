@@ -83,7 +83,7 @@ pub fn spawn(
     };
     const density = 1;
 
-    const transform = .{ .origin = c_render_entity.origin.toVec3f() };
+    const transform = Transform{ .origin = c_render_entity.origin.toVec3f() };
 
     return .{
         .transform = transform,

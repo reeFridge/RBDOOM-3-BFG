@@ -53,8 +53,8 @@ const Colors = struct {
 
 const DeviceContextLegacy = extern struct {
     vptr: *anyopaque,
-    cursor_images: [@typeInfo(CursorType).Enum.fields.len]*Material,
-    scroll_bar_images: [@typeInfo(ScrollBarType).Enum.fields.len]*Material,
+    cursor_images: [@typeInfo(CursorType).@"enum".fields.len]*Material,
+    scroll_bar_images: [@typeInfo(ScrollBarType).@"enum".fields.len]*Material,
     white_image: *Material,
     active_font: ?*Font,
     x_scale: f32,

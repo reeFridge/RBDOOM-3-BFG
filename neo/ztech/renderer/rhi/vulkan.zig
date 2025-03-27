@@ -1270,7 +1270,7 @@ const MemoryResource = struct {
 };
 
 pub const Device = struct {
-    const queue_count = @typeInfo(interface.CommandQueue).Enum.fields.len;
+    const queue_count = @typeInfo(interface.CommandQueue).@"enum".fields.len;
 
     context: Context,
     allocator: VulkanAllocator,
@@ -1572,7 +1572,7 @@ inline fn convertResourceState(state: interface.ResourceStates) constants.Resour
 }
 
 pub inline fn convertFormat(format: interface.Format) vulkan.Format {
-    std.debug.assert(@intFromEnum(format) < @typeInfo(interface.Format).Enum.fields.len);
+    std.debug.assert(@intFromEnum(format) < @typeInfo(interface.Format).@"enum".fields.len);
     const from, const to = constants.format_map[@intFromEnum(format)];
     std.debug.assert(from == format);
 
@@ -1819,7 +1819,7 @@ const constants = struct {
 };
 
 fn undefinedInit(T: type) T {
-    const struct_info = @typeInfo(T).Struct;
+    const struct_info = @typeInfo(T).@"struct";
 
     var value: T = if (struct_info.layout == .@"extern") std.mem.zeroes(T) else undefined;
 
@@ -1828,7 +1828,7 @@ fn undefinedInit(T: type) T {
             continue;
         }
 
-        if (field.default_value) |default_value_ptr| {
+        if (field.default_value_ptr) |default_value_ptr| {
             const default_value = @as(*align(1) const field.type, @ptrCast(default_value_ptr)).*;
             @field(value, field.name) = default_value;
         } else {

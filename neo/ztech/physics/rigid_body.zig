@@ -337,7 +337,7 @@ pub fn evaluateContacts(
     try contacts.resize(10);
     const i = &self.current.integration;
 
-    const direction = .{
+    const direction = Vec6(f32){
         .v = std.simd.join(
             i.linear_momentum.add(
                 self.gravity_vector
